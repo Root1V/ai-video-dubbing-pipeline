@@ -1,0 +1,44 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv-diarization/
+venv/
+.env
+.env.local
+.work/
+
+# Videos de entrada y resultados generados: no forman parte del codigo del
+# proyecto y pueden pesar cientos de MB/varios GB. Cualquiera que clone el
+# repo genera los suyos siguiendo el README.
+video/
+output/
+data/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.wav
+*.srt
+!tests/**/*.srt
+
+# Modelos y checkpoints descargados (varios GB): se bajan con los scripts de
+# setup, no se versionan.
+third_party/
+*.gguf
+*.ckpt
+*.safetensors
+checkpoints/
+
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+.DS_Store
+Thumbs.db
