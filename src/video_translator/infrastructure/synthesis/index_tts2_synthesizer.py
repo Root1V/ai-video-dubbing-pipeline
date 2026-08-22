@@ -66,6 +66,7 @@ class IndexTTS2Synthesizer:
         ffmpeg_binary: str = "ffmpeg",
         device: str | None = None,
         use_torch_compile: bool = False,
+        num_beams: int = 3,
     ) -> None:
         self._model_dir = model_dir
         self._cfg_path = cfg_path
@@ -86,6 +87,13 @@ class IndexTTS2Synthesizer:
         # solo conviene si el proceso sintetiza suficientes segmentos para
         # amortizarlo.
         self._use_torch_compile = use_torch_compile
+        # El GPT autoregresivo usa num_beams=3 por defecto internamente (no
+        # expuesto en el README). Probado en CPU: bajarlo a 1 no acelero
+        # gpt_gen_time (HuggingFace generate() procesa los beams como
+        # dimension de batch en un solo forward pass, casi gratis con margen
+        # de CPU libre) -- no hay razon para bajarlo, arriesgaria calidad sin
+        # ganar velocidad. Configurable solo por si acaso en otro hardware.
+        self._num_beams = num_beams
         self._tts = None  # carga perezosa: el modelo pesa varios GB
 
     def _load(self):
@@ -142,6 +150,7 @@ class IndexTTS2Synthesizer:
                 lang=lang_code,
                 output_path=str(output_path),
                 verbose=False,
+                num_beams=self._num_beams,
                 **kwargs,
             )
         except TypeError:
@@ -155,6 +164,7 @@ class IndexTTS2Synthesizer:
                     lang=lang_code,
                     output_path=str(output_path),
                     verbose=False,
+                    num_beams=self._num_beams,
                 )
             except Exception as exc:  # noqa: BLE001
                 raise SynthesisError(f"Fallo sintetizando segmento con IndexTTS-2.5: {exc}") from exc

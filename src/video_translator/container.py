@@ -230,6 +230,7 @@ def _synthesizer_factory(
             cfg_path=settings.index_tts2_cfg_path,
             use_bf16=settings.index_tts2_use_bf16,
             use_torch_compile=settings.index_tts2_use_torch_compile,
+            num_beams=settings.index_tts2_num_beams,
             ffmpeg_binary=settings.ffmpeg_binary,
             device=device,
         )

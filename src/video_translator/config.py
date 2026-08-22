@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     # proceso worker paga el costo de compilacion en su primera inferencia;
     # solo compensa si el worker sintetiza varios segmentos.
     index_tts2_use_torch_compile: bool = Field(default=False)
+    # El GPT autoregresivo usa num_beams=3 internamente por defecto (no
+    # documentado en el README). PROBADO en CPU: bajarlo a 1 NO acelero
+    # gpt_gen_time (incluso salio un poco mas lento en la prueba) -- HuggingFace
+    # generate() procesa los beams como dimension de batch en un solo forward
+    # pass, y con margen de CPU libre el costo marginal de 3 beams es casi
+    # nulo. No hay razon para bajarlo: no da velocidad y si arriesgaria calidad
+    # (beam search reduce salidas degenerativas/repetitivas). Se deja
+    # configurable solo por si un modelo/hardware futuro se comporta distinto.
+    index_tts2_num_beams: int = Field(default=3)
 
     # Coqui TTS / XTTS v2 (alternativa mas liviana de instalar, requiere Python < 3.12)
     tts_model_name: str = Field(default="tts_models/multilingual/multi-dataset/xtts_v2")
