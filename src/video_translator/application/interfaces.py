@@ -10,7 +10,7 @@ implementaciones concretas (faster-whisper, ffmpeg, ollama, etc.). Esto permite:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import TYPE_CHECKING, Iterable, Protocol
 
 from video_translator.domain.models import (
     DiarizationSegment,
@@ -18,6 +18,9 @@ from video_translator.domain.models import (
     TranslatedSegment,
     TranslationContext,
 )
+
+if TYPE_CHECKING:
+    from video_translator.application.synthesis_job import SynthesisJob
 
 
 class MediaProcessor(Protocol):
@@ -114,6 +117,24 @@ class SubtitleWriter(Protocol):
     """Escritor de subtitulos (formato SRT)."""
 
     def write(self, segments: list[TranslatedSegment], output_path: Path, use_translation: bool) -> Path: ...
+
+
+class BatchSpeechSynthesizer(Protocol):
+    """Capacidad OPCIONAL de un SpeechSynthesizer: procesar muchas tareas de
+    sintesis de una sola vez, potencialmente en paralelo.
+
+    No todo SpeechSynthesizer la implementa (los mas simples solo saben
+    generar un clip a la vez); el caso de uso la detecta con ``hasattr`` y,
+    si esta disponible, construye TODAS las tareas por adelantado y las
+    despacha juntas (p.ej. ``ParallelTTSPool`` las reparte entre varios
+    procesos). Si no esta disponible, se cae al bucle secuencial de siempre
+    llamando a ``synthesize_segment`` una por una.
+    """
+
+    def synthesize_batch(self, jobs: list["SynthesisJob"]) -> None:
+        """Ejecuta todas las tareas (en el orden que sea mas eficiente); no
+        devuelve nada porque cada tarea ya sabe su propio ``output_path``."""
+        ...
 
 
 class SpeakerDiarizer(Protocol):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -60,11 +61,45 @@ def translate(
     max_speakers: Optional[int] = typer.Option(None, "--max-speakers", help="Pista opcional para la diarizacion."),
     source_lang: str = typer.Option("en", help="Idioma de origen (codigo ISO)."),
     target_lang: str = typer.Option("es", help="Idioma de destino (codigo ISO)."),
+    tts_workers: Optional[int] = typer.Option(
+        None,
+        "--tts-workers",
+        help="Procesos paralelos para la sintesis de voz (doblaje). Sin especificar, se "
+        "auto-detecta segun los nucleos disponibles. 1 = secuencial (sin paralelismo).",
+    ),
+    group_segments: Optional[bool] = typer.Option(
+        None,
+        "--group-segments/--no-group-segments",
+        help="Fusiona segmentos consecutivos del mismo hablante (requiere --diarize) en "
+        "una sola llamada de sintesis, para reducir el numero de llamadas en videos "
+        "largos. Activado por defecto.",
+    ),
+    resume: bool = typer.Option(
+        False,
+        "--resume",
+        "-r",
+        help="Reanuda el pipeline desde el ultimo checkpoint guardado en el workdir. "
+        "Si se interrumpe un procesamiento largo (crash, corte de energia), "
+        "usa esta opcion para saltar las etapas ya completadas.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Traduce un video completo: transcribe, traduce con contexto y genera subtitulos/doblaje."""
     settings = load_settings()
-    configure_logging(level="DEBUG" if verbose else settings.log_level, json_logs=settings.log_json)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "logs" / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
+    configure_logging(
+        level="DEBUG" if verbose else settings.log_level,
+        json_logs=settings.log_json,
+        log_file=log_file,
+    )
+    console.print(f"[dim]Log completo de esta corrida: {log_file}[/dim]")
+
+    if tts_workers is not None:
+        settings.tts_parallel_workers = tts_workers
+    if group_segments is not None:
+        settings.tts_group_segments = group_segments
 
     context_prompt = _resolve_context_text(context)
     glossary_dict = _load_glossary(glossary)
@@ -91,12 +126,17 @@ def translate(
     )
 
     use_case = build_translate_video_use_case(
-        settings, enable_dubbing=(mode == OutputMode.DUBBED), enable_diarization=diarize
+        settings,
+        enable_dubbing=(mode == OutputMode.DUBBED),
+        enable_diarization=diarize,
+        resume=resume,
     )
 
     console.rule("[bold cyan]Video Translator")
     console.print(f"[bold]Entrada:[/bold] {input}")
     console.print(f"[bold]Modo:[/bold] {mode.value}")
+    if resume:
+        console.print("[bold yellow]Reanudacion:[/bold yellow] activada (saltara etapas completadas)")
     if diarize:
         console.print("[bold]Diarizacion:[/bold] activada (multi-hablante)")
     if context_prompt:
@@ -106,10 +146,12 @@ def translate(
         with console.status("[bold green]Procesando video (esto puede tardar segun la duracion)..."):
             result = use_case.execute(request)
     except VideoTranslatorError as exc:
+        logger.error("pipeline.failed", error=str(exc))
         console.print(f"[bold red]Error:[/bold red] {exc}")
+        console.print(f"[dim]Detalle en el log: {log_file}[/dim]")
         raise typer.Exit(code=1) from exc
 
-    _print_summary(result)
+    _print_summary(result, log_file)
 
 
 @app.command()
@@ -172,7 +214,7 @@ def _load_glossary(glossary_path: Optional[Path]) -> dict[str, str]:
     return {str(k): str(v) for k, v in data.items()}
 
 
-def _print_summary(result) -> None:
+def _print_summary(result, log_file: Path | None = None) -> None:
     console.rule("[bold green]Completado")
     table = Table(show_header=False)
     table.add_row("Duracion procesada", f"{result.duration_seconds / 60:.1f} min")
@@ -181,6 +223,10 @@ def _print_summary(result) -> None:
     table.add_row("Subtitulos ES", str(result.subtitles_target_path))
     if result.output_video:
         table.add_row("Video de salida", str(result.output_video))
+    if result.timings:
+        table.add_row("Tiempo total", _format_seconds(result.timings.get("total_seconds", 0)))
+    if log_file is not None:
+        table.add_row("Log completo", str(log_file))
     console.print(table)
 
     if result.speakers:
@@ -195,6 +241,61 @@ def _print_summary(result) -> None:
                 str(sp.reference_wav) if sp.reference_wav else "[red]sin muestra suficiente[/red]",
             )
         console.print(speaker_table)
+
+    if result.timings and result.timings.get("stages"):
+        report_path = result.subtitles_target_path.parent / "pipeline_timings.json"
+        _print_timings_table(result.timings, report_path)
+
+
+def _print_timings_table(timings: dict, report_path) -> None:
+    concurrent_groups = timings.get("concurrent_stage_groups") or []
+    concurrent_names: set[str] = set()
+    for group in concurrent_groups:
+        concurrent_names.update(group)
+
+    timings_table = Table(title="Tiempo por etapa del pipeline")
+    timings_table.add_column("Etapa")
+    timings_table.add_column("Duracion", justify="right")
+    timings_table.add_column("% del total", justify="right")
+    timings_table.add_column("Notas")
+
+    for stage in timings["stages"]:
+        notes = []
+        if stage["name"] in concurrent_names:
+            notes.append("corrio en paralelo")
+        extra_keys = [
+            k
+            for k in stage
+            if k not in ("name", "seconds", "percent_of_total") and k != "ran_concurrently"
+        ]
+        for k in extra_keys:
+            notes.append(f"{k}={stage[k]}")
+        timings_table.add_row(
+            stage["name"],
+            _format_seconds(stage["seconds"]),
+            f"{stage['percent_of_total']:.1f}%",
+            ", ".join(notes) if notes else "",
+        )
+    console.print(timings_table)
+
+    if concurrent_groups:
+        console.print(
+            "[dim]Nota: las etapas marcadas 'corrio en paralelo' se solapan en el tiempo "
+            "(por eso los porcentajes pueden sumar mas de 100%) — el tiempo total ya lo "
+            "refleja correctamente.[/dim]"
+        )
+    console.print(f"[dim]Reporte completo (JSON) en: {report_path}[/dim]")
+
+
+def _format_seconds(seconds: float) -> str:
+    seconds = int(round(seconds))
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
 
 
 if __name__ == "__main__":

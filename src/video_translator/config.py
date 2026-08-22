@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     whisper_compute_type: str = Field(default="float16")
     whisper_beam_size: int = Field(default=5)
     whisper_vad_filter: bool = Field(default=True)
+    # 0 = usar todos los nucleos disponibles. Ajuste de mayor impacto para
+    # transcripcion en CPU (p.ej. Mac sin CUDA): CTranslate2 no siempre
+    # satura todos los nucleos por defecto.
+    whisper_cpu_threads: int = Field(default=0)
+    whisper_num_workers: int = Field(default=1)
 
     # Ollama / traduccion
     translation_backend: str = Field(default="ollama")  # "ollama" | "llama_server"
@@ -45,10 +50,31 @@ class Settings(BaseSettings):
     index_tts2_model_dir: str = Field(default="third_party/index-tts/checkpoints")
     index_tts2_cfg_path: str = Field(default="third_party/index-tts/checkpoints/config.yaml")
     index_tts2_use_bf16: bool = Field(default=True)
+    # None/vacio = autodetectar (cuda > mps > cpu). En macOS con
+    # TTS_PARALLEL_WORKERS > 1 el contenedor fuerza "cpu" automaticamente
+    # salvo que se fije este valor explicitamente (ver container.py): varios
+    # procesos usando Metal (MPS) a la vez pueden crashear el driver de GPU y
+    # reiniciar el sistema.
+    index_tts2_device: str | None = Field(default=None)
 
     # Coqui TTS / XTTS v2 (alternativa mas liviana de instalar, requiere Python < 3.12)
     tts_model_name: str = Field(default="tts_models/multilingual/multi-dataset/xtts_v2")
     tts_device: str = Field(default="cuda")
+
+    # Rendimiento de la sintesis de voz (doblaje), critico en videos largos:
+    # 0 = auto-detectar (mitad de los nucleos disponibles, tope de 6 — cada
+    # worker carga su propia copia del modelo en memoria, asi que no conviene
+    # crear tantos como nucleos haya sin mas). 1 = secuencial (comportamiento
+    # anterior, sin paralelismo).
+    tts_parallel_workers: int = Field(default=0)
+
+    # Agrupa segmentos consecutivos del MISMO hablante (requiere --diarize)
+    # con poco silencio entre ellos en una sola llamada de sintesis, en vez
+    # de una por cada segmento de Whisper (que en videos largos pueden ser
+    # miles). Reduce drasticamente el numero de llamadas al motor de TTS.
+    tts_group_segments: bool = Field(default=True)
+    tts_group_max_gap_seconds: float = Field(default=0.5)
+    tts_group_max_chars: int = Field(default=200)
 
     # Diarizacion de hablantes (opcional): quien habla, y clonacion de voz por hablante.
     # Corre en un venv AISLADO (ver scripts/setup_diarization_env.sh) via

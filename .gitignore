@@ -21,6 +21,7 @@ data/
 *.webm
 *.wav
 *.srt
+*.log
 !tests/**/*.srt
 
 # Modelos y checkpoints descargados (varios GB): se bajan con los scripts de

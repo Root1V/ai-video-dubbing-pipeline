@@ -1,6 +1,6 @@
 # AI Video Dubbing Pipeline — EN → ES Video Dubbing with 100% Open Source AI
 
-[![CI](https://github.com/Root1V/ai-video-dubbing-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Root1V/ai-video-dubbing-pipeline/actions/workflows/ci.yml)
+[![CI](https://github.com/USERNAME/REPO_NAME/actions/workflows/ci.yml/badge.svg)](https://github.com/USERNAME/REPO_NAME/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 
@@ -47,13 +47,22 @@ src/video_translator/
 │   └── exceptions.py
 ├── application/        # Use cases + ports (interfaces/Protocols)
 │   ├── interfaces.py
-│   └── use_cases/translate_video.py     <- pipeline orchestrator
+│   ├── synthesis_job.py                  <- TTS job DTO, dispatched sequentially or in parallel
+│   └── use_cases/translate_video.py     <- pipeline orchestrator (timing-instrumented)
 ├── infrastructure/     # Concrete adapters (implement the ports)
 │   ├── media/ffmpeg_processor.py
 │   ├── transcription/faster_whisper_transcriber.py
 │   ├── translation/ollama_translator.py  <- context prompt applied here
-│   ├── synthesis/coqui_tts_synthesizer.py
+│   ├── synthesis/
+│   │   ├── index_tts2_synthesizer.py     <- single-pass inference
+│   │   ├── parallel_tts_pool.py          <- multi-process TTS dispatch
+│   │   └── coqui_tts_synthesizer.py
+│   ├── diarization/subprocess_diarizer.py  <- isolated venv, subprocess-based
 │   └── subtitles/srt_writer.py
+├── utils/
+│   ├── timing.py                          <- per-stage timing / observability
+│   ├── synthesis_grouping.py              <- merges same-speaker segments before TTS
+│   └── text_batching.py
 ├── config.py           # Typed configuration (pydantic-settings)
 ├── container.py        # Composition root (dependency injection)
 └── cli.py               # Command-line interface (Typer)
@@ -70,6 +79,124 @@ anything from `infrastructure/`, only interfaces (`Protocol`). This allows:
 - `faster-whisper` uses VAD (voice activity detection) internally, streaming the audio without manually chunking it or loading it fully into memory.
 - Translation happens in **batches** (`utils/text_batching.py`), bounded by character count, to stay within the LLM's context window. A **rolling history** of recent translations is kept across batches to preserve terminology and style consistency throughout the whole video.
 - Every batch is validated 1:1 (same number of input/output lines) and automatically retried (exponential backoff) on network errors or LLM misalignment.
+
+## Performance: keeping a 1h video under ~1h of processing
+
+A 1-hour video can produce **1000+ transcript segments**. Naively processing
+each one sequentially — especially through an autoregressive TTS model for
+dubbing — is what turns a video into a 10-hour job. Four independent
+optimizations attack this:
+
+1. **Transcription and diarization run concurrently.** They're independent
+   (both only need the extracted audio), and each can take tens of minutes
+   on its own — running them sequentially just adds their times together for
+   no reason. They now run in two threads (`_transcribe_and_diarize` in
+   `translate_video.py`); the pipeline report shows both as
+   `concurrent_stage_groups` so it's clear they overlapped.
+2. **One TTS inference pass per segment, not two.** An earlier version
+   generated speech once "at natural pace," measured the result, and — if it
+   missed the target duration by more than 15% — generated it a *second*
+   time with a corrected `duration_factor`. That's up to 2x the most
+   expensive step in the whole pipeline, for every segment. Now a
+   `duration_factor` is estimated upfront from a cheap chars-per-second
+   heuristic (no generation needed to compute it), one inference pass runs,
+   and the final precision fit is handled by `ffmpeg` (`fit_to_duration`,
+   uncapped chained `atempo`, see the dubbing section above) — far cheaper
+   than a second model call.
+3. **Segments get grouped before synthesis** (`utils/synthesis_grouping.py`,
+   `TTS_GROUP_SEGMENTS=true` by default). Consecutive lines from the *same
+   confirmed speaker* (requires `--diarize`; segments without a resolved
+   speaker are never merged, to avoid guessing) with little silence between
+   them are merged into a single, longer TTS call instead of one call per
+   short Whisper segment. Every TTS call has a fixed startup cost on top of
+   the per-character cost; with 1000+ short segments that fixed cost
+   dominates, so cutting the call count directly cuts wall time.
+4. **TTS synthesis runs in a parallel process pool**
+   (`infrastructure/synthesis/parallel_tts_pool.py`, `TTS_PARALLEL_WORKERS`,
+   default `0` = auto-detect: half the available cores, capped at 6). Each
+   worker process loads its own persistent copy of the model once and then
+   processes jobs from a shared queue — on a multi-core machine with enough
+   RAM (each worker needs its own model in memory, roughly 4-6GB for
+   IndexTTS-2.5) this scales close to linearly with worker count. The use
+   case builds every `SynthesisJob` upfront and dispatches them all via
+   `synthesize_batch` when the configured synthesizer supports it (duck-typed
+   via `hasattr`), falling back to the original one-at-a-time loop otherwise
+   — so a plain, non-pooled synthesizer keeps working exactly as before.
+
+None of this changes the anti-overlap/no-content-loss guarantees described
+above — grouping and parallelism only change *how many* TTS calls happen and
+*in what order*, never the final per-segment timing math.
+
+### macOS: parallel TTS and GPU (Metal) safety
+
+**Do not force `INDEX_TTS2_DEVICE=mps` together with `TTS_PARALLEL_WORKERS > 1`.**
+IndexTTS-2.5 auto-selects Metal (MPS) on Apple Silicon when no device is
+specified, and several *separate processes* each grabbing their own Metal
+context at the same time is a known-unstable combination on macOS — it can
+crash the GPU driver and **force a full system reboot** (not a normal Python
+exception you can catch or recover from). The project handles this
+automatically: whenever `TTS_PARALLEL_WORKERS`/`--tts-workers` is above 1 on
+macOS and you haven't explicitly set `INDEX_TTS2_DEVICE`, it forces `cpu` for
+every worker process, logging a warning so it's clear why. Parallelism still
+helps — you get real speedup from multiple CPU processes on a multi-core
+Mac — it just doesn't also try to share the GPU across them. A single worker
+(`--tts-workers 1`) is unaffected and keeps using MPS normally, since that's
+the officially supported single-process use case.
+
+**Quick tuning knobs**, no `.env` editing required:
+```bash
+video-translator translate -i video.mp4 --mode dubbed --diarize \
+  --tts-workers 8 --group-segments -v
+```
+On a machine with plenty of cores and RAM (e.g. an Apple Silicon Max/Ultra
+chip with 64GB+ unified memory), pushing `--tts-workers` well above the
+auto-detected default is usually the single biggest lever left — on macOS
+this now safely runs on CPU workers rather than risking the GPU driver.
+
+## Observability: where did the time go?
+
+Every stage is timed (`utils/timing.py`) and reported two ways:
+- **A summary table** printed at the end of the run (durations, % of total,
+  and a note on which stages ran concurrently).
+- **A JSON report** written to `<output_dir>/pipeline_timings.json` on every
+  run, so you can diff timings between runs (e.g. after tuning
+  `--tts-workers`) instead of guessing from scrollback logs.
+
+```json
+{
+  "run_id": "a1b2c3d4e5f6",
+  "total_seconds": 2140.3,
+  "concurrent_stage_groups": [["transcription", "diarization"]],
+  "stages": [
+    {"name": "audio_extraction", "seconds": 4.1, "percent_of_total": 0.2},
+    {"name": "transcription", "seconds": 1802.5, "percent_of_total": 84.2, "ran_concurrently": true},
+    {"name": "diarization", "seconds": 1950.7, "percent_of_total": 91.1, "ran_concurrently": true},
+    {"name": "speaker_profile_building", "seconds": 8.3, "percent_of_total": 0.4},
+    {"name": "translation", "seconds": 95.2, "percent_of_total": 4.4, "num_segments": 1284},
+    {"name": "subtitles_writing", "seconds": 0.1, "percent_of_total": 0.0},
+    {"name": "rendering_dubbed", "seconds": 1620.4, "percent_of_total": 75.7},
+    {"name": "tts_synthesis", "seconds": 1540.8, "percent_of_total": 72.0, "num_jobs": 412},
+    {"name": "audio_mixing_and_muxing", "seconds": 79.6, "percent_of_total": 3.7}
+  ]
+}
+```
+(Percentages can add up to more than 100% across concurrent stages, and
+`rendering_dubbed` nests `tts_synthesis`/`audio_mixing_and_muxing` inside
+it — that's expected, not a bug; the top-level `total_seconds` is the real
+wall-clock number.) Every stage's start/end is also logged with `-v`, tagged
+with a `run_id` shared across the whole run, so log lines from concurrent
+stages (or, eventually, multiple runs interleaved in a shared log stream)
+can be told apart.
+
+**Every log line is also persisted to a file**, not just printed to the
+terminal: `<output_dir>/logs/run_<timestamp>.log` (plain text, no ANSI color
+codes, so it's readable in any editor or `grep`-able). The CLI prints its
+path both at the start and end of the run. This means you don't need `-v`
+open in a terminal you can't lose — a long run's full log (including any
+error, if the pipeline fails partway through) survives in the output
+directory alongside the subtitles and the timings report. Set
+`LOG_JSON=true` in your `.env` if you'd rather have the file (and console) in
+structured JSON-lines instead of the human-readable format.
 
 ## Dubbing: generate a new video with translated audio (`--mode dubbed`)
 
@@ -315,7 +442,7 @@ Keep terms like 'async', 'coroutine', 'event loop' in English." \
 ### Steps with `uv` (recommended)
 
 ```bash
-git clone https://github.com/Root1V/ai-video-dubbing-pipeline.git
+git clone <this-repo>
 cd video-translator
 
 uv python install 3.11     # if you don't already have it (uv downloads it for you)
@@ -368,6 +495,9 @@ video-translator translate -i video.mp4 --mode dubbed \
   --speaker-wav original_speaker_sample.wav \
   --context "Corporate video, formal and professional tone."
 ```
+Add `--resume`/`-r` to any command to automatically skip stages already
+completed from a prior (possibly interrupted) run — see the
+[Resumabilidad](#resumabilidad-reanudar-un-procesamiento-interrumpido) section.
 
 ## Using `llama-server` (llama.cpp) instead of Ollama
 
@@ -464,6 +594,37 @@ This spins up Ollama and the app together. Put your video at
 `./data/video.mp4` and your context at `./data/context.txt`; output appears
 in `./output`. Requires Docker with NVIDIA support
 (nvidia-container-toolkit); **doesn't apply to macOS**.
+
+## Resumabilidad: reanudar un procesamiento interrumpido
+
+Los videos de una hora pueden tardar 12+ horas en procesarse. Si el pipeline
+se interrumpe (corte de energia, Ctrl-C, crash, reinicio), puedes reanudirlo
+desde la ultima etapa completada con `--resume` / `-r`:
+
+```bash
+video-translator translate -i video.mp4 --mode dubbed --diarize --resume -v
+```
+
+El pipeline guarda automaticamente un checkpoint (`_work/checkpoint.json`)
+dentro del directorio de salida despues de cada etapa clave:
+
+| Etapa | Que se guarda |
+|---|---|
+| Extraccion de audio | El archivo WAV extraido (verificado por existencia) |
+| Transcripcion | Segmentos de transcripcion + segmentos de diarizacion (serializados en JSON) |
+| Perfiles de hablantes | Perfiles con genero y clips de referencia (solo con `--diarize`) |
+| Traduccion | Segmentos traducidos (serializados en JSON) |
+| Subtitulos | Los archivos SRT (verificados por existencia) |
+| Sintesis TTS | Cada archivo `tts_segments/group_NNNNNN.wav` verificado individualmente |
+| Video final | El archivo MP4 de salida (verificado por existencia) |
+
+Al reanudar:
+- Las etapas ya completadas se saltan automaticamente (aparece `pipeline.resume_skipping` en los logs).
+- Para TTS, cada archivo WAV ya generado se verifica individualmente: solo se sintetizan los que faltan.
+- El checkpoint se valida contra el video de entrada, el modo y la bandera `--diarize`: si cambiaste alguno, se ignora y se reinicia desde cero.
+- Al completarse el pipeline con exito, el checkpoint se elimina automaticamente.
+
+**Consejo**: siempre usa `--resume`; no cuesta nada cuando no hay checkpoint previo y te salva horas si el procesamiento se interrumpe.
 
 ## Testing
 

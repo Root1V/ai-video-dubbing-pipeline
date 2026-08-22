@@ -117,3 +117,4 @@ class TranslateVideoResult:
     segments: list[TranslatedSegment]
     duration_seconds: float
     speakers: list[SpeakerProfile] = field(default_factory=list)
+    timings: dict = field(default_factory=dict)
