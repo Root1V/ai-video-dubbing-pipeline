@@ -65,6 +65,7 @@ class IndexTTS2Synthesizer:
         default_speaker_wav: Path | None = None,
         ffmpeg_binary: str = "ffmpeg",
         device: str | None = None,
+        use_torch_compile: bool = False,
     ) -> None:
         self._model_dir = model_dir
         self._cfg_path = cfg_path
@@ -77,6 +78,14 @@ class IndexTTS2Synthesizer:
         # procesos tomando Metal (MPS) a la vez es una combinacion inestable
         # que puede crashear el driver de GPU y reiniciar el sistema.
         self._device = device
+        # Compila el sub-modelo s2mel (difusion, no autoregresivo) con
+        # torch.compile -- mismos pesos, mismo calculo, sin perdida de
+        # calidad. Ya viene cableado dentro de IndexTTS2 (enable_torch_compile
+        # en su constructor) pero apagado por defecto ahi tambien. Paga un
+        # costo de compilacion la primera inferencia de cada proceso worker;
+        # solo conviene si el proceso sintetiza suficientes segmentos para
+        # amortizarlo.
+        self._use_torch_compile = use_torch_compile
         self._tts = None  # carga perezosa: el modelo pesa varios GB
 
     def _load(self):
@@ -89,11 +98,18 @@ class IndexTTS2Synthesizer:
                     "(clona el repo oficial y descarga los checkpoints)."
                 ) from exc
             logger.info(
-                "index_tts2.loading_model", model_dir=self._model_dir, device=self._device or "auto"
+                "index_tts2.loading_model",
+                model_dir=self._model_dir,
+                device=self._device or "auto",
+                use_torch_compile=self._use_torch_compile,
             )
             kwargs = {"device": self._device} if self._device else {}
             self._tts = IndexTTS2(
-                cfg_path=self._cfg_path, model_dir=self._model_dir, use_bf16=self._use_bf16, **kwargs
+                cfg_path=self._cfg_path,
+                model_dir=self._model_dir,
+                use_bf16=self._use_bf16,
+                use_torch_compile=self._use_torch_compile,
+                **kwargs,
             )
         return self._tts
 

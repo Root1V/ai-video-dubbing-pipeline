@@ -14,6 +14,7 @@ def _make_settings(index_tts2_device=None, tts_backend="index_tts2"):
         index_tts2_model_dir="m",
         index_tts2_cfg_path="c",
         index_tts2_use_bf16=True,
+        index_tts2_use_torch_compile=False,
         ffmpeg_binary="ffmpeg",
         tts_model_name="x",
         tts_device="cpu",

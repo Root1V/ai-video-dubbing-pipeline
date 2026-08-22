@@ -154,12 +154,27 @@ the officially supported single-process use case.
 **Quick tuning knobs**, no `.env` editing required:
 ```bash
 video-translator translate -i video.mp4 --mode dubbed --diarize \
-  --tts-workers 8 --group-segments -v
+  --tts-workers 12 --group-segments -v
 ```
-On a machine with plenty of cores and RAM (e.g. an Apple Silicon Max/Ultra
-chip with 64GB+ unified memory), pushing `--tts-workers` well above the
-auto-detected default is usually the single biggest lever left — on macOS
-this now safely runs on CPU workers rather than risking the GPU driver.
+The auto-detected worker count (`TTS_PARALLEL_WORKERS=0`) now goes up to one
+worker per core (capped at 12), not "half the cores capped at 6" like
+before — measured on an M4 Max with a real clip, going from 6 to 10 to 14
+workers kept improving synthesis time (367s → 342s → 327s) even though each
+worker got proportionally fewer CPU threads (see the per-worker thread cap
+in point 5 above). Process-level parallelism mattered more than per-process
+thread count for this workload. On a video with many more segments and RAM
+to spare, pushing `--tts-workers` past the auto-detected cap can still help
+further — we saw no regression up to one worker per segment in testing.
+
+We also tried enabling `torch.compile` on the model's non-autoregressive
+s2mel sub-module (`INDEX_TTS2_USE_TORCH_COMPILE=true` — wired through but
+off by default): it's a genuinely free, same-weights optimization already
+built into IndexTTS-2.5, but each short-lived worker process only handles a
+couple of segments before exiting, so the one-time compilation cost per
+process never gets amortized — net effect on a real run was a wash (within
+run-to-run noise). It only makes sense with a very different architecture
+(long-lived worker processes handling many segments each), which is a
+bigger change than flipping this flag.
 
 ### macOS: transcription and diarization on the GPU
 

@@ -30,9 +30,15 @@ from video_translator.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Tope de workers paralelos auto-detectados: cada uno carga su propia copia
-# del modelo de TTS en memoria, asi que crear tantos como nucleos haya suele
-# ser contraproducente (satura RAM/ancho de banda de memoria antes que CPU).
-_AUTO_MAX_TTS_WORKERS = 6
+# del modelo de TTS en memoria (unos 4-6GB con IndexTTS-2.5), asi que en
+# maquinas con poca RAM crear demasiados puede ser contraproducente. VALIDADO
+# en un M4 Max (16 nucleos, 128GB RAM) con un clip real: mas workers de los
+# que sugeriria "mitad de los nucleos" siguio dando mejoras incluso con menos
+# hilos por worker (6 workers -> 367s, 10 -> 342s, 14 (uno por segmento en
+# esa prueba) -> 327s de sintesis) -- el paralelismo entre procesos pesa mas
+# que los hilos por proceso para esta carga de trabajo. En maquinas con RAM
+# limitada, baja esto explicitamente con TTS_PARALLEL_WORKERS.
+_AUTO_MAX_TTS_WORKERS = 12
 
 # Nucleos reservados para el subprocess de diarizacion cuando corre EN
 # PARALELO con la transcripcion (ver TranslateVideoUseCase._transcribe_and_diarize):
@@ -223,6 +229,7 @@ def _synthesizer_factory(
             model_dir=settings.index_tts2_model_dir,
             cfg_path=settings.index_tts2_cfg_path,
             use_bf16=settings.index_tts2_use_bf16,
+            use_torch_compile=settings.index_tts2_use_torch_compile,
             ffmpeg_binary=settings.ffmpeg_binary,
             device=device,
         )
@@ -290,12 +297,12 @@ def _resolve_whisper_cpu_threads(settings: Settings, enable_diarization: bool) -
 
 
 def _resolve_tts_worker_count(configured: int) -> int:
-    """0/negativo = auto-detectar: mitad de los nucleos disponibles, con un
-    tope (cada worker carga su propia copia del modelo en memoria)."""
+    """0/negativo = auto-detectar: hasta un worker por nucleo, con un tope
+    (cada worker carga su propia copia del modelo en memoria)."""
     if configured > 0:
         return configured
     cpu_count = os.cpu_count() or 4
-    return max(1, min(_AUTO_MAX_TTS_WORKERS, cpu_count // 2))
+    return max(1, min(_AUTO_MAX_TTS_WORKERS, cpu_count))
 
 
 def _build_synthesizer(settings: Settings) -> tuple[Any, dict]:

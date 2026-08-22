@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # procesos usando Metal (MPS) a la vez pueden crashear el driver de GPU y
     # reiniciar el sistema.
     index_tts2_device: str | None = Field(default=None)
+    # Compila el sub-modelo s2mel (difusion, no autoregresivo) con
+    # torch.compile: mismos pesos/calculo, sin perdida de calidad. Ya viene
+    # soportado dentro de IndexTTS-2.5, solo apagado por defecto. Cada
+    # proceso worker paga el costo de compilacion en su primera inferencia;
+    # solo compensa si el worker sintetiza varios segmentos.
+    index_tts2_use_torch_compile: bool = Field(default=False)
 
     # Coqui TTS / XTTS v2 (alternativa mas liviana de instalar, requiere Python < 3.12)
     tts_model_name: str = Field(default="tts_models/multilingual/multi-dataset/xtts_v2")
