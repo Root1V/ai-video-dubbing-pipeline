@@ -350,6 +350,52 @@ def test_diarization_assigns_speaker_and_gender_to_each_segment(tmp_path: Path, 
     assert genders["SPEAKER_01"] == "female"
 
 
+def test_diarization_timing_reflects_its_own_completion_not_transcriptions(
+    tmp_path: Path, video_file: Path
+):
+    """Regresion: transcripcion y diarizacion corren en dos hilos, y el codigo
+    llama transcript_future.result() ANTES que diarization_future.result().
+    Si la duracion de diarizacion se midiera recien en ese segundo .result()
+    (bloqueado esperando a que el hilo principal llegue ahi), una diarizacion
+    mucho mas rapida que la transcripcion aparecería con la MISMA duracion
+    que esta -- exactamente lo que se veia en una corrida real con
+    diarizacion en GPU (8.5s de inferencia real, 130s reportados)."""
+    import time as _time
+
+    class SlowFakeTranscriber:
+        def transcribe(self, audio_path: Path, language_hint=None):
+            _time.sleep(0.15)
+            return [TranscriptSegment(id=0, start=0.0, end=2.0, text="Hello there.")]
+
+    class FastFakeDiarizer:
+        def diarize(self, audio_path, min_speakers=None, max_speakers=None):
+            from video_translator.domain.models import DiarizationSegment
+
+            return [DiarizationSegment(start=0.0, end=2.0, speaker_label="SPEAKER_00")]
+
+    use_case = TranslateVideoUseCase(
+        media_processor=FakeMediaProcessor(),
+        transcriber=SlowFakeTranscriber(),
+        translator=FakeTranslator(),
+        subtitle_writer=FakeSubtitleWriter(),
+        speaker_diarizer=FastFakeDiarizer(),
+    )
+    request = TranslateVideoRequest(
+        input_video=video_file,
+        output_dir=tmp_path / "out",
+        context=TranslationContext(),
+        output_mode=OutputMode.SUBTITLES_ONLY,
+        diarize=True,
+    )
+
+    result = use_case.execute(request)
+    by_name = {s["name"]: s for s in result.timings["stages"]}
+
+    # La diarizacion "instantanea" no debe heredar el tiempo de espera de la
+    # transcripcion lenta: debe quedar muy por debajo, no aproximadamente igual.
+    assert by_name["diarization"]["seconds"] < by_name["transcription"]["seconds"] / 2
+
+
 def test_resume_with_diarize_skips_speaker_profile_building(tmp_path: Path, video_file: Path):
     """Regresion: al reanudar con --diarize, la construccion de perfiles de
     hablantes debe SALTARSE (status resumed con duracion real heredada), no

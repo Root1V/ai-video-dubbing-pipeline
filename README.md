@@ -161,15 +161,14 @@ chip with 64GB+ unified memory), pushing `--tts-workers` well above the
 auto-detected default is usually the single biggest lever left — on macOS
 this now safely runs on CPU workers rather than risking the GPU driver.
 
-### macOS: transcription on the GPU (`WHISPER_BACKEND=mlx`)
+### macOS: transcription and diarization on the GPU
 
 `faster-whisper` (the default transcription engine) runs on CTranslate2,
 which has **no Metal/MPS backend** — on a Mac it is always CPU-bound,
 regardless of configuration. If you install the `transcription-mlx` extra
 (`pip install "video-translator[transcription-mlx]"`, Apple Silicon only) you
 can switch to [`mlx-whisper`](https://github.com/ml-explore/mlx-examples)
-instead, which runs on the GPU via Apple's MLX framework and is typically
-several times faster than CTranslate2-on-CPU for the same model size:
+instead, which runs on the GPU via Apple's MLX framework:
 
 ```bash
 # .env
@@ -179,13 +178,33 @@ MLX_WHISPER_MODEL=mlx-community/whisper-large-v3-mlx
 
 The rest of the `WHISPER_*` settings (`compute_type`, `cpu_threads`, ...) are
 specific to the `faster_whisper` backend and don't apply when using `mlx`.
+pyannote.audio's diarization also isn't officially certified for MPS, but
+running it there works in practice — just set `DIARIZATION_DEVICE=mps`, no
+code changes needed.
 
-Separately, when `--diarize` is used, transcription and diarization share the
-same CPU cores while running concurrently (see point 1 above) — `faster-whisper`
-with `WHISPER_CPU_THREADS=0` (auto) otherwise claims every core by default,
-starving the diarization subprocess. The container automatically reserves a
-few cores for diarization in that case; set `WHISPER_CPU_THREADS` explicitly
-if you want full manual control instead.
+Measured on an M4 Max with a real 3-minute, single-speaker clip (warm model
+cache; the very first `mlx` run also pays a one-time ~3GB Hugging Face
+download):
+
+| Stage | CPU (default) | GPU (Metal/MPS) | Result |
+|---|---|---|---|
+| Transcription (`WHISPER_BACKEND=mlx`) | 136s (faster-whisper) | **8.6s** (mlx-whisper) | ~16x faster |
+| Diarization (`DIARIZATION_DEVICE=mps`) | 166s | **10s** | ~17x faster |
+| TTS (`TTS_PARALLEL_WORKERS=1`, `INDEX_TTS2_DEVICE=mps`) | 328s (6 CPU workers) | 1059s (1 GPU worker) | **3.2x *slower* — don't use** |
+
+Transcription and diarization run concurrently (point 1 above), so together
+they went from a ~166s critical-path block down to ~10-14s. TTS is the
+exception: IndexTTS-2.5's autoregressive generation step didn't reliably
+speed up on MPS (sometimes matching CPU speed), and losing the 6-way process
+parallelism outweighed whatever the GPU saved on the non-autoregressive
+parts of the model (`s2mel`/`bigvgan`, which *did* speed up substantially).
+Keep TTS on CPU with multiple workers; only try MPS there if you have a
+different TTS backend/model where this trade-off might not hold.
+
+End to end, on the same clip, this took the total pipeline time from ~530s
+down to ~416s (`realtime_factor` 2.31) — with TTS now representing ~88% of
+the remaining time, by far the biggest lever left if you want to go faster
+still.
 
 ## Observability: where did the time go?
 
