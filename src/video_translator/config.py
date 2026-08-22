@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     # (beam search reduce salidas degenerativas/repetitivas). Se deja
     # configurable solo por si un modelo/hardware futuro se comporta distinto.
     index_tts2_num_beams: int = Field(default=3)
+    # Cuantos segmentos como maximo se batchean en una sola pasada del GPT
+    # autoregresivo dentro de cada worker (ver IndexTTS2Synthesizer.
+    # synthesize_batch). 1 = deshabilita el batching (cada worker procesa un
+    # segmento a la vez, como antes). Experimental: combina con
+    # TTS_PARALLEL_WORKERS -- mas procesos con batches mas chicos vs. menos
+    # procesos con batches mas grandes es un tradeoff que conviene medir por
+    # video (ver README, seccion de rendimiento de TTS).
+    index_tts2_gpt_batch_size: int = Field(default=4)
 
     # Coqui TTS / XTTS v2 (alternativa mas liviana de instalar, requiere Python < 3.12)
     tts_model_name: str = Field(default="tts_models/multilingual/multi-dataset/xtts_v2")

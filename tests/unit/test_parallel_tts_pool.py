@@ -47,6 +47,23 @@ class FakeSynth:
         return output_path
 
 
+class FakeBatchSynth:
+    """Motor falso que SI implementa synthesize_batch, para probar que
+    _worker_synthesize_chunk lo usa en vez de caer al bucle job-a-job."""
+
+    def __init__(self):
+        self.batch_calls: list[list[str]] = []
+
+    def synthesize_batch(self, jobs):
+        self.batch_calls.append([j.text for j in jobs])
+        for job in jobs:
+            job.output_path.parent.mkdir(parents=True, exist_ok=True)
+            job.output_path.write_bytes(b"wav")
+
+    def synthesize_segment(self, text, output_path, target_duration_seconds, speaker_reference_wav=None, language="es"):
+        raise AssertionError("no deberia usarse synthesize_segment si el motor tiene synthesize_batch")
+
+
 def _job(tmp_path: Path, name: str, text: str, start: float) -> SynthesisJob:
     return SynthesisJob(
         output_path=tmp_path / name,
@@ -106,6 +123,40 @@ def test_init_worker_caps_threads_to_avoid_oversubscription(monkeypatch):
 
     for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
         assert os.environ[var] == "4"
+
+
+def test_synthesize_batch_chunks_jobs_across_workers_not_one_by_one(tmp_path, monkeypatch):
+    """Con el batching real del motor (IndexTTS2Synthesizer.synthesize_batch),
+    cada worker debe recibir VARIOS jobs de una vez (para batchear el GPT
+    internamente), no uno por future como antes."""
+    monkeypatch.setattr(mod, "ProcessPoolExecutor", FakeExecutor)
+    mod._worker_synth = None
+
+    pool = mod.ParallelTTSPool(synthesizer_factory=FakeBatchSynth, num_workers=2)
+    jobs = [_job(tmp_path, f"{i}.wav", f"texto {i}", float(i)) for i in range(6)]
+
+    pool.synthesize_batch(jobs)
+
+    assert all((tmp_path / f"{i}.wav").exists() for i in range(6))
+    # FakeExecutor ejecuta cada submit() de forma sincrona y secuencial, asi
+    # que _worker_synth acumula las llamadas de AMBOS "workers" (aqui el
+    # mismo proceso simulado) -- lo que importa es que llego mas de un job
+    # por llamada a synthesize_batch, no jobs sueltos.
+    assert len(mod._worker_synth.batch_calls) == 2
+    assert all(len(call) == 3 for call in mod._worker_synth.batch_calls)
+
+
+def test_worker_synthesize_chunk_falls_back_without_synthesize_batch(tmp_path, monkeypatch):
+    """Si el motor NO implementa synthesize_batch, el chunk se procesa igual
+    con el bucle de siempre (un synthesize_segment por job)."""
+    mod._worker_synth = FakeSynth()
+    jobs = [_job(tmp_path, "a.wav", "hola", 0.0), _job(tmp_path, "b.wav", "mundo", 1.0)]
+
+    mod._worker_synthesize_chunk(jobs)
+
+    assert mod._worker_synth.calls == ["hola", "mundo"]
+    assert (tmp_path / "a.wav").exists()
+    assert (tmp_path / "b.wav").exists()
 
 
 def test_concatenate_segments_bypasses_the_executor(tmp_path, monkeypatch):

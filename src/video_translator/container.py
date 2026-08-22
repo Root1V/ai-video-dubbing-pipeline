@@ -231,6 +231,7 @@ def _synthesizer_factory(
             use_bf16=settings.index_tts2_use_bf16,
             use_torch_compile=settings.index_tts2_use_torch_compile,
             num_beams=settings.index_tts2_num_beams,
+            gpt_batch_size=settings.index_tts2_gpt_batch_size,
             ffmpeg_binary=settings.ffmpeg_binary,
             device=device,
         )
