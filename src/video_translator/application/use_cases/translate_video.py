@@ -457,6 +457,11 @@ class TranslateVideoUseCase:
                 timings.record_resumed("diarization", num_speakers=len(
                     {d.speaker_label for d in diarization_segments}
                 ) if diarization_segments else 0)
+                # No hace falta volver a llamar mark_concurrent() aqui: si la
+                # corrida original las marco como concurrentes,
+                # adopt_previous_report() ya arrastro ese grupo a
+                # self._concurrent_groups (ver timing.py). Repetir la llamada
+                # duplicaria la entrada y doblaria parallel_time_saved_seconds.
             return checkpoint, segments, diarization_segments
 
         segments, diarization_segments = self._transcribe_and_diarize(request, audio_wav, timings)
@@ -548,22 +553,35 @@ class TranslateVideoUseCase:
             "request.diarize=True requiere un SpeakerDiarizer configurado "
             "(instala 'diarization' y define HF_TOKEN)."
         )
+        # Cada Future anota su propio momento de finalizacion via
+        # add_done_callback (se dispara en el hilo worker justo cuando la
+        # tarea termina). Sin esto, si una de las dos tareas termina mucho
+        # antes que la otra, medir "time.monotonic() - start" recien cuando
+        # el hilo principal LLEGA a llamar su .result() (que esta bloqueado
+        # esperando a la mas lenta) le atribuye de mas el tiempo de espera
+        # ajeno -- se ve, p.ej., diarizacion "tardando" lo mismo que
+        # transcripcion aunque haya terminado en una fraccion de ese tiempo.
         with ThreadPoolExecutor(max_workers=2) as pool:
             t_start = time.monotonic()
+            transcript_finished_at: list[float] = []
             transcript_future = pool.submit(
                 lambda: list(
                     self._transcriber.transcribe(audio_wav, language_hint=request.source_lang_hint)
                 )
             )
+            transcript_future.add_done_callback(lambda _f: transcript_finished_at.append(time.monotonic()))
+
             d_start = time.monotonic()
+            diarization_finished_at: list[float] = []
             diarization_future = pool.submit(
                 self._diarizer.diarize, audio_wav, request.min_speakers, request.max_speakers
             )
+            diarization_future.add_done_callback(lambda _f: diarization_finished_at.append(time.monotonic()))
 
             segments = transcript_future.result()
             timings.record(
                 "transcription",
-                time.monotonic() - t_start,
+                transcript_finished_at[0] - t_start,
                 ran_concurrently=True,
                 num_segments=len(segments),
             )
@@ -571,7 +589,7 @@ class TranslateVideoUseCase:
             diarization_segments = diarization_future.result()
             timings.record(
                 "diarization",
-                time.monotonic() - d_start,
+                diarization_finished_at[0] - d_start,
                 ran_concurrently=True,
                 num_speakers=len({d.speaker_label for d in diarization_segments}),
                 num_turns=len(diarization_segments),

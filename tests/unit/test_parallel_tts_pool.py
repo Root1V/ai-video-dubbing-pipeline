@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from video_translator.application.synthesis_job import SynthesisJob
@@ -88,6 +89,23 @@ def test_synthesize_segment_single_call_uses_executor_too(tmp_path, monkeypatch)
         text="hola", output_path=tmp_path / "solo.wav", target_duration_seconds=1.0
     )
     assert result.exists()
+
+
+def test_init_worker_caps_threads_to_avoid_oversubscription(monkeypatch):
+    """Con N workers, cada proceso debe limitarse a cpu_count // N hilos: sin
+    esto, N procesos compitiendo por todos los nucleos anula la ganancia del
+    paralelismo (medido en una corrida real: 3 workers CPU dieron el mismo
+    tiempo total que correrlos en serie)."""
+    monkeypatch.setattr(mod, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(mod.os, "cpu_count", lambda: 16)
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        monkeypatch.delenv(var, raising=False)
+    mod._worker_synth = None
+
+    mod.ParallelTTSPool(synthesizer_factory=FakeSynth, num_workers=4)
+
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        assert os.environ[var] == "4"
 
 
 def test_concatenate_segments_bypasses_the_executor(tmp_path, monkeypatch):

@@ -19,6 +19,7 @@ usarse como cualquier otro motor) MAS la capacidad opcional
 
 from __future__ import annotations
 
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -37,7 +38,23 @@ logger = get_logger(__name__)
 _worker_synth = None
 
 
-def _init_worker(factory: Callable[[], object]) -> None:
+def _init_worker(factory: Callable[[], object], threads_per_worker: int) -> None:
+    # Sin esto, cada proceso worker (PyTorch/BLAS) intenta usar TODOS los
+    # nucleos de la maquina por defecto. Con N workers eso significa N
+    # procesos compitiendo por los mismos nucleos fisicos (sobre-suscripcion
+    # de hilos), que en la practica anula la ganancia del paralelismo: se
+    # mide el mismo tiempo total que corriendolos en serie. Hay que fijar el
+    # presupuesto de hilos ANTES de que el factory importe torch/BLAS al
+    # cargar el modelo.
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ[var] = str(threads_per_worker)
+    try:
+        import torch
+
+        torch.set_num_threads(threads_per_worker)
+    except ImportError:  # pragma: no cover - los backends de TTS siempre traen torch
+        pass
+
     global _worker_synth
     _worker_synth = factory()
 
@@ -65,11 +82,18 @@ class ParallelTTSPool:
     ) -> None:
         self._ffmpeg = ffmpeg_binary
         self._num_workers = max(1, num_workers)
-        logger.info("parallel_tts_pool.starting", num_workers=self._num_workers)
+        # Reparte los nucleos disponibles entre los workers para evitar que
+        # cada uno reclame la maquina entera (ver comentario en _init_worker).
+        threads_per_worker = max(1, (os.cpu_count() or self._num_workers) // self._num_workers)
+        logger.info(
+            "parallel_tts_pool.starting",
+            num_workers=self._num_workers,
+            threads_per_worker=threads_per_worker,
+        )
         self._executor = ProcessPoolExecutor(
             max_workers=self._num_workers,
             initializer=_init_worker,
-            initargs=(synthesizer_factory,),
+            initargs=(synthesizer_factory, threads_per_worker),
         )
 
     def synthesize_segment(
