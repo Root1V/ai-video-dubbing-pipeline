@@ -9,7 +9,11 @@ from video_translator.domain.exceptions import ConfigurationError
 def _settings(**overrides):
     from video_translator.config import Settings
 
-    return Settings(**overrides)
+    # _env_file=None: ignora el .env real del desarrollador (que puede tener
+    # WHISPER_BACKEND=mlx configurado localmente) para que el test verifique
+    # los defaults del propio modelo Settings, no el entorno de quien corre
+    # la suite.
+    return Settings(_env_file=None, **overrides)
 
 
 def test_defaults_to_faster_whisper():
