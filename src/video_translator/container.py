@@ -34,6 +34,15 @@ logger = get_logger(__name__)
 # ser contraproducente (satura RAM/ancho de banda de memoria antes que CPU).
 _AUTO_MAX_TTS_WORKERS = 6
 
+# Nucleos reservados para el subprocess de diarizacion cuando corre EN
+# PARALELO con la transcripcion (ver TranslateVideoUseCase._transcribe_and_diarize):
+# ambos son CPU-bound, y CTranslate2 con cpu_threads="auto" reclama la maquina
+# entera por defecto, dejando a pyannote compitiendo por los mismos nucleos
+# fisicos. Medido en una corrida real: la diarizacion (232s) tardo mas que la
+# transcripcion (202s) en un clip de 3 min con 1 solo hablante, muy por encima
+# de lo esperable sin contencion.
+_CORES_RESERVED_FOR_DIARIZATION = 4
+
 
 def _build_translator(settings: Settings):
     """Selecciona el adaptador de traduccion segun TRANSLATION_BACKEND.
@@ -75,15 +84,7 @@ def build_translate_video_use_case(
         ffprobe_binary=settings.ffprobe_binary,
         audio_sample_rate=settings.audio_sample_rate,
     )
-    transcriber = FasterWhisperTranscriber(
-        model_size=settings.whisper_model_size,
-        device=settings.whisper_device,
-        compute_type=settings.whisper_compute_type,
-        beam_size=settings.whisper_beam_size,
-        vad_filter=settings.whisper_vad_filter,
-        cpu_threads=settings.whisper_cpu_threads,
-        num_workers=settings.whisper_num_workers,
-    )
+    transcriber = _build_transcriber(settings, enable_diarization)
     translator = _build_translator(settings)
     subtitle_writer = SrtSubtitleWriter()
 
@@ -121,9 +122,21 @@ def build_translate_video_use_case(
     # ejecutara el pipeline): se persiste en pipeline_timings.json para que dos
     # corridas sean comparables entre si.
     effective_config: dict = {
-        "whisper_model": settings.whisper_model_size,
-        "whisper_device": settings.whisper_device,
-        "whisper_compute_type": settings.whisper_compute_type,
+        "whisper_backend": settings.whisper_backend,
+        "whisper_model": (
+            settings.mlx_whisper_model
+            if settings.whisper_backend.lower() == "mlx"
+            else settings.whisper_model_size
+        ),
+        "whisper_device": settings.whisper_device if settings.whisper_backend.lower() != "mlx" else "mps",
+        "whisper_compute_type": (
+            settings.whisper_compute_type if settings.whisper_backend.lower() != "mlx" else None
+        ),
+        "whisper_cpu_threads": (
+            _resolve_whisper_cpu_threads(settings, enable_diarization)
+            if settings.whisper_backend.lower() != "mlx"
+            else None
+        ),
         "translation_backend": settings.translation_backend,
         "llm_model": (
             settings.llama_server_model
@@ -227,6 +240,53 @@ def _synthesizer_factory(
     raise ConfigurationError(
         f"TTS_BACKEND='{settings.tts_backend}' no reconocido. Usa 'index_tts2' o 'coqui_xtts'."
     )
+
+
+def _build_transcriber(settings: Settings, enable_diarization: bool):
+    """Selecciona el adaptador de transcripcion segun WHISPER_BACKEND.
+
+    Ambos adaptadores implementan el mismo Protocol ``Transcriber``. En Mac,
+    "faster_whisper" (CTranslate2) esta limitado a CPU -- no soporta Metal;
+    "mlx" usa la GPU via el framework MLX de Apple y suele ser bastante mas
+    rapido en Apple Silicon.
+    """
+    backend = settings.whisper_backend.lower()
+    if backend == "mlx":
+        from video_translator.infrastructure.transcription.mlx_whisper_transcriber import (
+            MlxWhisperTranscriber,
+        )
+
+        return MlxWhisperTranscriber(model_repo=settings.mlx_whisper_model)
+    if backend == "faster_whisper":
+        return FasterWhisperTranscriber(
+            model_size=settings.whisper_model_size,
+            device=settings.whisper_device,
+            compute_type=settings.whisper_compute_type,
+            beam_size=settings.whisper_beam_size,
+            vad_filter=settings.whisper_vad_filter,
+            cpu_threads=_resolve_whisper_cpu_threads(settings, enable_diarization),
+            num_workers=settings.whisper_num_workers,
+        )
+    raise ConfigurationError(
+        f"WHISPER_BACKEND='{settings.whisper_backend}' no reconocido. Usa 'faster_whisper' o 'mlx'."
+    )
+
+
+def _resolve_whisper_cpu_threads(settings: Settings, enable_diarization: bool) -> int:
+    """Resuelve cuantos hilos de CPU usara CTranslate2 para la transcripcion.
+
+    Si el usuario fijo WHISPER_CPU_THREADS explicitamente, se respeta tal
+    cual (0 = "auto" para CTranslate2, es decir, ``os.cpu_count()`` dentro de
+    ``FasterWhisperTranscriber``). Solo cuando esta en auto Y la diarizacion
+    va a correr EN PARALELO con la transcripcion (ver
+    ``TranslateVideoUseCase._transcribe_and_diarize``) se reserva un margen de
+    nucleos para el subprocess de pyannote, en vez de dejar que whisper
+    reclame la maquina entera y ambas etapas se frenen mutuamente.
+    """
+    if settings.whisper_cpu_threads > 0 or not enable_diarization:
+        return settings.whisper_cpu_threads
+    cpu_count = os.cpu_count() or 8
+    return max(1, cpu_count - _CORES_RESERVED_FOR_DIARIZATION)
 
 
 def _resolve_tts_worker_count(configured: int) -> int:

@@ -122,6 +122,14 @@ optimizations attack this:
    `synthesize_batch` when the configured synthesizer supports it (duck-typed
    via `hasattr`), falling back to the original one-at-a-time loop otherwise
    — so a plain, non-pooled synthesizer keeps working exactly as before.
+5. **Each TTS worker process is capped to its fair share of CPU threads**
+   (`parallel_tts_pool._init_worker`, via `OMP_NUM_THREADS`/`MKL_NUM_THREADS`/
+   `torch.set_num_threads`). Without this, every worker process defaults to
+   using *all* CPU cores for its own PyTorch/BLAS calls, so N workers end up
+   oversubscribing the machine and competing with each other — measured on a
+   real run, 3 CPU workers took exactly as long as running the same jobs
+   sequentially. Splitting the core budget evenly across workers is what lets
+   the parallelism in point 4 actually pay off.
 
 None of this changes the anti-overlap/no-content-loss guarantees described
 above — grouping and parallelism only change *how many* TTS calls happen and
@@ -152,6 +160,32 @@ On a machine with plenty of cores and RAM (e.g. an Apple Silicon Max/Ultra
 chip with 64GB+ unified memory), pushing `--tts-workers` well above the
 auto-detected default is usually the single biggest lever left — on macOS
 this now safely runs on CPU workers rather than risking the GPU driver.
+
+### macOS: transcription on the GPU (`WHISPER_BACKEND=mlx`)
+
+`faster-whisper` (the default transcription engine) runs on CTranslate2,
+which has **no Metal/MPS backend** — on a Mac it is always CPU-bound,
+regardless of configuration. If you install the `transcription-mlx` extra
+(`pip install "video-translator[transcription-mlx]"`, Apple Silicon only) you
+can switch to [`mlx-whisper`](https://github.com/ml-explore/mlx-examples)
+instead, which runs on the GPU via Apple's MLX framework and is typically
+several times faster than CTranslate2-on-CPU for the same model size:
+
+```bash
+# .env
+WHISPER_BACKEND=mlx
+MLX_WHISPER_MODEL=mlx-community/whisper-large-v3-mlx
+```
+
+The rest of the `WHISPER_*` settings (`compute_type`, `cpu_threads`, ...) are
+specific to the `faster_whisper` backend and don't apply when using `mlx`.
+
+Separately, when `--diarize` is used, transcription and diarization share the
+same CPU cores while running concurrently (see point 1 above) — `faster-whisper`
+with `WHISPER_CPU_THREADS=0` (auto) otherwise claims every core by default,
+starving the diarization subprocess. The container automatically reserves a
+few cores for diarization in that case; set `WHISPER_CPU_THREADS` explicitly
+if you want full manual control instead.
 
 ## Observability: where did the time go?
 

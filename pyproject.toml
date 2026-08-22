@@ -32,6 +32,14 @@ dubbing-indextts = ["indextts", "huggingface-hub[cli]>=0.24.0"]
 # Alternativa mas liviana de instalar (XTTS v2 via pip). No soporta Python >= 3.12.
 dubbing-coqui = ["TTS>=0.22.0; python_version < '3.12'", "pydub>=0.25.1"]
 
+# Transcripcion acelerada por GPU en Apple Silicon (Metal), via el framework
+# MLX de Apple. faster-whisper (motor por defecto) corre sobre CTranslate2,
+# que NO soporta Metal/MPS -- en Mac esta limitado a CPU sin importar la
+# configuracion. mlx-whisper si usa la GPU, y en M-series suele ser varias
+# veces mas rapido que CTranslate2 en CPU para el mismo modelo. Solo
+# disponible en macOS con Apple Silicon.
+transcription-mlx = ["mlx-whisper>=0.4.0; sys_platform == 'darwin'"]
+
 dev = [
     "pytest>=8.2.0",
     "pytest-mock>=3.14.0",

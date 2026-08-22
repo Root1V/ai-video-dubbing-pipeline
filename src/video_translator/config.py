@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Whisper / transcripcion
+    # "faster_whisper" (CTranslate2, default multiplataforma; en Mac SOLO
+    # corre en CPU, CTranslate2 no soporta Metal/MPS) | "mlx" (framework MLX
+    # de Apple, usa la GPU va Metal -- solo macOS/Apple Silicon, requiere el
+    # extra "transcription-mlx").
+    whisper_backend: str = Field(default="faster_whisper")
     whisper_model_size: str = Field(default="large-v3")
     whisper_device: str = Field(default="cuda")
     whisper_compute_type: str = Field(default="float16")
@@ -27,6 +32,9 @@ class Settings(BaseSettings):
     # satura todos los nucleos por defecto.
     whisper_cpu_threads: int = Field(default=0)
     whisper_num_workers: int = Field(default=1)
+    # Repo de Hugging Face con pesos ya convertidos a formato MLX. Solo se usa
+    # si whisper_backend="mlx".
+    mlx_whisper_model: str = Field(default="mlx-community/whisper-large-v3-mlx")
 
     # Ollama / traduccion
     translation_backend: str = Field(default="ollama")  # "ollama" | "llama_server"

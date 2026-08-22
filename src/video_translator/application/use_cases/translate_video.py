@@ -457,6 +457,11 @@ class TranslateVideoUseCase:
                 timings.record_resumed("diarization", num_speakers=len(
                     {d.speaker_label for d in diarization_segments}
                 ) if diarization_segments else 0)
+                # No hace falta volver a llamar mark_concurrent() aqui: si la
+                # corrida original las marco como concurrentes,
+                # adopt_previous_report() ya arrastro ese grupo a
+                # self._concurrent_groups (ver timing.py). Repetir la llamada
+                # duplicaria la entrada y doblaria parallel_time_saved_seconds.
             return checkpoint, segments, diarization_segments
 
         segments, diarization_segments = self._transcribe_and_diarize(request, audio_wav, timings)

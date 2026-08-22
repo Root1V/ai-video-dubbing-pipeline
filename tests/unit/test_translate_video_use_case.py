@@ -403,6 +403,13 @@ def test_resume_with_diarize_skips_speaker_profile_building(tmp_path: Path, vide
     }
     assert by_name["diarization"]["seconds"] == 1950.7
     assert by_name["transcription"]["status"] == "resumed"
+    # Transcripcion y diarizacion corrieron en paralelo en la corrida
+    # original: el reporte reanudado debe seguir marcandolas como
+    # concurrentes (una sola vez, sin duplicar la entrada y doblar
+    # parallel_time_saved_seconds), o el tiempo total reportado
+    # (sum_of_stage_seconds, overhead_seconds) las contaria como secuenciales.
+    assert result.timings["concurrent_stage_groups"] == [["transcription", "diarization"]]
+    assert result.timings["parallel_time_saved_seconds"] == 1802.5
 
 
 def test_dubbed_mode_uses_per_speaker_reference_wav(tmp_path: Path, video_file: Path):
