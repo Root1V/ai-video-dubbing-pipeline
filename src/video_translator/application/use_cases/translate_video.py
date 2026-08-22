@@ -15,8 +15,12 @@ Orquesta el pipeline completo:
      de sintesis lo soporta (SpeechSynthesizer), y mezclar con el video
   8. (Opcional) Incrustar/adjuntar subtitulos al video final (MediaProcessor)
 
-Cada etapa se cronometra (PipelineTimings) para trazabilidad: al terminar,
-se imprime un resumen y se persiste un reporte JSON en el directorio de salida.
+Cada etapa se cronometra (PipelineTimings) para trazabilidad: el reporte JSON
+(`pipeline_timings.json`) se actualiza INCREMENTALMENTE tras cada fase (y al
+entrar en ella), no solo al terminar — si el pipeline muere a mitad de camino,
+el archivo refleja el progreso real. Al reanudar (--resume), las etapas
+saltadas conservan la duracion real que tuvieron en la corrida anterior (se
+adopta el reporte previo), en vez de anotar 0.0s.
 
 Soporte de reanudacion (resume=True): cada etapa que produce datos intermedios
 volatiles persiste su estado en un checkpoint JSON en el workdir. Si el
@@ -78,6 +82,7 @@ from video_translator.utils.logging_config import get_logger
 from video_translator.utils.synthesis_grouping import SynthesisGroup, group_segments_for_synthesis
 from video_translator.utils.text_batching import batch_segments
 from video_translator.utils.timing import PipelineTimings
+from video_translator.utils.warning_collector import drain_stats, drain_warnings, note_stat
 
 logger = get_logger(__name__)
 
@@ -100,6 +105,7 @@ class TranslateVideoUseCase:
         group_max_gap_seconds: float = 0.5,
         group_max_chars: int = 200,
         resume: bool = False,
+        effective_config: dict | None = None,
     ) -> None:
         self._media = media_processor
         self._transcriber = transcriber
@@ -114,6 +120,7 @@ class TranslateVideoUseCase:
         self._group_max_gap = group_max_gap_seconds
         self._group_max_chars = group_max_chars
         self._resume = resume
+        self._effective_config = dict(effective_config) if effective_config else {}
 
     def execute(self, request: TranslateVideoRequest) -> TranslateVideoResult:
         self._validate_request(request)
@@ -121,19 +128,31 @@ class TranslateVideoUseCase:
         workdir = request.output_dir / "_work"
         workdir.mkdir(parents=True, exist_ok=True)
 
-        timings = PipelineTimings()
+        report_path = request.output_dir / "pipeline_timings.json"
+        timings = PipelineTimings(report_path=report_path)
+        if self._effective_config:
+            timings.set_effective_config(**self._effective_config)
         log = logger.bind(input=str(request.input_video), run_id=timings.run_id)
         log.info("pipeline.start", resume=self._resume)
 
         checkpoint_store = CheckpointStore(workdir)
+        if self._resume:
+            timings.mark_resumed()
+            if report_path.exists():
+                # Adoptar las duraciones reales de la corrida anterior: las
+                # etapas que esta corrida salte por checkpoint se reportaran
+                # con su tiempo original, no con 0.0s.
+                timings.adopt_previous_report(report_path)
         checkpoint = self._load_checkpoint(checkpoint_store, request, log)
 
         duration = self._media.get_duration_seconds(request.input_video)
+        timings.set_input(request.input_video, duration)
         log.info("pipeline.duration_detected", seconds=round(duration, 1))
 
         audio_wav = workdir / "audio_16k_mono.wav"
         if STAGE_AUDIO_EXTRACTED in checkpoint.completed_stages:
             log.info("pipeline.resume_skipping", stage=STAGE_AUDIO_EXTRACTED, reason="checkpoint")
+            timings.record_resumed("audio_extraction")
         else:
             with timings.stage("audio_extraction"):
                 self._media.extract_audio(request.input_video, audio_wav)
@@ -161,11 +180,21 @@ class TranslateVideoUseCase:
             checkpoint = self._mark_stage_done(checkpoint, request, STAGE_SPEAKERS_BUILT)
             checkpoint_store.save(checkpoint)
 
-        with timings.stage("translation", num_segments=len(segments)):
-            if STAGE_TRANSLATED in checkpoint.completed_stages:
-                translated_segments = restore_translated_segments(checkpoint)
-                log.info("pipeline.resume_skipping", stage=STAGE_TRANSLATED, reason="checkpoint")
-            else:
+        if STAGE_TRANSLATED in checkpoint.completed_stages:
+            restored = restore_translated_segments(checkpoint)
+            if restored is None:
+                raise VideoTranslatorError(
+                    "El checkpoint marca 'translated' como completado pero no "
+                    "contiene los segmentos traducidos; borra el checkpoint y reintenta."
+                )
+            translated_segments = restored
+            log.info("pipeline.resume_skipping", stage=STAGE_TRANSLATED, reason="checkpoint")
+            timings.record_resumed("translation", num_segments=len(segments))
+        else:
+            num_batches = len(batch_segments(segments, max_chars=self._batch_max_chars))
+            with timings.stage(
+                "translation", num_segments=len(segments), num_batches=num_batches
+            ):
                 translated_segments = self._translate_all(segments, request, log)
                 checkpoint = self._update_checkpoint_data(
                     checkpoint, request,
@@ -179,10 +208,11 @@ class TranslateVideoUseCase:
 
         srt_es = request.output_dir / "subtitles.es.srt"
         srt_en = request.output_dir / "subtitles.en.srt"
-        with timings.stage("subtitles_writing"):
-            if STAGE_SUBTITLES_WRITTEN in checkpoint.completed_stages:
-                log.info("pipeline.resume_skipping", stage=STAGE_SUBTITLES_WRITTEN, reason="checkpoint")
-            else:
+        if STAGE_SUBTITLES_WRITTEN in checkpoint.completed_stages:
+            log.info("pipeline.resume_skipping", stage=STAGE_SUBTITLES_WRITTEN, reason="checkpoint")
+            timings.record_resumed("subtitles_writing")
+        else:
+            with timings.stage("subtitles_writing"):
                 self._subtitles.write(translated_segments, srt_es, use_translation=True)
                 self._subtitles.write(translated_segments, srt_en, use_translation=False)
                 checkpoint = self._mark_stage_done(checkpoint, request, STAGE_SUBTITLES_WRITTEN)
@@ -190,40 +220,58 @@ class TranslateVideoUseCase:
         log.info("pipeline.subtitles_written", es=str(srt_es), en=str(srt_en))
 
         output_video: Path | None = None
+        rendering_stage = f"rendering_{request.output_mode.value}"
 
-        with timings.stage(f"rendering_{request.output_mode.value}"):
-            if request.output_mode == OutputMode.BURN_SUBTITLES:
-                output_video = request.output_dir / "video.dubbed_subs.mp4"
-                if STAGE_FINALIZED in checkpoint.completed_stages and output_video.exists():
-                    log.info("pipeline.resume_skipping", stage=STAGE_FINALIZED, reason="checkpoint")
-                else:
-                    self._media.burn_subtitles(request.input_video, srt_es, output_video)
-                    checkpoint = self._mark_stage_done(checkpoint, request, STAGE_FINALIZED)
-                    checkpoint_store.save(checkpoint)
+        # Salto por resume: etapa FINALIZED marcada Y el video de salida de
+        # este modo presente en disco. Se resuelve ANTES del bloque cronometrado
+        # para que el salto se reporte como etapa "resumed" con su duracion
+        # original, no como una etapa completada de ~0s.
+        expected_render_output = self._expected_render_output(request)
+        skip_rendering = (
+            STAGE_FINALIZED in checkpoint.completed_stages
+            and (expected_render_output is None or expected_render_output.exists())
+        )
 
-            elif request.output_mode == OutputMode.SOFT_SUBTITLES:
-                output_video = request.output_dir / "video.soft_subs.mp4"
-                if STAGE_FINALIZED in checkpoint.completed_stages and output_video.exists():
-                    log.info("pipeline.resume_skipping", stage=STAGE_FINALIZED, reason="checkpoint")
-                else:
-                    self._media.attach_soft_subtitles(request.input_video, srt_es, output_video)
-                    checkpoint = self._mark_stage_done(checkpoint, request, STAGE_FINALIZED)
-                    checkpoint_store.save(checkpoint)
-
-            elif request.output_mode == OutputMode.DUBBED:
-                if self._synthesizer is None:
-                    raise VideoTranslatorError(
-                        "OutputMode.DUBBED requiere un SpeechSynthesizer configurado "
-                        "(instala un extra de doblaje y configura TTS_BACKEND)."
-                    )
+        if skip_rendering:
+            log.info("pipeline.resume_skipping", stage=STAGE_FINALIZED, reason="checkpoint")
+            timings.record_resumed(rendering_stage)
+            output_video = expected_render_output
+        elif request.output_mode == OutputMode.DUBBED:
+            if self._synthesizer is None:
+                raise VideoTranslatorError(
+                    "OutputMode.DUBBED requiere un SpeechSynthesizer configurado "
+                    "(instala un extra de doblaje y configura TTS_BACKEND)."
+                )
+            with timings.stage(rendering_stage):
                 output_video = self._render_dubbed_video(
                     request, translated_segments, speaker_profiles, duration,
                     workdir, timings, checkpoint, checkpoint_store, log,
                 )
-            # OutputMode.SUBTITLES_ONLY -> no se genera video, solo los .srt
+        elif request.output_mode == OutputMode.BURN_SUBTITLES:
+            output_video = self._expected_render_output(request)
+            assert output_video is not None
+            with timings.stage(rendering_stage):
+                self._media.burn_subtitles(request.input_video, srt_es, output_video)
+                checkpoint = self._mark_stage_done(checkpoint, request, STAGE_FINALIZED)
+                checkpoint_store.save(checkpoint)
 
-        report_path = request.output_dir / "pipeline_timings.json"
-        timings.write_report(report_path)
+        elif request.output_mode == OutputMode.SOFT_SUBTITLES:
+            output_video = self._expected_render_output(request)
+            assert output_video is not None
+            with timings.stage(rendering_stage):
+                self._media.attach_soft_subtitles(request.input_video, srt_es, output_video)
+                checkpoint = self._mark_stage_done(checkpoint, request, STAGE_FINALIZED)
+                checkpoint_store.save(checkpoint)
+        # OutputMode.SUBTITLES_ONLY -> no se genera video, solo los .srt
+
+        # Red de seguridad: cualquier warning anotado por infraestructura fuera
+        # de la fase de mezcla tambien acaba en el reporte.
+        for w in drain_warnings():
+            timings.add_warning(**w)
+        timings.add_stats(*drain_stats())
+        if output_video is not None and output_video.exists():
+            timings.set_outputs(output_video=str(output_video), output_video_bytes=output_video.stat().st_size)
+        timings.write_report(report_path, final=True)
         if self._resume:
             checkpoint_store.clear()
             log.info("pipeline.checkpoint_cleared", reason="pipeline completed successfully")
@@ -404,8 +452,11 @@ class TranslateVideoUseCase:
                 reason="checkpoint",
                 num_segments=len(segments),
             )
-            timings.record("transcription", 0.0, resumed=True)
-            timings.record("diarization", 0.0, resumed=True)
+            timings.record_resumed("transcription")
+            if request.diarize:
+                timings.record_resumed("diarization", num_speakers=len(
+                    {d.speaker_label for d in diarization_segments}
+                ) if diarization_segments else 0)
             return checkpoint, segments, diarization_segments
 
         segments, diarization_segments = self._transcribe_and_diarize(request, audio_wav, timings)
@@ -440,13 +491,28 @@ class TranslateVideoUseCase:
                 reason="checkpoint",
                 num_speakers=len(profiles),
             )
-            timings.record("speaker_profile_building", 0.0, resumed=True)
+            timings.record_resumed(
+                "speaker_profile_building",
+                num_speakers=len(profiles),
+                speakers=[
+                    {"id": p.speaker_id, "gender": p.gender, "reference": bool(p.reference_wav)}
+                    for p in profiles
+                ],
+            )
             return checkpoint, segments, profiles
 
-        with timings.stage("speaker_profile_building"):
-            segments, profiles = self._build_speaker_profiles(
+        assert diarization_segments is not None
+        labels = unique_speaker_labels(diarization_segments)
+        with timings.stage(
+            "speaker_profile_building",
+            num_speakers=len(labels),
+        ):
+            segments, profiles, speaker_details = self._build_speaker_profiles(
                 segments, diarization_segments, audio_wav, workdir, log
             )
+        # Ventana de referencia usada por hablante: util para auditar QUE
+        # tramo de voz se clono (p.ej. si un hablante suena mal).
+        timings.annotate_stage("speaker_profile_building", speakers=speaker_details)
 
         checkpoint = self._update_checkpoint_data(
             checkpoint, request,
@@ -475,7 +541,7 @@ class TranslateVideoUseCase:
             segments = list(
                 self._transcriber.transcribe(audio_wav, language_hint=request.source_lang_hint)
             )
-            timings.record("transcription", time.monotonic() - start)
+            timings.record("transcription", time.monotonic() - start, num_segments=len(segments))
             return segments, None
 
         assert self._diarizer is not None, (
@@ -495,10 +561,21 @@ class TranslateVideoUseCase:
             )
 
             segments = transcript_future.result()
-            timings.record("transcription", time.monotonic() - t_start, ran_concurrently=True)
+            timings.record(
+                "transcription",
+                time.monotonic() - t_start,
+                ran_concurrently=True,
+                num_segments=len(segments),
+            )
 
             diarization_segments = diarization_future.result()
-            timings.record("diarization", time.monotonic() - d_start, ran_concurrently=True)
+            timings.record(
+                "diarization",
+                time.monotonic() - d_start,
+                ran_concurrently=True,
+                num_speakers=len({d.speaker_label for d in diarization_segments}),
+                num_turns=len(diarization_segments),
+            )
 
         timings.mark_concurrent(["transcription", "diarization"])
         return segments, diarization_segments
@@ -512,10 +589,21 @@ class TranslateVideoUseCase:
         log.info("pipeline.translation_batches", num_batches=len(batches))
 
         for i, batch in enumerate(batches, start=1):
+            t_batch = time.monotonic()
             translations = self._translator.translate_batch(
                 segments=batch,
                 context=request.context,
                 rolling_history=rolling_history[-self._context_window :],
+            )
+            batch_seconds = time.monotonic() - t_batch
+            # Latencia por lote del LLM: permite ver degradaciones del server
+            # (p.ej. primer lote incluye carga de modelo) entre corridas.
+            note_stat("translation.batch_seconds", round(batch_seconds, 2))
+            note_stat(
+                "translation.batch_chars_per_second",
+                round(sum(len(s.text) for s in batch) / batch_seconds, 1)
+                if batch_seconds > 0
+                else 0.0,
             )
             if len(translations) != len(batch):
                 raise VideoTranslatorError(
@@ -545,7 +633,7 @@ class TranslateVideoUseCase:
         audio_wav: Path,
         workdir: Path,
         log,
-    ) -> tuple[list[TranscriptSegment], list[SpeakerProfile]]:
+    ) -> tuple[list[TranscriptSegment], list[SpeakerProfile], list[dict]]:
         assert diarization_segments is not None
         labels = unique_speaker_labels(diarization_segments)
         log.info("pipeline.diarization_done", num_speakers=len(labels), speakers=labels)
@@ -558,6 +646,7 @@ class TranslateVideoUseCase:
         windows = select_reference_windows(diarization_segments)
 
         profiles: list[SpeakerProfile] = []
+        details: list[dict] = []
         for label in labels:
             window = windows.get(label)
             reference_wav: Path | None = None
@@ -568,15 +657,35 @@ class TranslateVideoUseCase:
                 self._media.extract_audio_clip(audio_wav, start, end, reference_wav)
                 if self._gender_classifier is not None:
                     gender = self._gender_classifier.classify(reference_wav)
+                details.append(
+                    {"id": label, "gender": gender, "reference": True,
+                     "ref_start": round(start, 2), "ref_end": round(end, 2)}
+                )
             else:
                 log.warning("pipeline.speaker_reference_too_short", speaker=label)
+                details.append({"id": label, "gender": None, "reference": False})
             profiles.append(SpeakerProfile(speaker_id=label, gender=gender, reference_wav=reference_wav))
 
         log.info(
             "pipeline.speaker_profiles_built",
             profiles=[(p.speaker_id, p.gender, bool(p.reference_wav)) for p in profiles],
         )
-        return segments_with_speakers, profiles
+        return segments_with_speakers, profiles, details
+
+    def _expected_render_output(self, request: TranslateVideoRequest) -> Path | None:
+        """Ruta del video de salida para este modo, DERIVADA del nombre del
+        input (p.ej. ``lecture.dubbed.mp4``): dos traducciones de videos
+        distintos en la misma carpeta ya no se pisan entre si. Devuelve None
+        solo para SUBTITLES_ONLY (no se genera video).
+        """
+        suffix = {
+            OutputMode.DUBBED: "dubbed",
+            OutputMode.BURN_SUBTITLES: "dubbed_subs",
+            OutputMode.SOFT_SUBTITLES: "soft_subs",
+        }.get(request.output_mode)
+        if suffix is None:
+            return None
+        return request.output_dir / f"{request.input_video.stem}.{suffix}.mp4"
 
     def _render_dubbed_video(
         self,
@@ -635,7 +744,18 @@ class TranslateVideoUseCase:
         else:
             log.info("pipeline.tts_all_done", num_jobs=len(jobs))
 
-        with timings.stage("tts_synthesis", num_jobs=len(jobs), num_missing=len(missing_jobs)):
+        with timings.stage(
+            "tts_synthesis",
+            num_jobs=len(jobs),
+            num_missing=len(missing_jobs),
+            num_segments_input=len(translated_segments),
+            num_groups=len(groups),
+            grouping_reduction_pct=(
+                round(100 * (1 - len(groups) / len(translated_segments)), 1)
+                if translated_segments
+                else 0.0
+            ),
+        ):
             if missing_jobs:
                 if hasattr(self._synthesizer, "synthesize_batch"):
                     self._synthesizer.synthesize_batch(missing_jobs)
@@ -662,13 +782,28 @@ class TranslateVideoUseCase:
             dubbed_audio = workdir / "dubbed_audio.wav"
             self._synthesizer.concatenate_segments(rendered, duration, dubbed_audio)
 
-            output_video = request.output_dir / "video.dubbed.mp4"
+            output_video = self._expected_render_output(request)
+            assert output_video is not None
             self._media.replace_audio_track(
                 request.input_video,
                 dubbed_audio,
                 output_video,
                 keep_original_as_secondary=request.keep_original_audio_track,
             )
+
+        # La infraestructura (mezcla) pudo dejar advertencias de calidad
+        # (p.ej. desbordes de duracion tras la compresion): llevarlas al reporte.
+        for w in drain_warnings():
+            timings.add_warning(**w)
+        timings.add_stats(*drain_stats())
+
+        # Tamanos de los artefactos producidos: util para comparar corridas
+        # (p.ej. bitrate efectivo del doblaje) sin inspeccionar el disco.
+        timings.set_outputs(
+            dubbed_audio_wav_bytes=dubbed_audio.stat().st_size,
+            output_video_bytes=output_video.stat().st_size,
+            output_video=str(output_video),
+        )
 
         checkpoint = self._mark_stage_done(checkpoint, request, STAGE_FINALIZED)
         checkpoint_store.save(checkpoint)

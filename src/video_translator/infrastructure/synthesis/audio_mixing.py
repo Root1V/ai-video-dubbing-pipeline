@@ -15,6 +15,7 @@ from pathlib import Path
 
 from video_translator.domain.exceptions import SynthesisError
 from video_translator.utils.logging_config import get_logger
+from video_translator.utils.warning_collector import increment_counter, note_stat, note_warning
 
 logger = get_logger(__name__)
 
@@ -111,6 +112,7 @@ def fit_to_duration(wav_path: Path, target_seconds: float, ffmpeg_binary: str = 
 
     tmp_path = wav_path.with_suffix(".tmp.wav")
     cmd = [ffmpeg_binary, "-y", "-i", str(wav_path), "-filter:a", filter_str, str(tmp_path)]
+    increment_counter("ffmpeg.calls")
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         tmp_path.replace(wav_path)
@@ -163,10 +165,15 @@ def concatenate_segments(
 
     inputs: list[str] = []
     filter_parts: list[str] = []
+    natural_total = 0.0
+    gap_total = 0.0
+    overflow_count = 0
     for i, (start_seconds, path, max_duration_seconds) in enumerate(segment_audio_paths):
         inputs += ["-i", str(path)]
         delay_ms = max(0, int(start_seconds * 1000))
         natural_duration = wav_duration_seconds(path)
+        natural_total += natural_duration
+        gap_total += max_duration_seconds
 
         # Pequeno margen (20ms) para no recortar por diferencias de redondeo.
         if natural_duration > max_duration_seconds + 0.02:
@@ -187,6 +194,14 @@ def concatenate_segments(
                 hint="la compresion de velocidad deberia haber evitado esto; "
                      "revisa si fit_to_duration fallo para este segmento",
             )
+            note_warning(
+                "audio_mixing.overflow_after_compression",
+                segment_index=i,
+                natural_seconds=round(natural_duration, 2),
+                available_seconds=round(max_duration_seconds, 2),
+                overflow_seconds=round(natural_duration - max_duration_seconds, 2),
+            )
+            overflow_count += 1
         else:
             filter_parts.append(
                 f"[{i}:a]asetpts=PTS-STARTPTS,adelay={delay_ms}|{delay_ms}[a{i}]"
@@ -198,6 +213,14 @@ def concatenate_segments(
         + f";{mix_inputs}amix=inputs={len(segment_audio_paths)}:normalize=0[out]"
     )
 
+    # Metricas de compresion medidas sobre el audio REAL (post atempo): que
+    # tan llena queda la linea de tiempo y cuantos clips hubo que recortar
+    # (senal de que la compresion previa fallo en esos segmentos).
+    if gap_total > 0:
+        note_stat("tts.timeline_fill_ratio", round(natural_total / gap_total, 3))
+    if overflow_count:
+        increment_counter("tts.overflow_trimmed_segments", overflow_count)
+
     cmd = [
         ffmpeg_binary, "-y",
         *inputs,
@@ -206,6 +229,7 @@ def concatenate_segments(
         "-t", str(total_duration),
         str(output_path),
     ]
+    increment_counter("ffmpeg.calls")
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as exc:

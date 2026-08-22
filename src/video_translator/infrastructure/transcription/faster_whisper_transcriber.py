@@ -9,12 +9,14 @@ de voz (VAD) interna, lo que evita tener que trocear manualmente el audio.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Iterable
 
 from video_translator.domain.exceptions import TranscriptionError
 from video_translator.domain.models import TranscriptSegment
 from video_translator.utils.logging_config import get_logger
+from video_translator.utils.warning_collector import note_stat
 
 logger = get_logger(__name__)
 
@@ -59,6 +61,7 @@ class FasterWhisperTranscriber:
                 cpu_threads=self._cpu_threads,
                 num_workers=self._num_workers,
             )
+            t0 = time.monotonic()
             self._model = WhisperModel(
                 self._model_size,
                 device=self._device,
@@ -66,6 +69,9 @@ class FasterWhisperTranscriber:
                 cpu_threads=self._cpu_threads,
                 num_workers=self._num_workers,
             )
+            # Coste de infraestructura vs inferencia: en corridas cortas puede
+            # ser una fraccion relevante de la etapa de transcripcion.
+            note_stat("transcription.model_load_seconds", round(time.monotonic() - t0, 2))
         return self._model
 
     def transcribe(
@@ -89,41 +95,8 @@ class FasterWhisperTranscriber:
             language=info.language,
             probability=round(info.language_probability, 3),
         )
-
-        for i, seg in enumerate(segments_iter):
-            text = seg.text.strip()
-            if not text:
-                continue
-            yield TranscriptSegment(
-                id=i,
-                start=seg.start,
-                end=seg.end,
-                text=text,
-                language=info.language,
-            )
-
-
-    def transcribe(
-        self, audio_path: Path, language_hint: str | None = None
-    ) -> Iterable[TranscriptSegment]:
-        model = self._load_model()
-        try:
-            segments_iter, info = model.transcribe(
-                str(audio_path),
-                language=language_hint,
-                beam_size=self._beam_size,
-                vad_filter=self._vad_filter,
-                vad_parameters={"min_silence_duration_ms": 500},
-                condition_on_previous_text=True,
-            )
-        except Exception as exc:  # noqa: BLE001 - reempaquetamos cualquier fallo del motor
-            raise TranscriptionError(f"Fallo transcribiendo '{audio_path}': {exc}") from exc
-
-        logger.info(
-            "whisper.detected_language",
-            language=info.language,
-            probability=round(info.language_probability, 3),
-        )
+        note_stat("transcription.detected_language", info.language)
+        note_stat("transcription.language_probability", round(info.language_probability, 3))
 
         for i, seg in enumerate(segments_iter):
             text = seg.text.strip()

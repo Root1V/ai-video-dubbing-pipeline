@@ -18,6 +18,7 @@ from pathlib import Path
 from video_translator.domain.exceptions import DiarizationError
 from video_translator.domain.models import DiarizationSegment
 from video_translator.utils.logging_config import get_logger
+from video_translator.utils.warning_collector import note_stat
 
 logger = get_logger(__name__)
 
@@ -75,12 +76,15 @@ class SubprocessDiarizer:
                 "./scripts/setup_diarization_env.sh"
             ) from exc
 
+        # Auditoria: el crudo queda en disco; en audios largos esta salida
+        # cuesta ~40 min de CPU y perderla por un bug de parseo es carisimo.
         try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise DiarizationError(
-                f"Salida invalida del proceso de diarizacion: {result.stdout[:500]!r}"
-            ) from exc
+            raw_log = audio_path.parent / "diarization_stdout.log"
+            raw_log.write_text(result.stdout, encoding="utf-8")
+        except OSError:
+            pass  # nunca bloquear el pipeline por un fallo de telemetria
+
+        data = self._extract_json_output(result.stdout)
 
         if "error" in data:
             raise DiarizationError(f"Fallo en el proceso de diarizacion: {data['error']}")
@@ -91,7 +95,41 @@ class SubprocessDiarizer:
         ]
         num_speakers = len({s.speaker_label for s in segments})
         logger.info("diarization.done", num_turns=len(segments), num_speakers=num_speakers)
+
+        # El worker reporta su desglose interno (carga del modelo pyannote vs
+        # inferencia): en audios cortos la carga puede dominar la etapa.
+        timings = data.get("timings") or {}
+        for key in ("model_load_seconds", "inference_seconds"):
+            if key in timings:
+                note_stat(f"diarization.{key}", timings[key])
+
         return segments
+
+    @staticmethod
+    def _extract_json_output(raw: str) -> dict:
+        """Extrae el JSON que el worker imprime al final de stdout.
+
+        pyannote/torch pueden contaminar stdout con warnings ANTES del JSON
+        (p.ej. 'WARNING: Value of auxiliary function has decreased!'), y un
+        json.loads() directo del texto completo lo rechaza. Se busca la
+        primera linea que abre un objeto JSON y se parsea desde ahi; si el
+        candidato falla se prueba con las siguientes (por si el warning
+        apareciera entre lineas del propio JSON, poco probable pero gratis).
+        """
+        lines = raw.splitlines()
+        for idx, line in enumerate(lines):
+            if not line.lstrip().startswith("{"):
+                continue
+            try:
+                data = json.loads("\n".join(lines[idx:]))
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict):
+                return data
+        raise DiarizationError(
+            "Salida invalida del proceso de diarizacion: no se encontro JSON "
+            f"en stdout ({raw[:300]!r}...)"
+        )
 
     def _build_subprocess_env(self) -> dict[str, str]:
         """Construye el entorno SOLO para el subprocess del worker de diarizacion.

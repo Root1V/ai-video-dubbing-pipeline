@@ -71,6 +71,10 @@ def _patch_huggingface_hub_use_auth_token_compat(hub_module) -> None:
 
 
 def cmd_diarize(args: argparse.Namespace) -> None:
+    import time
+
+    t_total = time.monotonic()
+
     import torch
 
     try:
@@ -94,12 +98,14 @@ def cmd_diarize(args: argparse.Namespace) -> None:
     os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", hf_token)
 
     try:
+        t_load = time.monotonic()
         pipeline = Pipeline.from_pretrained(args.model, use_auth_token=hf_token)
     except TypeError:
         pipeline = Pipeline.from_pretrained(args.model, token=hf_token)
 
     if args.device != "cpu":
         pipeline.to(torch.device(args.device))
+    model_load_seconds = time.monotonic() - t_load
 
     kwargs = {}
     if args.min_speakers is not None:
@@ -107,7 +113,9 @@ def cmd_diarize(args: argparse.Namespace) -> None:
     if args.max_speakers is not None:
         kwargs["max_speakers"] = args.max_speakers
 
+    t_infer = time.monotonic()
     output = pipeline(args.audio, **kwargs)
+    inference_seconds = time.monotonic() - t_infer
     annotation = getattr(output, "speaker_diarization", output)
 
     segments = []
@@ -118,7 +126,18 @@ def cmd_diarize(args: argparse.Namespace) -> None:
         for turn, speaker_label in annotation:
             segments.append({"start": turn.start, "end": turn.end, "speaker_label": speaker_label})
 
-    print(json.dumps({"segments": segments}))
+    print(
+        json.dumps(
+            {
+                "segments": segments,
+                "timings": {
+                    "model_load_seconds": round(model_load_seconds, 2),
+                    "inference_seconds": round(inference_seconds, 2),
+                    "total_seconds": round(time.monotonic() - t_total, 2),
+                },
+            }
+        )
+    )
 
 
 def cmd_gender(args: argparse.Namespace) -> None:

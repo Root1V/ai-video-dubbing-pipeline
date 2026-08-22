@@ -156,37 +156,68 @@ this now safely runs on CPU workers rather than risking the GPU driver.
 ## Observability: where did the time go?
 
 Every stage is timed (`utils/timing.py`) and reported two ways:
-- **A summary table** printed at the end of the run (durations, % of total,
-  and a note on which stages ran concurrently).
-- **A JSON report** written to `<output_dir>/pipeline_timings.json` on every
-  run, so you can diff timings between runs (e.g. after tuning
+- **A summary table** printed at the end of the run (order, durations, % of total,
+  and a note on which stages ran concurrently or were resumed from a previous run).
+- **A JSON report** written to `<output_dir>/pipeline_timings.json` and
+  **updated incrementally after every stage** (and even when a stage starts, via
+  `current_stage`), so a crashed run still leaves an accurate partial snapshot
+  (`"completed": false`). You can diff timings between runs (e.g. after tuning
   `--tts-workers`) instead of guessing from scrollback logs.
 
 ```json
 {
   "run_id": "a1b2c3d4e5f6",
+  "run_ids": ["9f8e7d6c5b4a", "a1b2c3d4e5f6"],
+  "started_at": "2026-08-21T10:00:00+00:00",
+  "generated_at": "2026-08-21T10:35:40+00:00",
+  "completed": true,
+  "resumed_run": false,
   "total_seconds": 2140.3,
+  "num_stages": 9,
+  "sum_of_stage_seconds": 5411.7,
+  "overhead_seconds": 3.2,
+  "parallel_time_saved_seconds": 1802.5,
   "concurrent_stage_groups": [["transcription", "diarization"]],
+  "input": {"video": "video/lecture.mp4", "duration_seconds": 3615.2},
+  "realtime_factor": 0.59,
+  "effective_config": {
+    "whisper_model": "large-v3", "whisper_device": "cpu", "whisper_compute_type": "int8",
+    "translation_backend": "llama_server", "llm_model": "gpt-oss-20b-mxfp4",
+    "diarize_enabled": true, "tts_backend": "index_tts2", "tts_workers": 3,
+    "tts_device_forced_cpu": true
+  },
+  "warnings": [
+    {"source": "audio_mixing.overflow_after_compression", "segment_index": 2, "overflow_seconds": 0.27}
+  ],
   "stages": [
-    {"name": "audio_extraction", "seconds": 4.1, "percent_of_total": 0.2},
-    {"name": "transcription", "seconds": 1802.5, "percent_of_total": 84.2, "ran_concurrently": true},
-    {"name": "diarization", "seconds": 1950.7, "percent_of_total": 91.1, "ran_concurrently": true},
-    {"name": "speaker_profile_building", "seconds": 8.3, "percent_of_total": 0.4},
-    {"name": "translation", "seconds": 95.2, "percent_of_total": 4.4, "num_segments": 1284},
-    {"name": "subtitles_writing", "seconds": 0.1, "percent_of_total": 0.0},
-    {"name": "rendering_dubbed", "seconds": 1620.4, "percent_of_total": 75.7},
-    {"name": "tts_synthesis", "seconds": 1540.8, "percent_of_total": 72.0, "num_jobs": 412},
-    {"name": "audio_mixing_and_muxing", "seconds": 79.6, "percent_of_total": 3.7}
+    {"order": 1, "name": "audio_extraction", "status": "completed", "seconds": 4.1, "percent_of_total": 0.2, "started_at": "...", "ended_at": "..."},
+    {"order": 2, "name": "transcription", "status": "completed", "seconds": 1802.5, "percent_of_total": 84.2, "ran_concurrently": true, "num_segments": 1284},
+    {"order": 3, "name": "diarization", "status": "completed", "seconds": 1950.7, "percent_of_total": 91.1, "ran_concurrently": true, "num_speakers": 2, "num_turns": 340},
+    {"order": 4, "name": "speaker_profile_building", "status": "completed", "seconds": 8.3, "percent_of_total": 0.4, "num_speakers": 2},
+    {"order": 5, "name": "translation", "status": "completed", "seconds": 95.2, "percent_of_total": 4.4, "num_segments": 1284, "num_batches": 42},
+    {"order": 6, "name": "subtitles_writing", "status": "completed", "seconds": 0.1, "percent_of_total": 0.0},
+    {"order": 7, "name": "rendering_dubbed", "status": "completed", "seconds": 1620.4, "percent_of_total": 75.7},
+    {"order": 8, "name": "tts_synthesis", "status": "completed", "seconds": 1540.8, "percent_of_total": 72.0, "num_jobs": 412, "num_segments_input": 1284, "num_groups": 412, "grouping_reduction_pct": 67.9},
+    {"order": 9, "name": "audio_mixing_and_muxing", "status": "completed", "seconds": 79.6, "percent_of_total": 3.7}
   ]
 }
 ```
-(Percentages can add up to more than 100% across concurrent stages, and
-`rendering_dubbed` nests `tts_synthesis`/`audio_mixing_and_muxing` inside
-it — that's expected, not a bug; the top-level `total_seconds` is the real
-wall-clock number.) Every stage's start/end is also logged with `-v`, tagged
+Each stage carries an `order` (execution sequence), a `status`
+(`"completed"` or `"resumed"`), and `started_at`/`ended_at` UTC timestamps.
+When you relaunch with `--resume`, skipped stages keep the **real duration they
+had in the previous run** (`"status": "resumed"`) — the report is adopted from
+the existing file instead of resetting them to 0.0s — so the final report is
+still a faithful profile of the total work.
+(`percent_of_total` is computed against `sum_of_stage_seconds` — the total
+recorded work, including durations inherited from a previous run on resume —
+so stage percentages always add up to ~100%; note that `rendering_dubbed`
+nests `tts_synthesis`/`audio_mixing_and_muxing` inside it, so those overlap.
+The top-level `total_seconds` remains the real wall-clock number.) Every
+stage's start/end is also logged with `-v`, tagged
 with a `run_id` shared across the whole run, so log lines from concurrent
 stages (or, eventually, multiple runs interleaved in a shared log stream)
-can be told apart.
+can be told apart. The report also carries `run_ids`: the full chain of runs
+that produced the result (one per `--resume` relaunch), current run last.
 
 **Every log line is also persisted to a file**, not just printed to the
 terminal: `<output_dir>/logs/run_<timestamp>.log` (plain text, no ANSI color
@@ -250,7 +281,9 @@ video-translator translate \
   -v
 ```
 
-Result in `./output/video.dubbed.mp4`: the original video with a second
+Result in `./output/lecture.dubbed.mp4` (the output name derives from the
+input file name plus a mode suffix, so two different videos translated into
+the same folder never overwrite each other): the original video with a second
 Spanish audio track (the original is kept as a secondary track by default,
 `--no-keep-original-audio` to replace it entirely) generated by IndexTTS-2.5,
 with the original speaker's timbre, synced segment by segment with the

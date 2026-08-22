@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import platform
 from functools import partial
-from typing import Callable
+from typing import Any, Callable
 
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import Settings
@@ -88,8 +88,9 @@ def build_translate_video_use_case(
     subtitle_writer = SrtSubtitleWriter()
 
     speech_synthesizer = None
+    tts_notes: dict = {}
     if enable_dubbing:
-        speech_synthesizer = _build_synthesizer(settings)
+        speech_synthesizer, tts_notes = _build_synthesizer(settings)
 
     speaker_diarizer = None
     gender_classifier = None
@@ -116,6 +117,32 @@ def build_translate_video_use_case(
                 worker_script=settings.diarization_worker_script,
             )
 
+    # Configuracion EFECTIVA (modelos/devices/workers con los que realmente se
+    # ejecutara el pipeline): se persiste en pipeline_timings.json para que dos
+    # corridas sean comparables entre si.
+    effective_config: dict = {
+        "whisper_model": settings.whisper_model_size,
+        "whisper_device": settings.whisper_device,
+        "whisper_compute_type": settings.whisper_compute_type,
+        "translation_backend": settings.translation_backend,
+        "llm_model": (
+            settings.llama_server_model
+            if settings.translation_backend == "llama_server"
+            else settings.ollama_model
+        ),
+        "diarize_enabled": enable_diarization,
+        "diarization_model": settings.diarization_model if enable_diarization else None,
+        "gender_detection": settings.gender_detection_enabled if enable_diarization else None,
+    }
+    if enable_dubbing:
+        effective_config.update(
+            {
+                "tts_backend": settings.tts_backend,
+                "tts_workers": tts_notes.get("tts_workers"),
+                "tts_device_forced_cpu": tts_notes.get("tts_device_forced_cpu", False),
+            }
+        )
+
     return TranslateVideoUseCase(
         media_processor=media_processor,
         transcriber=transcriber,
@@ -130,10 +157,13 @@ def build_translate_video_use_case(
         group_max_gap_seconds=settings.tts_group_max_gap_seconds,
         group_max_chars=settings.tts_group_max_chars,
         resume=resume,
+        effective_config=effective_config,
     )
 
 
-def _synthesizer_factory(settings: Settings, num_workers: int) -> Callable[[], object]:
+def _synthesizer_factory(
+    settings: Settings, num_workers: int, notes: dict | None = None
+) -> Callable[[], object]:
     """Devuelve una funcion SIN ARGUMENTOS que construye una instancia nueva
     del motor de TTS configurado.
 
@@ -162,6 +192,8 @@ def _synthesizer_factory(settings: Settings, num_workers: int) -> Callable[[], o
             # propio riesgo). Con un solo worker (num_workers<=1) no aplica:
             # MPS en un unico proceso es el uso soportado oficialmente.
             device = "cpu"
+            if notes is not None:
+                notes["tts_device_forced_cpu"] = True
             logger.warning(
                 "container.forcing_cpu_for_parallel_tts_on_macos",
                 num_workers=num_workers,
@@ -206,21 +238,27 @@ def _resolve_tts_worker_count(configured: int) -> int:
     return max(1, min(_AUTO_MAX_TTS_WORKERS, cpu_count // 2))
 
 
-def _build_synthesizer(settings: Settings):
+def _build_synthesizer(settings: Settings) -> tuple[Any, dict]:
     """Construye el motor de TTS para doblaje segun TTS_BACKEND, envuelto en
     un pool de procesos paralelos si TTS_PARALLEL_WORKERS lo amerita.
+
+    Devuelve ``(synthesizer, notes)``: ``notes`` es un dict con datos de la
+    decision de construccion (p.ej. ``tts_workers`` resuelto, si se forzo CPU
+    en macOS) que acaba en la configuracion efectiva del reporte de timings.
 
     Import perezoso en cada rama: evita requerir las dependencias pesadas
     (torch, TTS, indextts) cuando el doblaje no se usa.
     """
     num_workers = _resolve_tts_worker_count(settings.tts_parallel_workers)
-    factory = _synthesizer_factory(settings, num_workers)
+    notes: dict = {"tts_workers": num_workers}
+    factory = _synthesizer_factory(settings, num_workers, notes)
 
     if num_workers <= 1:
-        return factory()
+        return factory(), notes
 
     from video_translator.infrastructure.synthesis.parallel_tts_pool import ParallelTTSPool
 
-    return ParallelTTSPool(
+    pool = ParallelTTSPool(
         synthesizer_factory=factory, num_workers=num_workers, ffmpeg_binary=settings.ffmpeg_binary
     )
+    return pool, notes

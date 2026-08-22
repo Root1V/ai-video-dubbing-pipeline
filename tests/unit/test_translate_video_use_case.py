@@ -123,12 +123,13 @@ def video_file(tmp_path: Path) -> Path:
     return p
 
 
-def _make_use_case(translator=None):
+def _make_use_case(translator=None, resume: bool = False):
     return TranslateVideoUseCase(
         media_processor=FakeMediaProcessor(),
         transcriber=FakeTranscriber(),
         translator=translator or FakeTranslator(),
         subtitle_writer=FakeSubtitleWriter(),
+        resume=resume,
     )
 
 
@@ -163,6 +164,124 @@ def test_execute_soft_subtitles_mode_produces_video(tmp_path: Path, video_file: 
 
     assert result.output_video is not None
     assert result.output_video.exists()
+
+
+def test_output_video_name_derives_from_input_stem(video_file: Path, tmp_path: Path):
+    """El video de salida ya no se llama siempre 'video.*.mp4': hereda el
+    nombre del input con sufijo de modo, para que dos traducciones distintas
+    en la misma carpeta no se pisen."""
+    stem = video_file.stem
+    for mode, expected_suffix in [
+        (OutputMode.SOFT_SUBTITLES, "soft_subs"),
+        (OutputMode.BURN_SUBTITLES, "dubbed_subs"),
+        (OutputMode.DUBBED, "dubbed"),
+    ]:
+        request = TranslateVideoRequest(
+            input_video=video_file,
+            output_dir=tmp_path / "out",
+            context=TranslationContext(),
+            output_mode=mode,
+        )
+        path = TranslateVideoUseCase._expected_render_output(
+            _make_use_case(), request
+        )
+        assert path is not None
+        assert path.name == f"{stem}.{expected_suffix}.mp4"
+
+
+def test_expected_render_output_is_none_for_subtitles_only(tmp_path: Path):
+    request = TranslateVideoRequest(
+        input_video=tmp_path / "x.mp4",
+        output_dir=tmp_path / "out",
+        context=TranslationContext(),
+        output_mode=OutputMode.SUBTITLES_ONLY,
+    )
+    assert _make_use_case()._expected_render_output(request) is None
+
+
+def test_resume_keeps_real_durations_in_timings_report(tmp_path: Path, video_file: Path):
+    """Al reanudar con --resume, las etapas saltadas NO deben aparecer con 0.0s:
+    el reporte final debe conservar la duracion real de la primera corrida
+    (status="resumed") y un campo order legible."""
+    import json as _json
+
+    output_dir = tmp_path / "out"
+    request = TranslateVideoRequest(
+        input_video=video_file,
+        output_dir=output_dir,
+        context=TranslationContext(),
+        output_mode=OutputMode.SOFT_SUBTITLES,
+    )
+
+    # Corrida 1 (sin --resume): deja checkpoint + pipeline_timings.json.
+    _make_use_case().execute(request)
+    report_path = output_dir / "pipeline_timings.json"
+    first_run = _json.loads(report_path.read_text(encoding="utf-8"))
+    real_names = [s["name"] for s in first_run["stages"]]
+    assert "audio_extraction" in real_names
+
+    # Simular que la corrida 1 costo horas: inflar las duraciones en disco.
+    inflated = {
+        "audio_extraction": 4.2,
+        "transcription": 1802.5,
+        "diarization": 1950.7,
+        "translation": 95.2,
+        "subtitles_writing": 0.1,
+        "rendering_soft_subtitles": 33.0,
+    }
+    for stage in first_run["stages"]:
+        stage["seconds"] = inflated[stage["name"]]
+    report_path.write_text(_json.dumps(first_run), encoding="utf-8")
+
+    # Corrida 2 con --resume: todo se salta por checkpoint.
+    result = _make_use_case(resume=True).execute(request)
+    resumed_stages = result.timings["stages"]
+
+    assert result.timings["resumed_run"] is True
+    assert [s["order"] for s in resumed_stages] == list(range(1, len(resumed_stages) + 1))
+    by_name = {s["name"]: s for s in resumed_stages}
+    # Solo se esperan las etapas que la corrida 1 realmente ejecuto (con
+    # diarize=False no existe etapa de diarizacion que reanudar).
+    expected_names = [s["name"] for s in first_run["stages"]]
+    assert [s["name"] for s in resumed_stages] == expected_names
+    for name in expected_names:
+        assert by_name[name]["status"] == "resumed"
+        # La duracion REAL de la corrida anterior, no 0.0s.
+        assert by_name[name]["seconds"] == inflated[name]
+
+    on_disk = _json.loads(report_path.read_text(encoding="utf-8"))
+    assert on_disk["completed"] is True
+    assert on_disk["resumed_run"] is True
+
+
+def test_timings_report_is_written_incrementally(tmp_path: Path, video_file: Path):
+    """El reporte JSON debe existir y actualizarse DURANTE la ejecucion, no solo al final."""
+    import json as _json
+
+    output_dir = tmp_path / "out"
+    request = TranslateVideoRequest(
+        input_video=video_file,
+        output_dir=output_dir,
+        context=TranslationContext(),
+        output_mode=OutputMode.SUBTITLES_ONLY,
+    )
+    use_case = _make_use_case()
+
+    original_extract = use_case._media.extract_audio
+
+    def spy_extract(video_path, output_wav):
+        snapshot = output_dir / "pipeline_timings.json"
+        assert snapshot.exists(), "el reporte debe existir ya durante la primera etapa"
+        data = _json.loads(snapshot.read_text(encoding="utf-8"))
+        assert data["current_stage"]["name"] == "audio_extraction"
+        return original_extract(video_path, output_wav)
+
+    use_case._media.extract_audio = spy_extract
+    use_case.execute(request)
+
+    final = _json.loads((output_dir / "pipeline_timings.json").read_text(encoding="utf-8"))
+    assert final["completed"] is True
+    assert "current_stage" not in final
 
 
 def test_rejects_missing_file(tmp_path: Path):
@@ -229,6 +348,61 @@ def test_diarization_assigns_speaker_and_gender_to_each_segment(tmp_path: Path, 
     genders = {p.speaker_id: p.gender for p in result.speakers}
     assert genders["SPEAKER_00"] == "male"
     assert genders["SPEAKER_01"] == "female"
+
+
+def test_resume_with_diarize_skips_speaker_profile_building(tmp_path: Path, video_file: Path):
+    """Regresion: al reanudar con --diarize, la construccion de perfiles de
+    hablantes debe SALTARSE (status resumed con duracion real heredada), no
+    reconstruirse; y la diarizacion tampoco debe reportarse si no hubo."""
+    import json as _json
+
+    output_dir = tmp_path / "out"
+    request = TranslateVideoRequest(
+        input_video=video_file,
+        output_dir=output_dir,
+        context=TranslationContext(),
+        output_mode=OutputMode.SOFT_SUBTITLES,
+        diarize=True,
+    )
+    common: dict = {
+        "media_processor": FakeMediaProcessor(),
+        "transcriber": FakeTranscriber(),
+        "translator": SpeakerAwareFakeTranslator(),
+        "subtitle_writer": FakeSubtitleWriter(),
+        "speaker_diarizer": FakeDiarizer(),
+        "gender_classifier": FakeGenderClassifier(),
+    }
+
+    TranslateVideoUseCase(**common).execute(request)
+
+    report_path = output_dir / "pipeline_timings.json"
+    first = _json.loads(report_path.read_text(encoding="utf-8"))
+    for stage in first["stages"]:
+        stage["seconds"] = {
+            "audio_extraction": 4.2,
+            "transcription": 1802.5,
+            "diarization": 1950.7,
+            "speaker_profile_building": 8.3,
+            "translation": 95.2,
+            "subtitles_writing": 0.1,
+            "rendering_soft_subtitles": 33.0,
+        }[stage["name"]]
+    report_path.write_text(_json.dumps(first), encoding="utf-8")
+
+    result = TranslateVideoUseCase(**common, resume=True).execute(request)
+    by_name = {s["name"]: s for s in result.timings["stages"]}
+
+    assert by_name["speaker_profile_building"]["status"] == "resumed"
+    assert by_name["speaker_profile_building"]["seconds"] == 8.3
+    assert by_name["speaker_profile_building"]["num_speakers"] == 2
+    # Los perfiles restaurados conservan genero y referencia.
+    speakers = by_name["speaker_profile_building"]["speakers"]
+    assert {s["id"]: (s["gender"], s["reference"]) for s in speakers} == {
+        "SPEAKER_00": ("male", True),
+        "SPEAKER_01": ("female", True),
+    }
+    assert by_name["diarization"]["seconds"] == 1950.7
+    assert by_name["transcription"]["status"] == "resumed"
 
 
 def test_dubbed_mode_uses_per_speaker_reference_wav(tmp_path: Path, video_file: Path):

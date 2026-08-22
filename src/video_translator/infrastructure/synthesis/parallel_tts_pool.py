@@ -19,6 +19,7 @@ usarse como cualquier otro motor) MAS la capacidad opcional
 
 from __future__ import annotations
 
+import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Callable
@@ -26,6 +27,7 @@ from typing import Callable
 from video_translator.application.synthesis_job import SynthesisJob
 from video_translator.infrastructure.synthesis import audio_mixing
 from video_translator.utils.logging_config import get_logger
+from video_translator.utils.warning_collector import note_stat
 
 logger = get_logger(__name__)
 
@@ -95,10 +97,19 @@ class ParallelTTSPool:
         if not jobs:
             return
         logger.info("parallel_tts_pool.batch_start", num_jobs=len(jobs), num_workers=self._num_workers)
+        t0 = time.monotonic()
         futures = [self._executor.submit(_worker_synthesize, job) for job in jobs]
         for future in futures:
             future.result()  # propaga excepciones y espera a que termine todo
-        logger.info("parallel_tts_pool.batch_done", num_jobs=len(jobs))
+        wall_seconds = time.monotonic() - t0
+        # Latencia del lote y throughput observado desde el proceso principal.
+        # (La latencia individual de cada job vive en el worker; aqui solo es
+        # visible el comportamiento agregado del pool.)
+        if wall_seconds > 0:
+            note_stat("tts.batch_wall_seconds", round(wall_seconds, 2))
+            note_stat("tts.job_avg_seconds", round(wall_seconds / len(jobs), 2))
+            note_stat("tts.batch_throughput_jobs_per_second", round(len(jobs) / wall_seconds, 3))
+        logger.info("parallel_tts_pool.batch_done", num_jobs=len(jobs), wall_seconds=round(wall_seconds, 2))
 
     def concatenate_segments(
         self, segment_audio_paths: list[tuple[float, Path, float]], total_duration: float, output_path: Path

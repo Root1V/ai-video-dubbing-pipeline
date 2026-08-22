@@ -13,6 +13,7 @@ from pathlib import Path
 
 from video_translator.domain.exceptions import AudioExtractionError, MuxingError
 from video_translator.utils.logging_config import get_logger
+from video_translator.utils.warning_collector import increment_counter
 
 logger = get_logger(__name__)
 
@@ -145,6 +146,7 @@ class FFmpegMediaProcessor:
 
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
+        increment_counter("ffmpeg.calls")
         try:
             return subprocess.run(cmd, capture_output=True, text=True, check=True)
         except FileNotFoundError as exc:

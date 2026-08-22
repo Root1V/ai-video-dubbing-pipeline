@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -16,6 +15,7 @@ from video_translator.container import build_translate_video_use_case
 from video_translator.domain.exceptions import VideoTranslatorError
 from video_translator.domain.models import OutputMode, TranslateVideoRequest, TranslationContext
 from video_translator.utils.logging_config import configure_logging, get_logger
+from video_translator.utils.timing import PipelineTimings
 
 app = typer.Typer(
     name="video-translator",
@@ -26,11 +26,39 @@ console = Console()
 logger = get_logger(__name__)
 
 
+def _install_signal_handlers() -> None:
+    """Al recibir SIGINT/SIGTERM deja constancia en el reporte de timings
+    (senal y momento) ANTES de morir, para que una corrida interrumpida a
+    media carrera quede documentada en pipeline_timings.json. Luego restaura
+    el handler por defecto y re-envia la senal: el proceso muere con el mismo
+    exit code que tendria sin nuestro handler.
+
+    La instancia de PipelineTimings se resuelve AL LLEGAR la senal (no al
+    instalar): los handlers se registran antes de execute(), que es quien
+    crea la instancia.
+    """
+    import os
+    import signal
+
+    def _handler(signum, frame):  # noqa: ARG001 - frame requerido por la API
+        timings = PipelineTimings.active()
+        if timings is not None:
+            timings.mark_interrupted(signal.Signals(signum).name)
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _handler)
+        except (ValueError, OSError):  # p.ej. signal desde un hilo no principal
+            pass
+
+
 @app.command()
 def translate(
     input: Path = typer.Option(..., "--input", "-i", exists=True, help="Ruta al video .mp4 de entrada."),
     output_dir: Path = typer.Option(Path("./output"), "--output-dir", "-o", help="Carpeta de salida."),
-    context: Optional[str] = typer.Option(
+    context: str | None = typer.Option(
         None,
         "--context",
         "-c",
@@ -39,17 +67,17 @@ def translate(
             "(dominio, tono, audiencia). Tambien puede ser la ruta a un .txt."
         ),
     ),
-    glossary: Optional[Path] = typer.Option(
+    glossary: Path | None = typer.Option(
         None, "--glossary", "-g", help="Ruta a un JSON {'termino_en': 'termino_es'}."
     ),
-    tone: Optional[str] = typer.Option(None, "--tone", help="Tono deseado: formal, informal, tecnico..."),
+    tone: str | None = typer.Option(None, "--tone", help="Tono deseado: formal, informal, tecnico..."),
     mode: OutputMode = typer.Option(
         OutputMode.SOFT_SUBTITLES, "--mode", "-m", help="Modo de salida del video."
     ),
     keep_original_audio: bool = typer.Option(
         True, "--keep-original-audio/--no-keep-original-audio", help="Solo aplica a --mode dubbed."
     ),
-    speaker_reference: Optional[Path] = typer.Option(
+    speaker_reference: Path | None = typer.Option(
         None, "--speaker-wav", help="Muestra de voz .wav para clonar el timbre en el doblaje (fallback si no hay diarizacion, o para video de un solo hablante)."
     ),
     diarize: bool = typer.Option(
@@ -57,17 +85,17 @@ def translate(
         "--diarize/--no-diarize",
         help="Detecta multiples hablantes y clona la voz/estima el genero de cada uno por separado.",
     ),
-    min_speakers: Optional[int] = typer.Option(None, "--min-speakers", help="Pista opcional para la diarizacion."),
-    max_speakers: Optional[int] = typer.Option(None, "--max-speakers", help="Pista opcional para la diarizacion."),
+    min_speakers: int | None = typer.Option(None, "--min-speakers", help="Pista opcional para la diarizacion."),
+    max_speakers: int | None = typer.Option(None, "--max-speakers", help="Pista opcional para la diarizacion."),
     source_lang: str = typer.Option("en", help="Idioma de origen (codigo ISO)."),
     target_lang: str = typer.Option("es", help="Idioma de destino (codigo ISO)."),
-    tts_workers: Optional[int] = typer.Option(
+    tts_workers: int | None = typer.Option(
         None,
         "--tts-workers",
         help="Procesos paralelos para la sintesis de voz (doblaje). Sin especificar, se "
         "auto-detecta segun los nucleos disponibles. 1 = secuencial (sin paralelismo).",
     ),
-    group_segments: Optional[bool] = typer.Option(
+    group_segments: bool | None = typer.Option(
         None,
         "--group-segments/--no-group-segments",
         help="Fusiona segmentos consecutivos del mismo hablante (requiere --diarize) en "
@@ -142,6 +170,7 @@ def translate(
     if context_prompt:
         console.print(f"[bold]Contexto:[/bold] {context_prompt[:120]}{'...' if len(context_prompt) > 120 else ''}")
 
+    _install_signal_handlers()
     try:
         with console.status("[bold green]Procesando video (esto puede tardar segun la duracion)..."):
             result = use_case.execute(request)
@@ -150,7 +179,6 @@ def translate(
         console.print(f"[bold red]Error:[/bold red] {exc}")
         console.print(f"[dim]Detalle en el log: {log_file}[/dim]")
         raise typer.Exit(code=1) from exc
-
     _print_summary(result, log_file)
 
 
@@ -194,7 +222,7 @@ def check() -> None:
         raise typer.Exit(code=1)
 
 
-def _resolve_context_text(context: Optional[str]) -> Optional[str]:
+def _resolve_context_text(context: str | None) -> str | None:
     if context is None:
         return None
     maybe_path = Path(context)
@@ -203,7 +231,7 @@ def _resolve_context_text(context: Optional[str]) -> Optional[str]:
     return context.strip()
 
 
-def _load_glossary(glossary_path: Optional[Path]) -> dict[str, str]:
+def _load_glossary(glossary_path: Path | None) -> dict[str, str]:
     if glossary_path is None:
         return {}
     if not glossary_path.exists():
@@ -254,29 +282,43 @@ def _print_timings_table(timings: dict, report_path) -> None:
         concurrent_names.update(group)
 
     timings_table = Table(title="Tiempo por etapa del pipeline")
+    timings_table.add_column("#", justify="right")
     timings_table.add_column("Etapa")
     timings_table.add_column("Duracion", justify="right")
     timings_table.add_column("% del total", justify="right")
     timings_table.add_column("Notas")
 
+    # Llaves del esquema del reporte que no se repiten como "notas".
+    standard_keys = {
+        "order",
+        "name",
+        "seconds",
+        "percent_of_total",
+        "status",
+        "started_at",
+        "ended_at",
+        "ran_concurrently",
+        "resumed",
+    }
+
     for stage in timings["stages"]:
         notes = []
-        if stage["name"] in concurrent_names:
+        if stage.get("status") == "resumed":
+            notes.append("reanudada: tiempo real de corrida anterior")
+        elif stage["name"] in concurrent_names:
             notes.append("corrio en paralelo")
-        extra_keys = [
-            k
-            for k in stage
-            if k not in ("name", "seconds", "percent_of_total") and k != "ran_concurrently"
-        ]
+        extra_keys = [k for k in stage if k not in standard_keys]
         for k in extra_keys:
             notes.append(f"{k}={stage[k]}")
         timings_table.add_row(
+            str(stage.get("order", "")),
             stage["name"],
             _format_seconds(stage["seconds"]),
             f"{stage['percent_of_total']:.1f}%",
             ", ".join(notes) if notes else "",
         )
     console.print(timings_table)
+    console.print(f"[dim]Reporte completo: {report_path}[/dim]")
 
     if concurrent_groups:
         console.print(
