@@ -724,6 +724,15 @@ class TranslateVideoUseCase:
         reference_by_speaker: dict[str, Path] = {
             p.speaker_id: p.reference_wav for p in speaker_profiles if p.reference_wav is not None
         }
+        # Ultimo recurso cuando un grupo no matcheo ningun turno de
+        # diarizacion (speaker_id=None -- pasa cerca de bordes/huecos entre
+        # turnos, sobre todo en videos largos) y tampoco hay --speaker-wav
+        # explicito: si SOLO hay un hablante detectado en todo el video, casi
+        # seguro que el segmento huerfano es suyo tambien. Sin esto, un solo
+        # segmento sin turno asignado tira todo el doblaje.
+        only_speaker_reference = (
+            next(iter(reference_by_speaker.values())) if len(reference_by_speaker) == 1 else None
+        )
 
         groups = self._group_translated_segments(translated_segments)
         log.info(
@@ -736,9 +745,15 @@ class TranslateVideoUseCase:
         jobs: list[SynthesisJob] = []
         for i, group in enumerate(groups):
             job_path = segment_dir / f"group_{i:06d}.wav"
-            speaker_wav = (
-                reference_by_speaker.get(group.speaker_id) if group.speaker_id else None
-            ) or request.speaker_reference_wav
+            own_reference = reference_by_speaker.get(group.speaker_id) if group.speaker_id else None
+            speaker_wav = own_reference or request.speaker_reference_wav or only_speaker_reference
+            if own_reference is None and speaker_wav is not None:
+                log.warning(
+                    "pipeline.synthesis_group_unmatched_speaker",
+                    speaker_id=group.speaker_id,
+                    group_index=i,
+                    fallback_used=str(speaker_wav),
+                )
 
             next_start = groups[i + 1].start if i + 1 < len(groups) else duration
             max_duration = max(0.05, next_start - group.start)

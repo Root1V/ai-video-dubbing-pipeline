@@ -507,6 +507,67 @@ def test_dubbed_mode_uses_per_speaker_reference_wav(tmp_path: Path, video_file: 
     assert wav_speaker_0 != wav_speaker_1  # cada hablante usa su propia referencia
 
 
+def test_orphaned_segment_falls_back_to_the_only_known_speaker(tmp_path: Path, video_file: Path):
+    """Regresion: un segmento transcrito que no solapa con NINGUN turno de
+    diarizacion (comun cerca de bordes/huecos en videos largos) queda con
+    speaker_id=None. Sin fallback, esto tiraba TODO el doblaje con
+    'IndexTTS-2.5 requiere una muestra de voz de referencia' pese a que el
+    video tiene un unico hablante conocido -- casi seguro el dueno del
+    segmento huerfano tambien."""
+
+    class SingleSpeakerDiarizer:
+        def diarize(self, audio_path, min_speakers=None, max_speakers=None):
+            from video_translator.domain.models import DiarizationSegment
+
+            return [
+                # Solo cubre el primer segmento de FakeTranscriber (0-2s);
+                # el segundo (2-5s) queda sin ningun turno que lo cubra.
+                DiarizationSegment(start=0.0, end=2.0, speaker_label="SPEAKER_00"),
+                DiarizationSegment(start=10.0, end=20.0, speaker_label="SPEAKER_00"),
+            ]
+
+    class RecordingSynthesizer:
+        def __init__(self):
+            self.calls: list[tuple[str, Path | None]] = []
+
+        def synthesize_segment(self, text, output_path, target_duration_seconds, speaker_reference_wav=None, language="es"):
+            self.calls.append((text, speaker_reference_wav))
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"wav")
+            return output_path
+
+        def concatenate_segments(self, segment_audio_paths, total_duration, output_path):
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"wav")
+            return output_path
+
+    synthesizer = RecordingSynthesizer()
+    use_case = TranslateVideoUseCase(
+        media_processor=FakeMediaProcessor(),
+        transcriber=FakeTranscriber(),
+        translator=FakeTranslator(),
+        subtitle_writer=FakeSubtitleWriter(),
+        speech_synthesizer=synthesizer,
+        speaker_diarizer=SingleSpeakerDiarizer(),
+        gender_classifier=FakeGenderClassifier(),
+    )
+    request = TranslateVideoRequest(
+        input_video=video_file,
+        output_dir=tmp_path / "out",
+        context=TranslationContext(),
+        output_mode=OutputMode.DUBBED,
+        diarize=True,
+    )
+
+    result = use_case.execute(request)  # no debe lanzar VideoTranslatorError
+
+    assert len(synthesizer.calls) == 2
+    wavs = [wav for _, wav in synthesizer.calls]
+    assert all(w is not None for w in wavs)
+    assert wavs[0] == wavs[1]  # ambos jobs usaron la unica voz conocida
+    assert result.output_video is not None
+
+
 def test_dubbed_mode_caps_each_segment_to_gap_until_next_start(tmp_path: Path, video_file: Path):
     """El limite de duracion pasado al mezclador debe ser el hueco real hasta
     el siguiente segmento (no la duracion original del segmento), para que el
