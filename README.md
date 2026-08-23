@@ -154,17 +154,38 @@ the officially supported single-process use case.
 **Quick tuning knobs**, no `.env` editing required:
 ```bash
 video-translator translate -i video.mp4 --mode dubbed --diarize \
-  --tts-workers 12 --group-segments -v
+  --tts-workers 8 --group-segments -v
 ```
 The auto-detected worker count (`TTS_PARALLEL_WORKERS=0`) now goes up to one
-worker per core (capped at 12), not "half the cores capped at 6" like
-before — measured on an M4 Max with a real clip, going from 6 to 10 to 14
-workers kept improving synthesis time (367s → 342s → 327s) even though each
-worker got proportionally fewer CPU threads (see the per-worker thread cap
-in point 5 above). Process-level parallelism mattered more than per-process
-thread count for this workload. On a video with many more segments and RAM
-to spare, pushing `--tts-workers` past the auto-detected cap can still help
-further — we saw no regression up to one worker per segment in testing.
+worker per core, capped at 8 (not "half the cores capped at 6" like before).
+That cap was tuned on realistic-length videos, not just short clips: on a
+14-job 3-minute clip more workers kept helping all the way up to one worker
+per job, but on 10/30/60-minute videos (44-269 jobs) **8 was the actual
+sweet spot** — 4 workers measured ~17.7s/job, 8 measured 14.3-17.3s/job (the
+best of the three), and 12 measured ~18.3s/job, worse than 8. Past a certain
+point, each worker getting fewer CPU threads costs more than the extra
+process-level parallelism buys back. If you process very short clips
+routinely, `--tts-workers` above the cap can still help there specifically.
+
+**GPT-level batching** (new, on by default): IndexTTS-2.5's autoregressive
+GPT step is the single most expensive part of synthesis, and the model
+architecturally supports generating several texts in one forward pass (same
+speaker, padded/masked per item) — the stock `infer()` API just never uses
+that. `IndexTTS2Synthesizer.synthesize_batch` now groups queued segments by
+speaker and batches up to `INDEX_TTS2_GPT_BATCH_SIZE` (default 4) of them
+into a single GPT call per worker, instead of one call per segment; the
+rest of the pipeline (semantic codec, s2mel, bigvgan) still runs per item,
+unchanged, on the exact same code path as before — only the GPT step is
+batched, to keep the higher-risk part of the change as small as possible.
+`ParallelTTSPool` was updated to hand each worker a *chunk* of jobs instead
+of one job per future, so this batching actually gets exercised. Caught (and
+fixed, with regression tests) two real correctness bugs while building
+this — see the git history on `index_tts2_synthesizer.py` if you're
+modifying this code: one had every batch item silently decoding the first
+item's audio content instead of its own, and one crashed on a degenerate
+"stops immediately" generation. Both are now covered by unit tests against
+a pure `_split_batched_codes` helper, and were verified end-to-end with an
+ASR round-trip confirming each output matches its own intended text.
 
 We also tried enabling `torch.compile` on the model's non-autoregressive
 s2mel sub-module (`INDEX_TTS2_USE_TORCH_COMPILE=true` — wired through but
@@ -174,7 +195,12 @@ couple of segments before exiting, so the one-time compilation cost per
 process never gets amortized — net effect on a real run was a wash (within
 run-to-run noise). It only makes sense with a very different architecture
 (long-lived worker processes handling many segments each), which is a
-bigger change than flipping this flag.
+bigger change than flipping this flag. Separately, we found (and rejected)
+that lowering IndexTTS-2.5's internal `num_beams` from 3 to 1 does **not**
+speed anything up on CPU — HuggingFace's `generate()` runs beams as a batch
+dimension in one forward pass, and with CPU headroom to spare the marginal
+cost of 3 beams over 1 is close to free — so there's no reason to risk the
+quality trade-off of fewer beams for zero speed gain.
 
 ### macOS: transcription and diarization on the GPU
 
@@ -216,10 +242,37 @@ parts of the model (`s2mel`/`bigvgan`, which *did* speed up substantially).
 Keep TTS on CPU with multiple workers; only try MPS there if you have a
 different TTS backend/model where this trade-off might not hold.
 
-End to end, on the same clip, this took the total pipeline time from ~530s
-down to ~416s (`realtime_factor` 2.31) — with TTS now representing ~88% of
-the remaining time, by far the biggest lever left if you want to go faster
-still.
+End to end, on the same 3-minute clip, this took the total pipeline time from
+~530s down to ~416s (`realtime_factor` 2.31) — with TTS now representing
+~88% of the remaining time, by far the biggest lever left if you want to go
+faster still.
+
+### Validated at scale: 3 to 60 minutes
+
+All of the above was re-verified end to end (not just unit-tested) on real
+lecture recordings at 3, 10, 30, and 60 minutes (M4 Max, 8 TTS workers, GPT
+batching on, `WHISPER_BACKEND=mlx`, `DIARIZATION_DEVICE=mps`):
+
+| Video length | Total processing time | `realtime_factor` |
+|---|---|---|
+| 3 min | ~5-7 min | ~2.3x |
+| 10 min | ~15 min | 1.52x |
+| 30 min | ~45 min | 1.51x |
+| 60 min | ~89 min | 1.48x |
+
+The `realtime_factor` holding steady (and trending slightly down) from 10 to
+60 minutes is the important part: fixed per-run overhead (model loading,
+etc.) is a shrinking fraction of the total as the video gets longer, so the
+pipeline scales predictably rather than degrading on long inputs. TTS
+remains ~43-45% of total time at every length past the first few minutes —
+it's still the biggest lever, but batching plus the right worker count get a
+1-hour lecture done in under 1.5 hours end to end, dubbed audio included.
+This also exercised real multi-speaker content (two speakers detected in
+both the 30- and 60-minute clips, one of them too brief to get a clean voice
+reference of their own): a segment with no matching diarization turn, or
+belonging to a speaker with no usable reference clip, now falls back to the
+one speaker that *does* have a reference instead of aborting the whole
+dubbed render.
 
 ## Observability: where did the time go?
 
