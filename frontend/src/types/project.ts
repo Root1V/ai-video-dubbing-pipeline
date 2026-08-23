@@ -56,16 +56,27 @@ export interface ProjectStage {
   [key: string]: unknown
 }
 
+/** Matches `PipelineTimings.as_dict()["current_stage"]` — present only while a
+ * stage is in flight, absent (null) when idle/completed. It is an object
+ * (`{name, started_at}`), not a bare stage name string. */
+export interface CurrentStage {
+  name: string
+  started_at?: string
+  [key: string]: unknown
+}
+
 export interface ProjectStatusResponse {
   db_status: ProjectStatus
   run_id: string | null
-  completed: boolean
-  current_stage: string | null
+  completed: boolean | null
+  current_stage: CurrentStage | null
   stages: ProjectStage[] | Record<string, unknown> | null
   total_seconds: number | null
   realtime_factor: number | null
   warnings: string[] | null
 }
+
+export type DownloadArtifact = 'video' | 'srt_source' | 'srt_target'
 
 export interface GlossaryEntry {
   term: string

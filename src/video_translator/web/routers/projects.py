@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path as FsPath
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,14 @@ from video_translator.web.deps import get_current_user, get_db_session
 from video_translator.web.schemas.projects import ProjectListOut, ProjectOut, ProjectStatusOut
 from video_translator.web.services import storage
 from video_translator.web.services.status_reader import read_project_status
-from video_translator.web.tasks.run_project import run_stub_project
+from video_translator.web.tasks.run_project import run_dubbing_project
+
+# Nombres de archivo fijos que escribe el pipeline en `output_dir`, ver
+# `application/use_cases/translate_video.py` (subtitulos siempre "es"/"en"
+# sin importar el par de idiomas configurado; el video de salida no tiene
+# nombre fijo -- se deriva del nombre del input -- por eso se busca por glob).
+_SRT_SOURCE_FILENAME = "subtitles.en.srt"
+_SRT_TARGET_FILENAME = "subtitles.es.srt"
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -95,7 +103,7 @@ def create_project(
     project.input_video_path = str(saved_path)
     db.commit()
 
-    task = run_stub_project.delay(str(project.id))
+    task = run_dubbing_project.delay(str(project.id))
     project.celery_task_id = task.id
     db.commit()
     db.refresh(project)
@@ -176,3 +184,54 @@ def delete_project(
 
     db.delete(project)
     db.commit()
+
+
+@router.post("/{project_id}/resume", response_model=ProjectOut)
+def resume_project(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> Project:
+    project = _get_owned_project(project_id, current_user, db)
+    if project.status != ProjectStatus.FAILED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Solo se puede reintentar un proyecto en estado 'failed'.",
+        )
+
+    project.status = ProjectStatus.QUEUED
+    project.error_message = None
+    db.commit()
+
+    task = run_dubbing_project.delay(str(project.id), resume=True)
+    project.celery_task_id = task.id
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+@router.get("/{project_id}/download/{artifact}")
+def download_project_artifact(
+    project_id: uuid.UUID,
+    artifact: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> FileResponse:
+    project = _get_owned_project(project_id, current_user, db)
+    output_dir = FsPath(project.output_dir)
+
+    if artifact == "srt_source":
+        file_path = output_dir / _SRT_SOURCE_FILENAME
+    elif artifact == "srt_target":
+        file_path = output_dir / _SRT_TARGET_FILENAME
+    elif artifact == "video":
+        matches = sorted(output_dir.glob("*.mp4")) if output_dir.is_dir() else []
+        if not matches:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video no disponible todavia.")
+        file_path = matches[0]
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Artefacto desconocido: {artifact}")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no disponible todavia.")
+    return FileResponse(path=file_path, filename=file_path.name)

@@ -3,6 +3,7 @@ y aislamiento por usuario (ownership)."""
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,9 +11,10 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from video_translator.web.db.models import User
-from video_translator.web.tasks.run_project import run_stub_project
+from video_translator.web.db.models import Project, ProjectStatus, User
+from video_translator.web.tasks.run_project import run_dubbing_project
 
 
 @dataclass
@@ -22,7 +24,10 @@ class _FakeAsyncResult:
 
 @pytest.fixture(autouse=True)
 def _stub_celery_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(run_stub_project, "delay", lambda *args, **kwargs: _FakeAsyncResult())
+    # Los tests de este router no deben depender de un broker Redis real: se
+    # reemplaza el despacho de la tarea (no la tarea en si, que se prueba
+    # aparte en test_run_project.py) por un doble que solo devuelve un id.
+    monkeypatch.setattr(run_dubbing_project, "delay", lambda *args, **kwargs: _FakeAsyncResult())
 
 
 def _auth_headers(client: TestClient, email: str, password: str) -> dict[str, str]:
@@ -163,3 +168,76 @@ def test_delete_project(client: TestClient, make_user: Callable[..., User]) -> N
 
     # No debe quedar el directorio de subida vacio huerfano en disco.
     assert not upload_dir.exists()
+
+
+def test_resume_requires_failed_status(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(client, headers).json()
+
+    # Recien creado esta "queued", no "failed": reintentar debe rechazarse.
+    resp = client.post(f"/api/projects/{created['id']}/resume", headers=headers)
+    assert resp.status_code == 409
+
+
+def test_resume_failed_project_reenqueues(
+    client: TestClient, make_user: Callable[..., User], db_session: Session
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(client, headers).json()
+
+    project = db_session.get(Project, uuid.UUID(created["id"]))
+    assert project is not None
+    project.status = ProjectStatus.FAILED
+    project.error_message = "algo salio mal"
+    db_session.commit()
+
+    resp = client.post(f"/api/projects/{created['id']}/resume", headers=headers)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "queued"
+    assert body["error_message"] is None
+    assert body["celery_task_id"] == "fake-task-id"
+
+
+def test_download_artifact_not_ready_returns_404(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(client, headers).json()
+
+    resp = client.get(f"/api/projects/{created['id']}/download/video", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_download_artifact_unknown_kind_returns_400(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(client, headers).json()
+
+    resp = client.get(f"/api/projects/{created['id']}/download/nonsense", headers=headers)
+    assert resp.status_code == 400
+
+
+def test_download_artifact_serves_existing_file(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(client, headers).json()
+
+    output_dir = Path(created["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "subtitles.es.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nHola\n")
+
+    resp = client.get(f"/api/projects/{created['id']}/download/srt_target", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.content == b"1\n00:00:00,000 --> 00:00:01,000\nHola\n"

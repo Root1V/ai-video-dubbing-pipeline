@@ -1,8 +1,15 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, Trash2 } from 'lucide-react'
-import { deleteProject, fetchProject, fetchProjectStatus } from '../api/projects'
-import type { ProjectStage, ProjectStatus } from '../types/project'
+import { ArrowLeft, Download, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import {
+  deleteProject,
+  downloadProjectArtifact,
+  fetchProject,
+  fetchProjectStatus,
+  resumeProject,
+} from '../api/projects'
+import type { DownloadArtifact, ProjectStage, ProjectStatus } from '../types/project'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -58,6 +65,28 @@ export function ProjectDetailPage() {
     },
   })
 
+  const resumeMutation = useMutation({
+    mutationFn: () => resumeProject(id as string),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', id] })
+    },
+  })
+
+  const [downloading, setDownloading] = useState<DownloadArtifact | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  async function handleDownload(artifact: DownloadArtifact) {
+    setDownloading(artifact)
+    setDownloadError(null)
+    try {
+      await downloadProjectArtifact(id as string, artifact)
+    } catch {
+      setDownloadError('No se pudo descargar el archivo. Intenta de nuevo.')
+    } finally {
+      setDownloading(null)
+    }
+  }
+
   function handleDelete() {
     if (window.confirm('¿Seguro que quieres eliminar este proyecto? Esta acción no se puede deshacer.')) {
       deleteMutation.mutate()
@@ -107,15 +136,28 @@ export function ProjectDetailPage() {
             </Badge>
           </div>
         </div>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={handleDelete}
-          disabled={deleteMutation.isPending}
-        >
-          <Trash2 className="h-4 w-4" />
-          Eliminar
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {dbStatus === 'failed' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => resumeMutation.mutate()}
+              disabled={resumeMutation.isPending}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reintentar
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+          >
+            <Trash2 className="h-4 w-4" />
+            Eliminar
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -132,7 +174,7 @@ export function ProjectDetailPage() {
                 >
                   <span
                     className={
-                      stage.name === status?.current_stage
+                      stage.name === status?.current_stage?.name
                         ? 'font-medium text-primary'
                         : ''
                     }
@@ -152,6 +194,48 @@ export function ProjectDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {dbStatus === 'completed' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Descargas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {project.output_mode !== 'subtitles_only' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload('video')}
+                  disabled={downloading === 'video'}
+                >
+                  <Download className="h-4 w-4" />
+                  Video
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDownload('srt_source')}
+                disabled={downloading === 'srt_source'}
+              >
+                <Download className="h-4 w-4" />
+                Subtítulos (original)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDownload('srt_target')}
+                disabled={downloading === 'srt_target'}
+              >
+                <Download className="h-4 w-4" />
+                Subtítulos (traducidos)
+              </Button>
+            </div>
+            {downloadError && <p className="mt-2 text-sm text-destructive">{downloadError}</p>}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
