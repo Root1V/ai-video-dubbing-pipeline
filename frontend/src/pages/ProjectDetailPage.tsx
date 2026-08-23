@@ -46,7 +46,11 @@ export function ProjectDetailPage() {
     enabled: Boolean(id),
     refetchInterval: (query) => {
       const dbStatus = query.state.data?.db_status
-      return dbStatus && isActiveStatus(dbStatus) ? 3000 : false
+      // 1.5s (not 3s): short stages (a few seconds) can otherwise finish
+      // entirely between two polls and never get sampled while active --
+      // StageTimeline also holds a brief "in progress" reveal on top of
+      // this so even a stage this still misses gets visual feedback.
+      return dbStatus && isActiveStatus(dbStatus) ? 1500 : false
     },
   })
 

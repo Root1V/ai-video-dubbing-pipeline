@@ -1,7 +1,16 @@
+import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { getStageLabel } from '../../lib/labels'
 import type { ProjectStage, ProjectStatus } from '../../types/project'
+
+/** How long a stage stays visually "in progress" after we first notice it's
+ * done, so short stages (a few seconds or less) still get a moment of
+ * spinner feedback instead of jumping straight from pending to a checkmark
+ * -- with a 3s poll interval, a short stage can easily finish between two
+ * polls and never get sampled while actually active. Purely cosmetic: it
+ * doesn't delay real data, just how long the checkmark takes to appear. */
+const REVEAL_DELAY_MS = 700
 
 interface StageTimelineProps {
   /** Full predicted stage plan for this project (see getExpectedStageNames),
@@ -36,6 +45,7 @@ function buildSteps(
   realStages: ProjectStage[],
   currentStageName: string | null | undefined,
   dbStatus: ProjectStatus,
+  revealDelayKeys: Set<string>,
 ): Step[] {
   const realByName = new Map(realStages.map((stage) => [stage.name, stage]))
 
@@ -43,7 +53,10 @@ function buildSteps(
     const real = realByName.get(name)
     const seconds = typeof real?.seconds === 'number' ? real.seconds : undefined
     if (real) {
-      return { key: name, label: getStageLabel(name), state: 'done', seconds }
+      // Held as "active" for a moment even though the backend already
+      // reports it done -- see REVEAL_DELAY_MS.
+      const state: StepState = revealDelayKeys.has(name) ? 'active' : 'done'
+      return { key: name, label: getStageLabel(name), state, seconds }
     }
     if (name === currentStageName) {
       return { key: name, label: getStageLabel(name), state: 'active' }
@@ -59,7 +72,7 @@ function buildSteps(
       steps.push({
         key: real.name,
         label: getStageLabel(real.name),
-        state: 'done',
+        state: revealDelayKeys.has(real.name) ? 'active' : 'done',
         seconds: typeof real.seconds === 'number' ? real.seconds : undefined,
       })
     }
@@ -112,7 +125,39 @@ export function StageTimeline({
   currentStageName,
   dbStatus,
 }: StageTimelineProps) {
-  const steps = buildSteps(expectedStageNames, stages, currentStageName, dbStatus)
+  const [revealDelayKeys, setRevealDelayKeys] = useState<Set<string>>(new Set())
+  const seenDoneKeys = useRef<Set<string>>(new Set())
+  const isFirstRun = useRef(true)
+
+  useEffect(() => {
+    const doneKeys = stages.map((stage) => stage.name)
+    const newlyDone = doneKeys.filter((key) => !seenDoneKeys.current.has(key))
+    doneKeys.forEach((key) => seenDoneKeys.current.add(key))
+
+    // Never fake the "in progress" reveal for stages that were already done
+    // the moment this component first mounted (e.g. opening an already-
+    // completed or already-failed project) -- only for ones that finish
+    // while the user is actually watching.
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+      return
+    }
+    if (newlyDone.length === 0) return
+
+    setRevealDelayKeys((prev) => new Set([...prev, ...newlyDone]))
+    const timers = newlyDone.map((key) =>
+      setTimeout(() => {
+        setRevealDelayKeys((prev) => {
+          const next = new Set(prev)
+          next.delete(key)
+          return next
+        })
+      }, REVEAL_DELAY_MS),
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [stages])
+
+  const steps = buildSteps(expectedStageNames, stages, currentStageName, dbStatus, revealDelayKeys)
 
   return (
     <ol className="flex flex-col">
