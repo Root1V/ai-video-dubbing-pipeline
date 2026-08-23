@@ -41,6 +41,31 @@ function formatDuration(seconds: number | undefined): string | null {
   return `${minutes}m ${rest}s`
 }
 
+/** `rendering_dubbed`'s own timer in translate_video.py wraps the whole
+ * dubbed-rendering block, which internally times tts_synthesis and
+ * audio_mixing_and_muxing AGAIN as their own stage entries -- so its
+ * reported `seconds` includes theirs, not just the final mux step (a 2min
+ * clip's "rendering_dubbed: 4m" is really ~4s of actual muxing plus the
+ * ~4min TTS/mixing already shown as separate steps). Subtract the nested
+ * children's time to show this step's own real, non-overlapping duration. */
+const NESTED_STAGE_CHILDREN: Record<string, string[]> = {
+  rendering_dubbed: ['tts_synthesis', 'audio_mixing_and_muxing'],
+}
+
+function resolveOwnSeconds(
+  stage: ProjectStage,
+  realByName: Map<string, ProjectStage>,
+): number | undefined {
+  if (typeof stage.seconds !== 'number') return undefined
+  const children = NESTED_STAGE_CHILDREN[stage.name]
+  if (!children) return stage.seconds
+  const childrenTotal = children.reduce((sum, childName) => {
+    const child = realByName.get(childName)
+    return sum + (typeof child?.seconds === 'number' ? child.seconds : 0)
+  }, 0)
+  return Math.max(0, stage.seconds - childrenTotal)
+}
+
 function buildSteps(
   expectedStageNames: string[],
   realStages: ProjectStage[],
@@ -52,12 +77,17 @@ function buildSteps(
 
   const steps: Step[] = expectedStageNames.map((name) => {
     const real = realByName.get(name)
-    const seconds = typeof real?.seconds === 'number' ? real.seconds : undefined
     if (real) {
       // Held as "active" for a moment even though the backend already
       // reports it done -- see REVEAL_DELAY_MS.
       const state: StepState = revealDelayKeys.has(name) ? 'active' : 'done'
-      return { key: name, label: getStageLabel(name), state, seconds, subtitle: getStageSubtitle(real) }
+      return {
+        key: name,
+        label: getStageLabel(name),
+        state,
+        seconds: resolveOwnSeconds(real, realByName),
+        subtitle: getStageSubtitle(real),
+      }
     }
     if (name === currentStageName) {
       return { key: name, label: getStageLabel(name), state: 'active' }
@@ -74,7 +104,7 @@ function buildSteps(
         key: real.name,
         label: getStageLabel(real.name),
         state: revealDelayKeys.has(real.name) ? 'active' : 'done',
-        seconds: typeof real.seconds === 'number' ? real.seconds : undefined,
+        seconds: resolveOwnSeconds(real, realByName),
         subtitle: getStageSubtitle(real),
       })
     }
@@ -185,7 +215,9 @@ export function StageTimeline({
             </span>
             <div className="flex flex-1 items-start justify-between gap-3 pt-1">
               <div className="flex flex-col">
-                <span className={cn('text-sm', LABEL_STATE[step.state])}>{step.label}</span>
+                <span className={cn('text-sm', LABEL_STATE[step.state])}>
+                  {index + 1}. {step.label}
+                </span>
                 {step.subtitle && (
                   <span className="mt-0.5 text-xs text-muted-foreground/80">{step.subtitle}</span>
                 )}

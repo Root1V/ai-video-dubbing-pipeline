@@ -49,10 +49,52 @@ function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural
 }
 
+const GENDER_LABELS: Record<string, string> = {
+  male: 'hombre',
+  female: 'mujer',
+}
+
+interface RawSpeaker {
+  gender?: unknown
+  reference?: unknown
+  [key: string]: unknown
+}
+
+/** Summarizes the `speakers` array `speaker_profile_building` reports (see
+ * `SpeakerProfile` in domain/models.py): how many of each estimated gender,
+ * and how many didn't get a usable voice-reference clip -- both are
+ * decision-relevant for a dubbing job (e.g. "why did speaker 2 keep the
+ * fallback voice?"), not just a headcount. */
+function summarizeSpeakers(speakers: RawSpeaker[]): string[] {
+  const parts: string[] = []
+  const genderCounts = new Map<string, number>()
+  let missingReference = 0
+
+  for (const speaker of speakers) {
+    const gender = typeof speaker.gender === 'string' ? speaker.gender : 'unknown'
+    genderCounts.set(gender, (genderCounts.get(gender) ?? 0) + 1)
+    if (speaker.reference === false) missingReference += 1
+  }
+
+  const genderSummary = [...genderCounts.entries()]
+    .filter(([gender]) => GENDER_LABELS[gender])
+    .map(([gender, count]) => `${count} ${pluralize(count, GENDER_LABELS[gender], `${GENDER_LABELS[gender]}s`)}`)
+  if (genderSummary.length > 0) parts.push(genderSummary.join(', '))
+
+  const undetermined = genderCounts.get('unknown') ?? 0
+  if (undetermined > 0) parts.push(`${undetermined} género no determinado`)
+  if (missingReference > 0) {
+    parts.push(`${missingReference} sin muestra de voz`)
+  }
+  return parts
+}
+
 /** Picks the most useful metrics out of a stage's raw metadata (see
  * `pipeline_timings.json`'s `stages[]` entries) and formats them as a short,
  * human-readable summary -- e.g. "38 segmentos · 2 lotes" for translation.
- * Returns null when a stage has nothing notable beyond its duration. */
+ * Returns null for stages that genuinely carry nothing beyond timing
+ * bookkeeping (audio_extraction, subtitles_writing, audio_mixing_and_muxing,
+ * rendering_*) -- that's expected, not a missing case. */
 export function getStageSubtitle(stage: ProjectStage): string | null {
   const parts: string[] = []
   const num = (key: string): number | null => {
@@ -74,8 +116,13 @@ export function getStageSubtitle(stage: ProjectStage): string | null {
       break
     }
     case 'speaker_profile_building': {
-      const speakers = num('num_speakers')
-      if (speakers !== null) parts.push(`${speakers} ${pluralize(speakers, 'perfil', 'perfiles')}`)
+      const speakers = stage.speakers
+      if (Array.isArray(speakers) && speakers.length > 0) {
+        parts.push(...summarizeSpeakers(speakers as RawSpeaker[]))
+      } else {
+        const count = num('num_speakers')
+        if (count !== null) parts.push(`${count} ${pluralize(count, 'perfil', 'perfiles')}`)
+      }
       break
     }
     case 'translation': {
@@ -86,14 +133,23 @@ export function getStageSubtitle(stage: ProjectStage): string | null {
       break
     }
     case 'tts_synthesis': {
+      const inputSegments = num('num_segments_input')
       const groups = num('num_groups')
       const jobs = num('num_jobs')
       const reduction = num('grouping_reduction_pct')
-      if (groups !== null) parts.push(`${groups} ${pluralize(groups, 'grupo', 'grupos')}`)
-      else if (jobs !== null) parts.push(`${jobs} ${pluralize(jobs, 'trabajo', 'trabajos')}`)
+      if (inputSegments !== null && groups !== null) {
+        parts.push(`${inputSegments} → ${groups} ${pluralize(groups, 'grupo', 'grupos')}`)
+      } else if (groups !== null) {
+        parts.push(`${groups} ${pluralize(groups, 'grupo', 'grupos')}`)
+      } else if (jobs !== null) {
+        parts.push(`${jobs} ${pluralize(jobs, 'trabajo', 'trabajos')}`)
+      }
       if (reduction !== null) parts.push(`${reduction.toFixed(1)}% menos llamadas`)
       break
     }
+    // audio_extraction, subtitles_writing, audio_mixing_and_muxing, and the
+    // rendering_* stages carry no metrics beyond timing in practice -- no
+    // subtitle for those is correct, not an oversight.
     default:
       break
   }
