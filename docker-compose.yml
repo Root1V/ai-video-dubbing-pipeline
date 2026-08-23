@@ -1,26 +1,26 @@
 services:
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
+  # No LLM server is bundled here on purpose: translation just needs *any*
+  # OpenAI-compatible chat-completions endpoint (llama-server, vLLM, your own
+  # inference platform, etc.) reachable at LLAMA_SERVER_HOST -- see "Using
+  # `llama-server` instead of Ollama" in the README. If you'd rather run
+  # Ollama locally instead, add it back as a service here and switch
+  # TRANSLATION_BACKEND to "ollama" / OLLAMA_HOST below.
   video-translator:
     build: .
-    depends_on:
-      - ollama
     environment:
-      - OLLAMA_HOST=http://ollama:11434
+      # Point this at any OpenAI-compatible server reachable from the
+      # container -- "host.docker.internal" (below, via extra_hosts) reaches
+      # a server running on the host machine; use a real hostname/IP instead
+      # for a remote one.
+      - TRANSLATION_BACKEND=llama_server
+      - LLAMA_SERVER_HOST=${LLAMA_SERVER_HOST:-http://host.docker.internal:8080}
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE_TYPE=float16
+    extra_hosts:
+      # Makes "host.docker.internal" resolve on Linux too (Docker Desktop on
+      # Mac/Windows already supports it natively) -- only matters if your
+      # LLM server runs on the host itself rather than a remote address.
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/data
       - ./output:/app/output
@@ -56,6 +56,5 @@ services:
       - "6379:6379"
 
 volumes:
-  ollama_data:
   postgres_data:
   redis_data:

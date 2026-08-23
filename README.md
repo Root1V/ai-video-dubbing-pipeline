@@ -325,14 +325,30 @@ to manually export anything each session.
 
 ### Docker (Linux / Windows with NVIDIA GPU)
 
+No LLM server is bundled in `docker-compose.yml` — translation only needs
+*any* OpenAI-compatible chat-completions endpoint reachable from the
+container (`llama-server`, vLLM, Ollama, or your own inference platform),
+configured via `TRANSLATION_BACKEND=llama_server` + `LLAMA_SERVER_HOST` (see
+[Using `llama-server`](#using-llama-server-llamacpp-instead-of-ollama) — the
+same generic OpenAI-compatible client works regardless of what's actually
+serving the model). If that server runs on the host machine itself, point it
+at `http://host.docker.internal:<port>` (already wired up via `extra_hosts`
+in the compose file, including on Linux); use a real hostname/IP for a
+remote one.
+
 ```bash
-docker compose up --build
+LLAMA_SERVER_HOST=http://host.docker.internal:8080 docker compose up --build
 ```
 
-This spins up Ollama and the app together. Put your video at
-`./data/video.mp4` and your context at `./data/context.txt`; output appears
-in `./output`. Requires Docker with NVIDIA support
-(nvidia-container-toolkit); **doesn't apply to macOS**.
+> **Heads up:** Docker Compose auto-loads a `.env` file in the project root
+> for variable substitution — if you also use a plain `.env` for the CLI
+> with `LLAMA_SERVER_HOST=http://localhost:...` in it, that value leaks into
+> the container as-is (where `localhost` means the *container*, not your
+> host) unless you override it on the command line as shown above.
+
+Put your video at `./data/video.mp4` and your context at
+`./data/context.txt`; output appears in `./output`. Requires Docker with
+NVIDIA support (nvidia-container-toolkit); **doesn't apply to macOS**.
 
 ## Usage
 
