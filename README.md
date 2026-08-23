@@ -1033,7 +1033,13 @@ uv run python scripts/create_admin.py --email admin@example.com --password "chan
 uv run uvicorn video_translator.web.main:app --reload --port 8000
 
 # 5. Celery worker (in another terminal — required, or projects stay "queued" forever)
-uv run celery -A video_translator.web.tasks.celery_app worker --loglevel=info
+# --pool=solo: Celery's default "prefork" pool forks a child process, and
+# GPU-backed libraries (MLX/Metal on macOS, CUDA has the same documented
+# issue) don't reliably survive that -- you'd otherwise hit errors like
+# "Unable to reach MTLCompilerService" the moment a real job tries to use
+# the GPU, even though the exact same .env works fine through the CLI
+# (which never forks). "solo" runs everything in the one process, no fork.
+uv run celery -A video_translator.web.tasks.celery_app worker --loglevel=info --pool=solo
 
 # 6. Frontend (in another terminal)
 cd frontend

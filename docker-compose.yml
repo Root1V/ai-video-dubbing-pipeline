@@ -78,13 +78,18 @@ services:
 
   # Worker Celery: MISMA imagen que "video-translator" (necesita
   # faster-whisper/IndexTTS/etc. para procesar de verdad), solo cambia el
-  # comando. --concurrency=1: cada corrida ya satura la maquina (ver
-  # container.py); para mas throughput, escala replicas del servicio, no la
-  # concurrencia interna.
+  # comando. --pool=solo: el pool "prefork" (default de Celery) crea el
+  # worker via fork(), y librerias que hablan con la GPU (MLX/Metal en
+  # macOS, y CUDA tiene el mismo problema documentado) no sobreviven bien a
+  # eso -- un fork puede dejar sin conexion al servicio de compilacion de
+  # GPU del sistema. "solo" corre todo en el proceso original, sin fork.
+  # Ya procesa un job a la vez de cualquier forma (cada corrida satura la
+  # maquina, ver container.py); para mas throughput, escala replicas del
+  # servicio, no la concurrencia interna.
   worker:
     build: .
     entrypoint: []
-    command: ["celery", "-A", "video_translator.web.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    command: ["celery", "-A", "video_translator.web.tasks.celery_app", "worker", "--loglevel=info", "--pool=solo"]
     depends_on:
       - postgres
       - redis
