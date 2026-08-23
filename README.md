@@ -247,32 +247,45 @@ End to end, on the same 3-minute clip, this took the total pipeline time from
 ~88% of the remaining time, by far the biggest lever left if you want to go
 faster still.
 
-### Validated at scale: 3 to 60 minutes
+### Validated at scale: 3 minutes to a full 72-minute lecture
 
 All of the above was re-verified end to end (not just unit-tested) on real
-lecture recordings at 3, 10, 30, and 60 minutes (M4 Max, 8 TTS workers, GPT
-batching on, `WHISPER_BACKEND=mlx`, `DIARIZATION_DEVICE=mps`):
+Stanford lecture recordings at 3, 10, 30, 60, and 72.5 minutes (the full
+source video, unclipped) — M4 Max, GPT batching on, `WHISPER_BACKEND=mlx`,
+`DIARIZATION_DEVICE=mps`:
 
-| Video length | Total processing time | `realtime_factor` |
-|---|---|---|
-| 3 min | ~5-7 min | ~2.3x |
-| 10 min | ~15 min | 1.52x |
-| 30 min | ~45 min | 1.51x |
-| 60 min | ~89 min | 1.48x |
+| Video length | TTS workers | Synthesis jobs | `s/job` (TTS) | Total processing time | `realtime_factor` |
+|---|---|---|---|---|---|
+| 3 min | 4 | 14 | — | ~5-7 min | ~2.3x |
+| 10 min | 4 | 44 | 17.7s | ~15 min | 1.52x |
+| 10 min | **8** | 75 | **14.3s** | ~14 min | — |
+| 10 min | 12 | 55 | 18.3s | ~20 min | 1.96x |
+| 30 min | 8 | 125 | 17.3s | ~45 min | 1.51x |
+| 60 min | 8 | 269 | 15.6s | ~89 min | 1.48x |
+| 72.5 min (full video) | 8 | 328 | — | — | (this config) |
+| 72.5 min (full video) | 10 | 328 | 17.1s | ~117 min | 1.61x |
 
-The `realtime_factor` holding steady (and trending slightly down) from 10 to
-60 minutes is the important part: fixed per-run overhead (model loading,
-etc.) is a shrinking fraction of the total as the video gets longer, so the
-pipeline scales predictably rather than degrading on long inputs. TTS
-remains ~43-45% of total time at every length past the first few minutes —
-it's still the biggest lever, but batching plus the right worker count get a
-1-hour lecture done in under 1.5 hours end to end, dubbed audio included.
-This also exercised real multi-speaker content (two speakers detected in
-both the 30- and 60-minute clips, one of them too brief to get a clean voice
-reference of their own): a segment with no matching diarization turn, or
-belonging to a speaker with no usable reference clip, now falls back to the
-one speaker that *does* have a reference instead of aborting the whole
-dubbed render.
+Two things stand out. First, `realtime_factor` holds steady around 1.5x from
+10 minutes onward — fixed per-run overhead (model loading, etc.) is a
+shrinking fraction of the total as the video gets longer, so the pipeline
+scales predictably rather than degrading on long inputs; a 1-hour lecture
+finishes in under 1.5 hours end to end, dubbed audio included. Second, more
+TTS workers is **not** always faster: at every video length we tested with
+more than one worker count, 8 workers beat both fewer (4) and more (10, 12)
+— going past 8 means each worker gets less than 2 CPU threads (16 cores ÷
+worker count) and ends up fighting the others for memory bandwidth (each
+worker holds its own ~4-6GB model copy) for no net gain. `TTS_PARALLEL_WORKERS`
+auto-detects to this validated value; only override it if you've profiled
+your own hardware and confirmed a different number wins.
+
+TTS remains ~43-45% of total time at every length past the first few
+minutes — it's still the biggest lever if you want to go faster still. This
+testing also exercised real multi-speaker content (two speakers in the
+30- and 60-minute clips, three in the full 72.5-minute lecture, several of
+them too brief to get a clean voice reference of their own): a segment with
+no matching diarization turn, or belonging to a speaker with no usable
+reference clip, now falls back to the one speaker that *does* have a
+reference instead of aborting the whole dubbed render.
 
 ## Observability: where did the time go?
 
