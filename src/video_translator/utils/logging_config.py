@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import IO
 
 import structlog
+from structlog.types import EventDict, Processor, WrappedLogger
 
 
 class _DualRenderer:
@@ -31,6 +32,8 @@ class _DualRenderer:
     def __init__(self, console_stream: IO[str], file_stream: IO[str] | None, json_logs: bool) -> None:
         self._console_stream = console_stream
         self._file_stream = file_stream
+        self._console_renderer: Processor
+        self._file_renderer: Processor
         if json_logs:
             self._console_renderer = structlog.processors.JSONRenderer()
             self._file_renderer = structlog.processors.JSONRenderer()
@@ -38,7 +41,7 @@ class _DualRenderer:
             self._console_renderer = structlog.dev.ConsoleRenderer(colors=True)
             self._file_renderer = structlog.dev.ConsoleRenderer(colors=False)
 
-    def __call__(self, logger, method_name, event_dict):
+    def __call__(self, logger: WrappedLogger, method_name: str, event_dict: EventDict) -> None:
         console_line = self._console_renderer(logger, method_name, dict(event_dict))
         self._console_stream.write(str(console_line) + "\n")
         self._console_stream.flush()
@@ -60,7 +63,11 @@ def configure_logging(level: str = "INFO", json_logs: bool = False, log_file: Pa
     file_handle: IO[str] | None = None
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handle = open(log_file, "w", encoding="utf-8")
+        # Deliberadamente sin "with": este handle debe seguir abierto durante
+        # TODA la corrida (se escribe una linea por cada evento de log), no
+        # solo dentro de esta funcion de configuracion. Lo cierra el SO al
+        # terminar el proceso.
+        file_handle = open(log_file, "w", encoding="utf-8")  # noqa: SIM115
 
     processors: list = [
         structlog.contextvars.merge_contextvars,

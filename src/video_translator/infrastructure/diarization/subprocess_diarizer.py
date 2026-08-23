@@ -141,6 +141,9 @@ class SubprocessDiarizer:
         proyecto. Si se exportara globalmente en la terminal, rompe el ffmpeg
         del proceso principal (ha pasado: error 'Symbol not found: _iconv').
         """
+        # diarize() ya valida que haya HF_TOKEN antes de llegar aqui (unico
+        # caller de este metodo).
+        assert self._hf_token is not None
         env = dict(os.environ)
         env["HF_TOKEN"] = self._hf_token
         env["HUGGING_FACE_HUB_TOKEN"] = self._hf_token

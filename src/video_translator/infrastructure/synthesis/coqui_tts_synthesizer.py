@@ -13,6 +13,7 @@ Requiere Python < 3.12 (ver pyproject.toml, extra "dubbing").
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from video_translator.domain.exceptions import SynthesisError
 from video_translator.infrastructure.synthesis.audio_mixing import (
@@ -20,6 +21,9 @@ from video_translator.infrastructure.synthesis.audio_mixing import (
     fit_to_duration,
 )
 from video_translator.utils.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from TTS.api import TTS
 
 logger = get_logger(__name__)
 
@@ -34,9 +38,9 @@ class CoquiTTSSynthesizer:
         self._model_name = model_name
         self._device = device
         self._ffmpeg = ffmpeg_binary
-        self._tts = None  # carga perezosa
+        self._tts: TTS | None = None  # carga perezosa
 
-    def _load(self):
+    def _load(self) -> TTS:
         if self._tts is None:
             try:
                 from TTS.api import TTS
@@ -66,7 +70,7 @@ class CoquiTTSSynthesizer:
                 speaker_wav=str(speaker_reference_wav) if speaker_reference_wav else None,
                 language=language,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise SynthesisError(f"Fallo sintetizando segmento: {exc}") from exc
 
         fit_to_duration(output_path, target_duration_seconds, ffmpeg_binary=self._ffmpeg)

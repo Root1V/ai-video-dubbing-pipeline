@@ -10,13 +10,17 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING
 
 from video_translator.domain.exceptions import TranscriptionError
 from video_translator.domain.models import TranscriptSegment
 from video_translator.utils.logging_config import get_logger
 from video_translator.utils.warning_collector import note_stat
+
+if TYPE_CHECKING:
+    from faster_whisper import WhisperModel
 
 logger = get_logger(__name__)
 
@@ -43,9 +47,9 @@ class FasterWhisperTranscriber:
         # CTranslate2 no siempre satura todos los nucleos de la maquina.
         self._cpu_threads = cpu_threads if cpu_threads > 0 else (os.cpu_count() or 4)
         self._num_workers = num_workers
-        self._model = None  # carga perezosa: evita cargar pesos si no se usa
+        self._model: WhisperModel | None = None  # carga perezosa: evita cargar pesos si no se usa
 
-    def _load_model(self):
+    def _load_model(self) -> WhisperModel:
         if self._model is None:
             try:
                 from faster_whisper import WhisperModel
@@ -87,7 +91,7 @@ class FasterWhisperTranscriber:
                 vad_parameters={"min_silence_duration_ms": 500},
                 condition_on_previous_text=True,
             )
-        except Exception as exc:  # noqa: BLE001 - reempaquetamos cualquier fallo del motor
+        except Exception as exc:
             raise TranscriptionError(f"Fallo transcribiendo '{audio_path}': {exc}") from exc
 
         logger.info(

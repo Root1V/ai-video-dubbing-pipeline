@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Callable
 
+from video_translator.application.interfaces import SpeechSynthesizer
 from video_translator.application.synthesis_job import SynthesisJob
 from video_translator.infrastructure.synthesis import audio_mixing
 from video_translator.utils.logging_config import get_logger
@@ -35,10 +36,10 @@ logger = get_logger(__name__)
 # Estado global POR PROCESO worker: cada proceso hijo tiene su propia copia
 # de este modulo con su propia variable _worker_synth, cargada una sola vez
 # por el initializer del pool.
-_worker_synth = None
+_worker_synth: SpeechSynthesizer | None = None
 
 
-def _init_worker(factory: Callable[[], object], threads_per_worker: int) -> None:
+def _init_worker(factory: Callable[[], SpeechSynthesizer], threads_per_worker: int) -> None:
     # Sin esto, cada proceso worker (PyTorch/BLAS) intenta usar TODOS los
     # nucleos de la maquina por defecto. Con N workers eso significa N
     # procesos compitiendo por los mismos nucleos fisicos (sobre-suscripcion
@@ -60,7 +61,6 @@ def _init_worker(factory: Callable[[], object], threads_per_worker: int) -> None
 
 
 def _worker_synthesize(job: SynthesisJob) -> Path:
-    global _worker_synth
     if _worker_synth is None:  # pragma: no cover - no deberia pasar nunca
         raise RuntimeError("Worker de sintesis sin modelo inicializado.")
     _worker_synth.synthesize_segment(
@@ -79,7 +79,6 @@ def _worker_synthesize_chunk(jobs: list[SynthesisJob]) -> None:
     con el pool completo), lo usa para aprovechar el batching interno del
     modelo (ver IndexTTS2Synthesizer.synthesize_batch); si no, cae al bucle
     de siempre, un job a la vez."""
-    global _worker_synth
     if _worker_synth is None:  # pragma: no cover - no deberia pasar nunca
         raise RuntimeError("Worker de sintesis sin modelo inicializado.")
     if hasattr(_worker_synth, "synthesize_batch"):
@@ -98,7 +97,7 @@ def _worker_synthesize_chunk(jobs: list[SynthesisJob]) -> None:
 class ParallelTTSPool:
     def __init__(
         self,
-        synthesizer_factory: Callable[[], object],
+        synthesizer_factory: Callable[[], SpeechSynthesizer],
         num_workers: int,
         ffmpeg_binary: str = "ffmpeg",
     ) -> None:

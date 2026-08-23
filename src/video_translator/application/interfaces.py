@@ -9,8 +9,9 @@ implementaciones concretas (faster-whisper, ffmpeg, ollama, etc.). Esto permite:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from video_translator.domain.models import (
     DiarizationSegment,
@@ -131,7 +132,7 @@ class BatchSpeechSynthesizer(Protocol):
     llamando a ``synthesize_segment`` una por una.
     """
 
-    def synthesize_batch(self, jobs: list["SynthesisJob"]) -> None:
+    def synthesize_batch(self, jobs: list[SynthesisJob]) -> None:
         """Ejecuta todas las tareas (en el orden que sea mas eficiente); no
         devuelve nada porque cada tarea ya sabe su propio ``output_path``."""
         ...

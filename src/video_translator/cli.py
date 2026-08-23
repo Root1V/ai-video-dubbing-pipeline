@@ -13,7 +13,12 @@ from rich.table import Table
 from video_translator.config import load_settings
 from video_translator.container import build_translate_video_use_case
 from video_translator.domain.exceptions import VideoTranslatorError
-from video_translator.domain.models import OutputMode, TranslateVideoRequest, TranslationContext
+from video_translator.domain.models import (
+    OutputMode,
+    TranslateVideoRequest,
+    TranslateVideoResult,
+    TranslationContext,
+)
 from video_translator.utils.logging_config import configure_logging, get_logger
 from video_translator.utils.timing import PipelineTimings
 
@@ -39,8 +44,9 @@ def _install_signal_handlers() -> None:
     """
     import os
     import signal
+    import types
 
-    def _handler(signum, frame):  # noqa: ARG001 - frame requerido por la API
+    def _handler(signum: int, frame: types.FrameType | None) -> None:
         timings = PipelineTimings.active()
         if timings is not None:
             timings.mark_interrupted(signal.Signals(signum).name)
@@ -116,7 +122,7 @@ def translate(
     settings = load_settings()
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_file = output_dir / "logs" / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
+    log_file = output_dir / "logs" / f"run_{datetime.now().astimezone():%Y%m%d_%H%M%S}.log"
     configure_logging(
         level="DEBUG" if verbose else settings.log_level,
         json_logs=settings.log_json,
@@ -205,14 +211,14 @@ def check() -> None:
         try:
             r = httpx.get(f"{settings.llama_server_host}/v1/models", timeout=5.0)
             llm_ok = r.status_code == 200
-        except Exception:
+        except httpx.HTTPError:
             llm_ok = False
         table.add_row(f"llama-server ({settings.llama_server_model})", "[green]OK[/green]" if llm_ok else "[red]NO DISPONIBLE[/red]")
     else:
         try:
             r = httpx.get(f"{settings.ollama_host}/api/tags", timeout=5.0)
             llm_ok = r.status_code == 200
-        except Exception:
+        except httpx.HTTPError:
             llm_ok = False
         table.add_row("Ollama", "[green]OK[/green]" if llm_ok else "[red]NO DISPONIBLE[/red]")
 
@@ -242,7 +248,7 @@ def _load_glossary(glossary_path: Path | None) -> dict[str, str]:
     return {str(k): str(v) for k, v in data.items()}
 
 
-def _print_summary(result, log_file: Path | None = None) -> None:
+def _print_summary(result: TranslateVideoResult, log_file: Path | None = None) -> None:
     console.rule("[bold green]Completado")
     table = Table(show_header=False)
     table.add_row("Duracion procesada", f"{result.duration_seconds / 60:.1f} min")
@@ -275,7 +281,7 @@ def _print_summary(result, log_file: Path | None = None) -> None:
         _print_timings_table(result.timings, report_path)
 
 
-def _print_timings_table(timings: dict, report_path) -> None:
+def _print_timings_table(timings: dict, report_path: Path) -> None:
     concurrent_groups = timings.get("concurrent_stage_groups") or []
     concurrent_names: set[str] = set()
     for group in concurrent_groups:
@@ -330,7 +336,7 @@ def _print_timings_table(timings: dict, report_path) -> None:
 
 
 def _format_seconds(seconds: float) -> str:
-    seconds = int(round(seconds))
+    seconds = round(seconds)
     hours, rem = divmod(seconds, 3600)
     minutes, secs = divmod(rem, 60)
     if hours:

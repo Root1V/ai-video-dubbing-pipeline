@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import os
 import platform
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable
 
+from video_translator.application.interfaces import SpeechSynthesizer, Transcriber, Translator
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import Settings
 from video_translator.domain.exceptions import ConfigurationError
@@ -52,7 +53,7 @@ _AUTO_MAX_TTS_WORKERS = 8
 _CORES_RESERVED_FOR_DIARIZATION = 4
 
 
-def _build_translator(settings: Settings):
+def _build_translator(settings: Settings) -> Translator:
     """Selecciona el adaptador de traduccion segun TRANSLATION_BACKEND.
 
     Ambos adaptadores implementan el mismo Protocol ``Translator``, por lo que
@@ -184,7 +185,7 @@ def build_translate_video_use_case(
 
 def _synthesizer_factory(
     settings: Settings, num_workers: int, notes: dict | None = None
-) -> Callable[[], object]:
+) -> Callable[[], SpeechSynthesizer]:
     """Devuelve una funcion SIN ARGUMENTOS que construye una instancia nueva
     del motor de TTS configurado.
 
@@ -253,7 +254,7 @@ def _synthesizer_factory(
     )
 
 
-def _build_transcriber(settings: Settings, enable_diarization: bool):
+def _build_transcriber(settings: Settings, enable_diarization: bool) -> Transcriber:
     """Selecciona el adaptador de transcripcion segun WHISPER_BACKEND.
 
     Ambos adaptadores implementan el mismo Protocol ``Transcriber``. En Mac,
@@ -309,7 +310,7 @@ def _resolve_tts_worker_count(configured: int) -> int:
     return max(1, min(_AUTO_MAX_TTS_WORKERS, cpu_count))
 
 
-def _build_synthesizer(settings: Settings) -> tuple[Any, dict]:
+def _build_synthesizer(settings: Settings) -> tuple[SpeechSynthesizer, dict]:
     """Construye el motor de TTS para doblaje segun TTS_BACKEND, envuelto en
     un pool de procesos paralelos si TTS_PARALLEL_WORKERS lo amerita.
 

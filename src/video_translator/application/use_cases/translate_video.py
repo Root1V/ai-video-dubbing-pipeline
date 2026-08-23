@@ -38,6 +38,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
+from structlog.stdlib import BoundLogger
+
 from video_translator.application.interfaces import (
     GenderClassifier,
     MediaProcessor,
@@ -293,7 +295,7 @@ class TranslateVideoUseCase:
         )
 
     def _load_checkpoint(
-        self, store: CheckpointStore, request: TranslateVideoRequest, log
+        self, store: CheckpointStore, request: TranslateVideoRequest, log: BoundLogger
     ) -> Checkpoint:
         """Carga el checkpoint si existe y es valido para esta solicitud."""
         if not self._resume:
@@ -381,22 +383,20 @@ class TranslateVideoUseCase:
         checkpoint: Checkpoint,
         request: TranslateVideoRequest,
         *,
-        transcript_segments=None,
-        diarization_segments=None,
-        speaker_profiles=None,
-        translated_segments=None,
-        tts_job_count=None,
+        transcript_segments: list[TranscriptSegment] | None = None,
+        diarization_segments: list[DiarizationSegment] | None = None,
+        speaker_profiles: list[SpeakerProfile] | None = None,
+        translated_segments: list[TranslatedSegment] | None = None,
+        tts_job_count: int | None = None,
     ) -> Checkpoint:
         """Devuelve un checkpoint con datos intermedios actualizados."""
 
-        def _serialize_segments(segs):
-            if segs is None:
-                return None
+        def _serialize_segments(
+            segs: list[TranscriptSegment] | list[TranslatedSegment],
+        ) -> list[dict]:
             return [asdict(s) if not isinstance(s, dict) else s for s in segs]
 
-        def _serialize_profiles(profiles):
-            if profiles is None:
-                return None
+        def _serialize_profiles(profiles: list[SpeakerProfile]) -> list[dict]:
             return [
                 {**asdict(p), "reference_wav": str(p.reference_wav) if p.reference_wav else None}
                 for p in profiles
@@ -440,7 +440,7 @@ class TranslateVideoUseCase:
         timings: PipelineTimings,
         checkpoint: Checkpoint,
         checkpoint_store: CheckpointStore,
-        log,
+        log: BoundLogger,
     ) -> tuple[Checkpoint, list[TranscriptSegment], list[DiarizationSegment] | None]:
         """Si la transcripcion esta en el checkpoint, la restaura; si no, la ejecuta."""
         if STAGE_TRANSCRIBED in checkpoint.completed_stages:
@@ -485,7 +485,7 @@ class TranslateVideoUseCase:
         checkpoint: Checkpoint,
         checkpoint_store: CheckpointStore,
         request: TranslateVideoRequest,
-        log,
+        log: BoundLogger,
     ) -> tuple[Checkpoint, list[TranscriptSegment], list[SpeakerProfile]]:
         """Si los perfiles de hablantes estan en el checkpoint, los restaura; si no, los construye."""
         if STAGE_SPEAKERS_BUILT in checkpoint.completed_stages:
@@ -599,7 +599,7 @@ class TranslateVideoUseCase:
         return segments, diarization_segments
 
     def _translate_all(
-        self, segments: list[TranscriptSegment], request: TranslateVideoRequest, log
+        self, segments: list[TranscriptSegment], request: TranslateVideoRequest, log: BoundLogger
     ) -> list[TranslatedSegment]:
         translated_segments: list[TranslatedSegment] = []
         rolling_history: list[str] = []
@@ -650,7 +650,7 @@ class TranslateVideoUseCase:
         diarization_segments: list[DiarizationSegment] | None,
         audio_wav: Path,
         workdir: Path,
-        log,
+        log: BoundLogger,
     ) -> tuple[list[TranscriptSegment], list[SpeakerProfile], list[dict]]:
         assert diarization_segments is not None
         labels = unique_speaker_labels(diarization_segments)
@@ -715,7 +715,7 @@ class TranslateVideoUseCase:
         timings: PipelineTimings,
         checkpoint: Checkpoint,
         checkpoint_store: CheckpointStore,
-        log,
+        log: BoundLogger,
     ) -> Path:
         assert self._synthesizer is not None
         segment_dir = workdir / "tts_segments"

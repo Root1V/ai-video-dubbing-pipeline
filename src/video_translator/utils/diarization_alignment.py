@@ -10,7 +10,6 @@ se usa el criterio de maximo solapamiento temporal.
 from __future__ import annotations
 
 import dataclasses
-from pathlib import Path
 
 from video_translator.domain.models import DiarizationSegment, TranscriptSegment
 

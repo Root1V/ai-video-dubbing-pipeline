@@ -9,6 +9,7 @@ OpenAI de llama.cpp/llama-server, vLLM, LM Studio, etc.).
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 
 from video_translator.domain.exceptions import TranslationError
 from video_translator.domain.models import TranscriptSegment, TranslationContext
@@ -98,7 +99,7 @@ def _format_line(seg: TranscriptSegment, speaker_genders: dict[str, str] | None)
 
 def translate_batch_with_recovery(
     segments: list[TranscriptSegment],
-    translate_fn,
+    translate_fn: Callable[[list[TranscriptSegment]], list[str]],
     max_split_depth: int = 6,
 ) -> list[str]:
     """Envoltorio de resiliencia alrededor de una funcion "traducir este lote".

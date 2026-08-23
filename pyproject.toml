@@ -92,6 +92,13 @@ indextts = { path = "third_party/index-tts", editable = true }
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint.flake8-bugbear]
+# typer.Option()/typer.Argument() en los defaults de una funcion es el patron
+# idiomatico documentado por Typer (inspecciona los defaults al importar el
+# modulo para construir el CLI) -- no es el antipatron de "mutable default"
+# que B008 busca detectar en general.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true

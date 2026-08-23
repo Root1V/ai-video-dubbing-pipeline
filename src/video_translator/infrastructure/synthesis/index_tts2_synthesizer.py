@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from video_translator.application.synthesis_job import SynthesisJob
 from video_translator.domain.exceptions import SynthesisError
@@ -42,6 +43,10 @@ from video_translator.infrastructure.synthesis.audio_mixing import (
 )
 from video_translator.utils.logging_config import get_logger
 from video_translator.utils.warning_collector import note_stat
+
+if TYPE_CHECKING:
+    from indextts.infer_v2_5 import IndexTTS2
+    from torch import Tensor
 
 logger = get_logger(__name__)
 
@@ -59,7 +64,7 @@ _MIN_DURATION_FACTOR = 0.5
 _MAX_DURATION_FACTOR = 2.0
 
 
-def _split_batched_codes(codes, stop_mel_token: int) -> list:
+def _split_batched_codes(codes: Tensor, stop_mel_token: int) -> list[Tensor]:
     """Recorta cada fila de un batch de codigos generados (B, seq_len) en su
     propio stop_mel_token y devuelve UNA lista de tensores (uno por item,
     cada uno shape (1, code_len_i)) -- nunca compartiendo la fila entre
@@ -133,9 +138,9 @@ class IndexTTS2Synthesizer:
         # cortos "esperan" con padding) — un tope moderado evita ese peor
         # caso. 1 = deshabilita el batching (cada "grupo" es un solo item).
         self._gpt_batch_size = max(1, gpt_batch_size)
-        self._tts = None  # carga perezosa: el modelo pesa varios GB
+        self._tts: IndexTTS2 | None = None  # carga perezosa: el modelo pesa varios GB
 
-    def _load(self):
+    def _load(self) -> IndexTTS2:
         if self._tts is None:
             try:
                 from indextts.infer_v2_5 import IndexTTS2  # type: ignore[import-not-found]
@@ -205,9 +210,9 @@ class IndexTTS2Synthesizer:
                     verbose=False,
                     num_beams=self._num_beams,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise SynthesisError(f"Fallo sintetizando segmento con IndexTTS-2.5: {exc}") from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise SynthesisError(f"Fallo sintetizando segmento con IndexTTS-2.5: {exc}") from exc
 
         # Ajuste final de precision: ffmpeg (barato, sin techo de compresion),
@@ -280,7 +285,9 @@ class IndexTTS2Synthesizer:
             for i in range(0, len(ordered), self._gpt_batch_size):
                 self._synthesize_batch_same_speaker(tts, speaker_wav, ordered[i : i + self._gpt_batch_size])
 
-    def _synthesize_batch_same_speaker(self, tts, speaker_wav: Path, jobs: list[SynthesisJob]) -> None:
+    def _synthesize_batch_same_speaker(
+        self, tts: IndexTTS2, speaker_wav: Path, jobs: list[SynthesisJob]
+    ) -> None:
         import torch
         import torch.nn.functional as F
         import torchaudio
