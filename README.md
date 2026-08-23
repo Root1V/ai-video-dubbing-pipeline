@@ -1,8 +1,9 @@
 # AI Video Dubbing Pipeline — EN → ES Video Dubbing with 100% Open Source AI
 
-[![CI](https://github.com/USERNAME/REPO_NAME/actions/workflows/ci.yml/badge.svg)](https://github.com/USERNAME/REPO_NAME/actions/workflows/ci.yml)
+[![CI](https://github.com/Root1V/ai-video-dubbing-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Root1V/ai-video-dubbing-pipeline/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![Release](https://img.shields.io/github/v/release/Root1V/ai-video-dubbing-pipeline)](https://github.com/Root1V/ai-video-dubbing-pipeline/releases)
 
 A production-grade pipeline that turns an **hour-plus** English video with
 **multiple speakers** into a dubbed Spanish video — with each person's voice
@@ -23,6 +24,39 @@ doubles, CI on GitHub Actions, and Python environment isolation for the case
 where two AI stacks have unresolvable dependency conflicts (diarization vs.
 dubbing) — a real-world AI systems engineering problem, not just a
 single-file script.
+
+> **New here? Before you clone:** this repo automates the *hard* parts
+> (isolated environments, checkpoint downloads, GPU tuning) but three things
+> stay manual regardless of your OS — see [Installation](#installation) for
+> the full checklist:
+> 1. A Hugging Face token with the diarization model's terms accepted (free, 2 minutes).
+> 2. A local LLM server already running (Ollama or `llama-server`) — this project doesn't install or manage one for you.
+> 3. `ffmpeg` on your `PATH`.
+
+## Table of Contents
+
+- [AI Stack](#ai-stack)
+- [Architecture](#architecture)
+- [Handling long videos (>1h)](#handling-long-videos-1h)
+- [Performance: keeping a 1h video under ~1h of processing](#performance-keeping-a-1h-video-under-1h-of-processing)
+  - [GPT-level batching: how it was added, and where](#gpt-level-batching-new-on-by-default)
+  - [macOS: parallel TTS and GPU (Metal) safety](#macos-parallel-tts-and-gpu-metal-safety)
+  - [macOS: transcription and diarization on the GPU](#macos-transcription-and-diarization-on-the-gpu)
+  - [Validated at scale: 3 minutes to a full 72-minute lecture](#validated-at-scale-3-minutes-to-a-full-72-minute-lecture)
+- [Observability: where did the time go?](#observability-where-did-the-time-go)
+- [Dubbing (`--mode dubbed`)](#dubbing-generate-a-new-video-with-translated-audio---mode-dubbed)
+- [Multiple speakers (`--diarize`)](#multiple-speakers-per-person-voice-and-gender---diarize)
+- [Context-driven translation](#context-driven-translation-applies-to-both-subtitles-and-dubbing)
+- [Installation](#installation)
+- [Usage](#usage-2)
+- [Using `llama-server` instead of Ollama](#using-llama-server-llamacpp-instead-of-ollama)
+- [macOS (Apple Silicon)](#macos-apple-silicon-m1m2m3m4)
+- [Docker (Linux / Windows with NVIDIA GPU)](#docker-linux--windows-with-nvidia-gpu)
+- [Resuming an interrupted run](#resuming-an-interrupted-run---resume)
+- [Testing](#testing)
+- [Extensibility](#extensibility)
+- [Author](#author)
+- [License](#license)
 
 ## AI Stack
 
@@ -167,25 +201,55 @@ point, each worker getting fewer CPU threads costs more than the extra
 process-level parallelism buys back. If you process very short clips
 routinely, `--tts-workers` above the cap can still help there specifically.
 
-**GPT-level batching** (new, on by default): IndexTTS-2.5's autoregressive
-GPT step is the single most expensive part of synthesis, and the model
-architecturally supports generating several texts in one forward pass (same
-speaker, padded/masked per item) — the stock `infer()` API just never uses
-that. `IndexTTS2Synthesizer.synthesize_batch` now groups queued segments by
-speaker and batches up to `INDEX_TTS2_GPT_BATCH_SIZE` (default 4) of them
-into a single GPT call per worker, instead of one call per segment; the
-rest of the pipeline (semantic codec, s2mel, bigvgan) still runs per item,
-unchanged, on the exact same code path as before — only the GPT step is
-batched, to keep the higher-risk part of the change as small as possible.
-`ParallelTTSPool` was updated to hand each worker a *chunk* of jobs instead
-of one job per future, so this batching actually gets exercised. Caught (and
-fixed, with regression tests) two real correctness bugs while building
-this — see the git history on `index_tts2_synthesizer.py` if you're
-modifying this code: one had every batch item silently decoding the first
-item's audio content instead of its own, and one crashed on a degenerate
-"stops immediately" generation. Both are now covered by unit tests against
-a pure `_split_batched_codes` helper, and were verified end-to-end with an
-ASR round-trip confirming each output matches its own intended text.
+### GPT-level batching (new, on by default)
+
+IndexTTS-2.5's autoregressive GPT step is the single most expensive part of
+synthesis. The underlying network is architecturally built to generate
+several texts in one forward pass (same speaker, padded/masked per item) —
+but the official `infer()`/`infer_generator()` API (in the vendored
+[`third_party/index-tts`](https://github.com/index-tts/index-tts) repo,
+**never modified by this project**) never uses that capability, because it
+was designed for one-request-at-a-time use (a Gradio demo, a single API
+call), not for batch-dubbing a video with hundreds of short segments.
+
+**Where this lives:** entirely in *our* adapter,
+[`IndexTTS2Synthesizer`](src/video_translator/infrastructure/synthesis/index_tts2_synthesizer.py)
+— the class implementing the `SpeechSynthesizer` port for this engine. Two
+methods matter:
+- `synthesize_segment()`: the original, one-text-at-a-time path (unchanged) — estimates a `duration_factor`, calls `infer()` once, and lets `ffmpeg` do the final precision fit.
+- `synthesize_batch()` (new): groups queued segments by speaker and, for each
+  group of up to `INDEX_TTS2_GPT_BATCH_SIZE` (default 4), calls a private
+  helper (`_synthesize_batch_same_speaker`) that reimplements the *setup*
+  portion of `infer_generator()` (loading/caching the speaker's voice
+  embedding) and then calls the model's internal GPT method
+  (`tts.gpt.inference_speech(...)`) directly with a padded batch of texts,
+  instead of one `infer()` call per text. Everything downstream of that —
+  semantic codec decoding, the s2mel diffusion step, the bigvgan vocoder —
+  still runs **per item, unbatched, on the exact same code path as
+  `synthesize_segment`**; only the GPT call itself is batched, to keep the
+  higher-risk part of the change as small as possible.
+- `ParallelTTSPool` was updated to hand each worker a *chunk* of jobs instead
+  of one job per future, so this batching actually gets exercised across
+  processes, not just within a single sequential call.
+
+**The trade-off — coupling to `third_party/index-tts`'s internals:** because
+`infer()` never exposes batching, `synthesize_batch()` has to reach into
+attributes that are *not* part of IndexTTS-2.5's public/documented API
+(`tts.gpt`, `tts.cache_spk_cond`, `tts.semantic_codec`, `tts.s2mel`,
+`tts.bigvgan`, ...). Those are implementation details of the version cloned
+by `./scripts/setup_index_tts2.sh` today, not a versioned contract — if a
+future IndexTTS-2.5 release restructures its internals, this specific method
+could break silently even though `synthesize_segment()` (which only calls
+the public `infer()`) keeps working. The code comments in
+`index_tts2_synthesizer.py` cite the exact upstream file/lines this mirrors,
+specifically so that risk is easy to re-check after an upstream update.
+
+Caught (and fixed, with regression tests) two real correctness bugs while
+building this: one had every batch item silently decoding the *first* item's
+audio content instead of its own (found via an ASR round-trip check — each
+generated clip was transcribed back and compared against its intended text),
+and one crashed on a degenerate "stops immediately" generation. Both are
+now covered by unit tests against a pure `_split_batched_codes` helper.
 
 We also tried enabling `torch.compile` on the model's non-autoregressive
 s2mel sub-module (`INDEX_TTS2_USE_TORCH_COMPILE=true` — wired through but
@@ -602,23 +666,47 @@ Keep terms like 'async', 'coroutine', 'event loop' in English." \
 
 ### Requirements
 - Python 3.10, 3.11, or 3.12 (**not 3.13**: `TTS`/Coqui, used for dubbing, doesn't support 3.13 yet; the rest of the project would work fine on 3.13, but `pyproject.toml` pins it to `<3.13` to avoid the build failure). The repo includes `.python-version` set to `3.11`.
-- [ffmpeg](https://ffmpeg.org/download.html) installed and on `PATH`
-- A local LLM backend: [Ollama](https://ollama.com/download) **or** [`llama-server`](https://github.com/ggerganov/llama.cpp) (see section below)
-- NVIDIA GPU recommended for long videos (CPU works but is much slower)
+- [ffmpeg](https://ffmpeg.org/download.html) installed and on `PATH`.
+- A local LLM backend already running: [Ollama](https://ollama.com/download) **or** [`llama-server`](https://github.com/ggerganov/llama.cpp) (see [Using `llama-server`](#using-llama-server-llamacpp-instead-of-ollama)). The pipeline is a *client* of this — it doesn't install, download, or start an LLM server for you.
+- A [Hugging Face](https://huggingface.co) account + token, **only if you plan to use `--diarize`** (multi-speaker detection/voice cloning): create one at [hf.co/settings/tokens](https://hf.co/settings/tokens) and accept the terms on [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1). Not needed for single-speaker dubbing or subtitles-only modes.
+- GPU recommended for long videos: NVIDIA (CUDA) on Linux/Windows, or Apple Silicon (Metal/MPS) on macOS — see [macOS (Apple Silicon)](#macos-apple-silicon-m1m2m3m4). CPU-only works but is much slower.
+
+### Optional extras (dubbing engines, Apple GPU transcription)
+
+The base install (`uv sync` / `pip install -e .`) only covers subtitles —
+transcription, translation, and subtitle generation. Dubbing (`--mode
+dubbed`) needs one more extra, and each does something genuinely different
+(they're not interchangeable flags for the same feature):
+
+| Extra | Adds | When to use it |
+|---|---|---|
+| `dubbing-indextts` | [IndexTTS-2.5](#dubbing-generate-a-new-video-with-translated-audio---mode-dubbed) — recommended | Best sync/quality, but requires cloning a repo and downloading checkpoints (see below) |
+| `dubbing-coqui` | XTTS v2 via Coqui TTS | Installs directly with `pip`/`uv`, no extra setup script — trade-off is less precise timing sync (post-hoc `ffmpeg` stretch instead of native duration control) |
+| `transcription-mlx` | [`mlx-whisper`](#macos-transcription-and-diarization-on-the-gpu) | macOS + Apple Silicon only: GPU-accelerated transcription, ~16x faster than the CPU default in our testing |
+
+`dubbing-indextts` and `dubbing-coqui` are **mutually exclusive** (`uv` will
+refuse to install both — see the [Dubbing](#dubbing-generate-a-new-video-with-translated-audio---mode-dubbed)
+section for why). `transcription-mlx` can be combined with either.
 
 ### Steps with `uv` (recommended)
 
 ```bash
-git clone <this-repo>
-cd video-translator
+git clone https://github.com/Root1V/ai-video-dubbing-pipeline.git
+cd ai-video-dubbing-pipeline
 
 uv python install 3.11     # if you don't already have it (uv downloads it for you)
-uv sync                    # uses .python-version -> installs with Python 3.11
+uv sync                    # uses .python-version -> installs with Python 3.11, subtitles only
 
-# optional dubbing (requires Python < 3.12, already covered by .python-version):
-uv sync --extra dubbing
+cp .env.example .env       # macOS: use `cp .env.macos.example .env` instead (pre-tuned for Apple Silicon)
 
-cp .env.example .env
+# --- Pick ONE dubbing engine if you want --mode dubbed (skip both for subtitles-only) ---
+./scripts/setup_index_tts2.sh          # recommended: clones third_party/index-tts, downloads checkpoints, runs `uv sync --extra dubbing-indextts`
+# uv sync --extra dubbing-coqui        # ...or the simpler alternative, no script needed
+
+# --- macOS + Apple Silicon only, optional but recommended ---
+uv sync --extra transcription-mlx      # GPU-accelerated transcription
+
+video-translator check      # verify ffmpeg + your LLM backend are reachable
 ```
 
 ### Steps with `pip` / classic venv
@@ -627,15 +715,24 @@ cp .env.example .env
 python3.11 -m venv .venv    # explicitly use 3.11 or 3.12, not 3.13
 source .venv/bin/activate
 
-pip install -e ".[dev]"          # base install + dev tools
-pip install -e ".[dubbing]"      # optional: enables dubbing with Coqui TTS
+pip install -e ".[dev]"                     # base install + dev tools (subtitles only)
+pip install -e ".[dubbing-coqui]"           # optional dubbing (simpler alt.; for IndexTTS-2.5 use setup_index_tts2.sh instead, uv-only)
+pip install -e ".[transcription-mlx]"       # optional, macOS + Apple Silicon only
 
-cp .env.example .env             # adjust for your hardware
+cp .env.example .env             # macOS: cp .env.macos.example .env instead
 
-./scripts/setup_models.sh qwen2.5:14b-instruct   # downloads the LLM into Ollama
+./scripts/setup_models.sh qwen2.5:14b-instruct   # pulls this model into a local Ollama install
 
 video-translator check           # verify ffmpeg / ollama (or llama-server)
 ```
+
+> `IndexTTS-2.5` (the `dubbing-indextts` extra) resolves to a local path
+> dependency (`third_party/index-tts/`, cloned by `setup_index_tts2.sh`) that
+> `uv sync` needs to already exist on disk — this is why it's not a plain
+> `pip install`-able extra and needs the setup script specifically. The
+> `pip`/classic-venv path above only covers the simpler Coqui alternative for
+> this reason; see [Installing IndexTTS-2.5](#installing-indextts-25) if you
+> want the recommended engine without `uv`.
 
 ## Usage
 
@@ -663,8 +760,8 @@ video-translator translate -i video.mp4 --mode dubbed \
   --context "Corporate video, formal and professional tone."
 ```
 Add `--resume`/`-r` to any command to automatically skip stages already
-completed from a prior (possibly interrupted) run — see the
-[Resumabilidad](#resumabilidad-reanudar-un-procesamiento-interrumpido) section.
+completed from a prior (possibly interrupted) run — see
+[Resuming an interrupted run](#resuming-an-interrupted-run---resume).
 
 ## Using `llama-server` (llama.cpp) instead of Ollama
 
@@ -717,39 +814,50 @@ A couple of things to watch with `llama-server`:
 There's no NVIDIA/CUDA GPU on Mac, so **don't use the `Dockerfile`/
 `docker-compose.yml`** (they're built for CUDA, and Docker Desktop on Mac
 can't pass Metal through to the container anyway). On Mac everything runs
-natively, with a venv:
+natively, with `uv` (recommended, since the IndexTTS-2.5 extra needs it —
+see [Optional extras](#optional-extras-dubbing-engines-apple-gpu-transcription)):
 
 ```bash
 brew install ffmpeg ollama
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pip install -e ".[dubbing]"      # optional, dubbing
+git clone https://github.com/Root1V/ai-video-dubbing-pipeline.git
+cd ai-video-dubbing-pipeline
 
-cp .env.macos.example .env       # config already tuned for Apple Silicon
+uv sync
+uv sync --extra transcription-mlx      # GPU-accelerated transcription (see below) -- recommended
 
-ollama serve &                    # if it's not already running as a service
+./scripts/setup_index_tts2.sh          # recommended dubbing engine, or:
+# uv sync --extra dubbing-coqui        # simpler alternative
+
+cp .env.macos.example .env             # already pre-tuned with everything validated below
+
+ollama serve &                          # if it's not already running as a service
 ./scripts/setup_models.sh qwen2.5:32b-instruct
 
 video-translator check
 video-translator translate -i video.mp4 --mode soft_subtitles
 ```
 
-**Key differences from an NVIDIA GPU machine:**
+**Settings `.env.macos.example` already applies, all validated end-to-end**
+(see [Performance](#performance-keeping-a-1h-video-under-1h-of-processing)
+for the numbers behind each one):
 
-| Component | On your Mac | Why |
+| Component | Setting | Why |
 |---|---|---|
-| faster-whisper | `WHISPER_DEVICE=cpu`, `WHISPER_COMPUTE_TYPE=int8` | CTranslate2 doesn't support Metal/MPS, CPU only. On Apple Silicon it uses Accelerate and `int8` runs well even on `large-v3` |
-| Ollama (LLM) | No code changes, automatically Metal-accelerated | Ollama does support Apple Silicon natively |
-| LLM model | You can use larger models: `qwen2.5:32b-instruct` or even `qwen2.5:72b-instruct` / `llama3.1:70b-instruct` | With 128GB of unified memory you have plenty of headroom; larger models = better translation quality |
-| Coqui TTS (dubbing) | `TTS_DEVICE=cpu` | XTTS v2 on MPS is unstable (unimplemented operators); CPU is slower but reliable |
-| Docker | Don't use the included Dockerfile/compose | They're based on `nvidia/cuda`; on Mac everything runs natively |
+| Transcription | `WHISPER_BACKEND=mlx` (needs `transcription-mlx` extra) | Runs on the GPU via Apple's MLX framework — ~16x faster than the CPU-only default (`faster-whisper`/CTranslate2 has no Metal backend at all) |
+| Diarization | `DIARIZATION_DEVICE=mps` | Not officially certified by `pyannote.audio`, but ~17x faster in testing, with no crashes across dozens of real runs |
+| TTS (dubbing) | `TTS_PARALLEL_WORKERS=0` (auto → 8 on a 16-core Mac), CPU | Counter-intuitively, GPU (MPS) TTS was **3.2x slower** than parallel CPU workers here — IndexTTS-2.5's autoregressive step doesn't reliably speed up on MPS. Stays on CPU on purpose |
+| Ollama (LLM) | No changes needed | Automatically Metal-accelerated |
+| LLM model | Scale with your RAM: `qwen2.5:14b-instruct` (16-32GB) up to `qwen2.5:72b-instruct`/`llama3.1:70b-instruct` (128GB) | More unified memory → bigger model → better translation quality, no other trade-off |
+| Coqui TTS (if used instead of IndexTTS-2.5) | `TTS_DEVICE=cpu` | XTTS v2 on MPS is unstable (unimplemented operators) |
+| Docker | Don't use the included Dockerfile/compose | Built on `nvidia/cuda`; irrelevant on Mac, everything here runs natively |
 
-With your hardware (M4 Max, 128GB), the best quality-per-effort move is
-upgrading the LLM model rather than worrying about Whisper's hardware:
-CPU transcription with `int8` is reasonably fast, and Ollama with Metal
-moves large models smoothly.
+If you're on the same class of hardware we validated this on (Apple Silicon
+Max/Ultra, 64GB+ unified memory), you shouldn't need to tune anything beyond
+copying `.env.macos.example` — see
+[Validated at scale](#validated-at-scale-3-minutes-to-a-full-72-minute-lecture)
+for the exact numbers (a 1-hour lecture dubs in ~1.5 hours end to end) and
+what to check first if your results differ meaningfully.
 
 ## Docker (Linux / Windows with NVIDIA GPU)
 
@@ -762,36 +870,36 @@ This spins up Ollama and the app together. Put your video at
 in `./output`. Requires Docker with NVIDIA support
 (nvidia-container-toolkit); **doesn't apply to macOS**.
 
-## Resumabilidad: reanudar un procesamiento interrumpido
+## Resuming an interrupted run (`--resume`)
 
-Los videos de una hora pueden tardar 12+ horas en procesarse. Si el pipeline
-se interrumpe (corte de energia, Ctrl-C, crash, reinicio), puedes reanudirlo
-desde la ultima etapa completada con `--resume` / `-r`:
+Even at the validated ~1.5x realtime factor, a multi-hour video is still a
+multi-hour job — if the pipeline gets interrupted (power loss, Ctrl-C, crash,
+reboot), you can resume it from the last completed stage with `--resume`/`-r`:
 
 ```bash
 video-translator translate -i video.mp4 --mode dubbed --diarize --resume -v
 ```
 
-El pipeline guarda automaticamente un checkpoint (`_work/checkpoint.json`)
-dentro del directorio de salida despues de cada etapa clave:
+The pipeline automatically saves a checkpoint (`_work/checkpoint.json`)
+inside the output directory after each key stage:
 
-| Etapa | Que se guarda |
+| Stage | What's saved |
 |---|---|
-| Extraccion de audio | El archivo WAV extraido (verificado por existencia) |
-| Transcripcion | Segmentos de transcripcion + segmentos de diarizacion (serializados en JSON) |
-| Perfiles de hablantes | Perfiles con genero y clips de referencia (solo con `--diarize`) |
-| Traduccion | Segmentos traducidos (serializados en JSON) |
-| Subtitulos | Los archivos SRT (verificados por existencia) |
-| Sintesis TTS | Cada archivo `tts_segments/group_NNNNNN.wav` verificado individualmente |
-| Video final | El archivo MP4 de salida (verificado por existencia) |
+| Audio extraction | The extracted WAV file (verified by existence) |
+| Transcription | Transcript segments + diarization segments (serialized as JSON) |
+| Speaker profiles | Profiles with gender and reference clips (only with `--diarize`) |
+| Translation | Translated segments (serialized as JSON) |
+| Subtitles | The SRT files (verified by existence) |
+| TTS synthesis | Each `tts_segments/group_NNNNNN.wav` file, verified individually |
+| Final video | The output MP4 (verified by existence) |
 
-Al reanudar:
-- Las etapas ya completadas se saltan automaticamente (aparece `pipeline.resume_skipping` en los logs).
-- Para TTS, cada archivo WAV ya generado se verifica individualmente: solo se sintetizan los que faltan.
-- El checkpoint se valida contra el video de entrada, el modo y la bandera `--diarize`: si cambiaste alguno, se ignora y se reinicia desde cero.
-- Al completarse el pipeline con exito, el checkpoint se elimina automaticamente.
+On resume:
+- Already-completed stages are skipped automatically (`pipeline.resume_skipping` shows up in the logs).
+- For TTS, each already-generated WAV is checked individually — only the missing ones get synthesized.
+- The checkpoint is validated against the input video, the output mode, and the `--diarize` flag: if any of those changed, it's ignored and the run restarts from scratch.
+- Once the pipeline completes successfully, the checkpoint is deleted automatically.
 
-**Consejo**: siempre usa `--resume`; no cuesta nada cuando no hay checkpoint previo y te salva horas si el procesamiento se interrumpe.
+**Tip**: use `--resume` by default; it costs nothing when there's no prior checkpoint, and saves hours if a long run ever gets interrupted.
 
 ## Testing
 
@@ -812,6 +920,10 @@ run in seconds without needing ffmpeg, a GPU, or a real LLM.
 - **Another STT engine**: implement `Transcriber` (e.g. `whisper.cpp` via bindings).
 - **Other languages**: the pipeline is agnostic to the language pair; change
   `source_lang`/`target_lang` in `TranslationContext`.
+
+## Author
+
+**Victor Espiritu** ([@Root1V](https://github.com/Root1V))
 
 ## License
 
