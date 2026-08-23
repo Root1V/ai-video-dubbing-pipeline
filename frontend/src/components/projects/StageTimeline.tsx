@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
-import { getStageLabel } from '../../lib/labels'
+import { getStageLabel, getStageSubtitle } from '../../lib/labels'
 import type { ProjectStage, ProjectStatus } from '../../types/project'
 
 /** How long a stage stays visually "in progress" after we first notice it's
@@ -29,6 +29,7 @@ interface Step {
   label: string
   state: StepState
   seconds?: number
+  subtitle?: string | null
 }
 
 function formatDuration(seconds: number | undefined): string | null {
@@ -56,7 +57,7 @@ function buildSteps(
       // Held as "active" for a moment even though the backend already
       // reports it done -- see REVEAL_DELAY_MS.
       const state: StepState = revealDelayKeys.has(name) ? 'active' : 'done'
-      return { key: name, label: getStageLabel(name), state, seconds }
+      return { key: name, label: getStageLabel(name), state, seconds, subtitle: getStageSubtitle(real) }
     }
     if (name === currentStageName) {
       return { key: name, label: getStageLabel(name), state: 'active' }
@@ -74,6 +75,7 @@ function buildSteps(
         label: getStageLabel(real.name),
         state: revealDelayKeys.has(real.name) ? 'active' : 'done',
         seconds: typeof real.seconds === 'number' ? real.seconds : undefined,
+        subtitle: getStageSubtitle(real),
       })
     }
   }
@@ -165,12 +167,12 @@ export function StageTimeline({
         const isLast = index === steps.length - 1
         const duration = formatDuration(step.seconds)
         return (
-          <li key={step.key} className="relative flex gap-4 pb-8 last:pb-0">
+          <li key={step.key} className="relative flex gap-4 pb-6 last:pb-0">
             {!isLast && (
               <span
                 aria-hidden
                 className={cn(
-                  'absolute left-4 top-8 h-[calc(100%-1.5rem)] w-0.5 -translate-x-1/2',
+                  'absolute left-4 top-8 h-[calc(100%-1.25rem)] w-0.5 -translate-x-1/2',
                   LINE_STATE[step.state],
                 )}
               />
@@ -181,9 +183,16 @@ export function StageTimeline({
               {step.state === 'failed' && <X className="h-4 w-4" />}
               {step.state === 'pending' && <span className="h-2 w-2 rounded-full bg-current" />}
             </span>
-            <div className="flex flex-1 items-center justify-between pt-1">
-              <span className={cn('text-sm', LABEL_STATE[step.state])}>{step.label}</span>
-              {duration && <span className="text-xs text-muted-foreground">{duration}</span>}
+            <div className="flex flex-1 items-start justify-between gap-3 pt-1">
+              <div className="flex flex-col">
+                <span className={cn('text-sm', LABEL_STATE[step.state])}>{step.label}</span>
+                {step.subtitle && (
+                  <span className="mt-0.5 text-xs text-muted-foreground/80">{step.subtitle}</span>
+                )}
+              </div>
+              {duration && (
+                <span className="shrink-0 text-xs text-muted-foreground">{duration}</span>
+              )}
             </div>
           </li>
         )

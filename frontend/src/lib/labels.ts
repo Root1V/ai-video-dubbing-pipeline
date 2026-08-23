@@ -1,4 +1,4 @@
-import type { OutputMode, ServiceType } from '../types/project'
+import type { OutputMode, ProjectStage, ServiceType } from '../types/project'
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   dubbing: 'Doblaje',
@@ -43,6 +43,64 @@ const RENDERING_STAGE_BY_MODE: Partial<Record<OutputMode, string>> = {
   soft_subtitles: 'rendering_soft_subtitles',
   burn_subtitles: 'rendering_burn_subtitles',
   // subtitles_only never renders a video -- no stage.
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural
+}
+
+/** Picks the most useful metrics out of a stage's raw metadata (see
+ * `pipeline_timings.json`'s `stages[]` entries) and formats them as a short,
+ * human-readable summary -- e.g. "38 segmentos · 2 lotes" for translation.
+ * Returns null when a stage has nothing notable beyond its duration. */
+export function getStageSubtitle(stage: ProjectStage): string | null {
+  const parts: string[] = []
+  const num = (key: string): number | null => {
+    const value = stage[key]
+    return typeof value === 'number' ? value : null
+  }
+
+  switch (stage.name) {
+    case 'transcription': {
+      const segments = num('num_segments')
+      if (segments !== null) parts.push(`${segments} ${pluralize(segments, 'segmento', 'segmentos')}`)
+      break
+    }
+    case 'diarization': {
+      const speakers = num('num_speakers')
+      const turns = num('num_turns')
+      if (speakers !== null) parts.push(`${speakers} ${pluralize(speakers, 'hablante', 'hablantes')}`)
+      if (turns !== null) parts.push(`${turns} ${pluralize(turns, 'turno', 'turnos')}`)
+      break
+    }
+    case 'speaker_profile_building': {
+      const speakers = num('num_speakers')
+      if (speakers !== null) parts.push(`${speakers} ${pluralize(speakers, 'perfil', 'perfiles')}`)
+      break
+    }
+    case 'translation': {
+      const segments = num('num_segments')
+      const batches = num('num_batches')
+      if (segments !== null) parts.push(`${segments} ${pluralize(segments, 'segmento', 'segmentos')}`)
+      if (batches !== null) parts.push(`${batches} ${pluralize(batches, 'lote', 'lotes')}`)
+      break
+    }
+    case 'tts_synthesis': {
+      const groups = num('num_groups')
+      const jobs = num('num_jobs')
+      const reduction = num('grouping_reduction_pct')
+      if (groups !== null) parts.push(`${groups} ${pluralize(groups, 'grupo', 'grupos')}`)
+      else if (jobs !== null) parts.push(`${jobs} ${pluralize(jobs, 'trabajo', 'trabajos')}`)
+      if (reduction !== null) parts.push(`${reduction.toFixed(1)}% menos llamadas`)
+      break
+    }
+    default:
+      break
+  }
+
+  if (stage.ran_concurrently) parts.push('en paralelo')
+
+  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 /** Predicts the full ordered list of stages this project WILL go through,
