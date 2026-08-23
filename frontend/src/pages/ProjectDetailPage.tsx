@@ -12,6 +12,7 @@ import {
 import type { DownloadArtifact, ProjectStage } from '../types/project'
 import { StageTimeline } from '../components/projects/StageTimeline'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import { CopyableValue } from '../components/ui/CopyableValue'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { formatDateTime, formatSecondsDuration } from '../lib/format'
@@ -266,7 +267,9 @@ export function ProjectDetailPage() {
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                   ID de ejecución
                 </dt>
-                <dd className="mt-1 font-mono text-sm">{status.run_id}</dd>
+                <dd className="mt-1 font-mono text-sm">
+                  <CopyableValue value={status.run_id} />
+                </dd>
               </div>
             )}
           </dl>

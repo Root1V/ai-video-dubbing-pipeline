@@ -8,6 +8,7 @@ import { Card, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
+import { CopyableValue } from '../components/ui/CopyableValue'
 import {
   Table,
   TableBody,
@@ -153,7 +154,7 @@ export function ProjectsListPage() {
                       {project.total_seconds != null ? formatSecondsDuration(project.total_seconds) : '—'}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      {project.run_id ?? '—'}
+                      {project.run_id ? <CopyableValue value={project.run_id} /> : '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDateTime(project.created_at)}
