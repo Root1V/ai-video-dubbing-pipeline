@@ -41,6 +41,18 @@ def _get_owned_project(project_id: uuid.UUID, user: User, db: Session) -> Projec
     return project
 
 
+def _to_project_out(project: Project) -> ProjectOut:
+    """Completa total_seconds/run_id desde pipeline_timings.json (via el mismo
+    lector que usa /status) para que el listado no tenga que pedirle a cada
+    fila su propio /status por separado. Barato: si el archivo no existe
+    todavia (proyecto recien creado/en cola), read_project_status cae al
+    fallback de BD sin tocar el disco mas de una vez."""
+    info = read_project_status(project)
+    return ProjectOut.model_validate(project).model_copy(
+        update={"total_seconds": info.get("total_seconds"), "run_id": info.get("run_id")}
+    )
+
+
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
     name: str = Form(...),
@@ -58,7 +70,7 @@ def create_project(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
-) -> Project:
+) -> ProjectOut:
     try:
         glossary_dict = json.loads(glossary)
     except json.JSONDecodeError as exc:
@@ -108,7 +120,7 @@ def create_project(
     db.commit()
     db.refresh(project)
 
-    return project
+    return _to_project_out(project)
 
 
 @router.get("", response_model=ProjectListOut)
@@ -132,7 +144,7 @@ def list_projects(
     items = list(db.execute(stmt).scalars().all())
 
     return ProjectListOut(
-        items=[ProjectOut.model_validate(item) for item in items],
+        items=[_to_project_out(item) for item in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -144,8 +156,8 @@ def get_project(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> Project:
-    return _get_owned_project(project_id, current_user, db)
+) -> ProjectOut:
+    return _to_project_out(_get_owned_project(project_id, current_user, db))
 
 
 @router.get("/{project_id}/status", response_model=ProjectStatusOut)
@@ -191,7 +203,7 @@ def resume_project(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
-) -> Project:
+) -> ProjectOut:
     project = _get_owned_project(project_id, current_user, db)
     if project.status != ProjectStatus.FAILED:
         raise HTTPException(
@@ -207,7 +219,7 @@ def resume_project(
     project.celery_task_id = task.id
     db.commit()
     db.refresh(project)
-    return project
+    return _to_project_out(project)
 
 
 @router.get("/{project_id}/download/{artifact}")

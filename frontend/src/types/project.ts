@@ -28,6 +28,11 @@ export interface Project {
   started_at: string | null
   completed_at: string | null
   error_message: string | null
+  /** Not a DB column -- filled in from pipeline_timings.json (see
+   * status_reader.py) so the projects list doesn't need a second /status
+   * call per row. Null until the run has actually written that file. */
+  total_seconds: number | null
+  run_id: string | null
 }
 
 export interface ProjectListResponse {

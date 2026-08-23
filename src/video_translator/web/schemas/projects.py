@@ -28,6 +28,11 @@ class ProjectOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     error_message: str | None
+    # No son columnas de la fila -- se completan aparte desde
+    # pipeline_timings.json (ver services/status_reader.py) para no obligar
+    # al listado de proyectos a hacer una segunda llamada a /status por fila.
+    total_seconds: float | None = None
+    run_id: str | None = None
 
 
 class ProjectListOut(BaseModel):

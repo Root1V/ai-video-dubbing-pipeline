@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/Table'
-import { formatDateTime } from '../lib/format'
+import { formatDateTime, formatSecondsDuration } from '../lib/format'
 import { PROJECT_STATUS_BADGE_VARIANT, PROJECT_STATUS_LABELS } from '../lib/status'
 import { OUTPUT_MODE_LABELS, SERVICE_TYPE_LABELS } from '../lib/labels'
 
@@ -126,9 +126,10 @@ export function ProjectsListPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
-                  <TableHead>Servicio</TableHead>
-                  <TableHead>Modo</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Duración</TableHead>
+                  <TableHead>ID de ejecución</TableHead>
                   <TableHead>Creado</TableHead>
                 </TableRow>
               </TableHeader>
@@ -140,7 +141,6 @@ export function ProjectsListPage() {
                     onClick={() => navigate(`/projects/${project.id}`)}
                   >
                     <TableCell className="font-medium">{project.name}</TableCell>
-                    <TableCell>{SERVICE_TYPE_LABELS[project.service_type]}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {OUTPUT_MODE_LABELS[project.output_mode]}
                     </TableCell>
@@ -148,6 +148,12 @@ export function ProjectsListPage() {
                       <Badge variant={PROJECT_STATUS_BADGE_VARIANT[project.status]}>
                         {PROJECT_STATUS_LABELS[project.status]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {project.total_seconds != null ? formatSecondsDuration(project.total_seconds) : '—'}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {project.run_id ?? '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDateTime(project.created_at)}

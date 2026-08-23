@@ -3,6 +3,7 @@ y aislamiento por usuario (ownership)."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -115,6 +116,32 @@ def test_get_project_status(client: TestClient, make_user: Callable[..., User]) 
     body = resp.json()
     assert body["db_status"] == "queued"
     assert body["stages"] is None
+
+
+def test_list_and_get_include_total_seconds_and_run_id(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(client, headers).json()
+
+    output_dir = Path(created["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "pipeline_timings.json").write_text(
+        json.dumps({"run_id": "abc123def456", "total_seconds": 305.76, "completed": True})
+    )
+
+    get_resp = client.get(f"/api/projects/{created['id']}", headers=headers)
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert body["run_id"] == "abc123def456"
+    assert body["total_seconds"] == 305.76
+
+    list_resp = client.get("/api/projects", headers=headers)
+    assert list_resp.status_code == 200
+    item = list_resp.json()["items"][0]
+    assert item["run_id"] == "abc123def456"
+    assert item["total_seconds"] == 305.76
 
 
 def test_project_not_found(client: TestClient, make_user: Callable[..., User]) -> None:
