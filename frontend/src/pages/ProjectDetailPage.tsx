@@ -9,21 +9,14 @@ import {
   fetchProjectStatus,
   resumeProject,
 } from '../api/projects'
-import type { DownloadArtifact, ProjectStage, ProjectStatus } from '../types/project'
+import type { DownloadArtifact, ProjectStage } from '../types/project'
+import { StageTimeline } from '../components/projects/StageTimeline'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { formatDateTime } from '../lib/format'
 import { PROJECT_STATUS_BADGE_VARIANT, PROJECT_STATUS_LABELS, isActiveStatus } from '../lib/status'
-import { OUTPUT_MODE_LABELS, SERVICE_TYPE_LABELS } from '../lib/labels'
-
-const FALLBACK_MESSAGES: Record<ProjectStatus, (errorMessage: string | null) => string> = {
-  queued: () => 'En cola',
-  downloading: () => 'Descargando',
-  running: () => 'Procesando…',
-  completed: () => 'Completado',
-  failed: (errorMessage) => `Falló: ${errorMessage ?? 'error desconocido'}`,
-}
+import { OUTPUT_MODE_LABELS, SERVICE_TYPE_LABELS, getExpectedStageNames } from '../lib/labels'
 
 function normalizeStages(
   stages: ProjectStage[] | Record<string, unknown> | null,
@@ -112,6 +105,10 @@ export function ProjectDetailPage() {
   const status = statusQuery.data
   const dbStatus = status?.db_status ?? project.status
   const stages = normalizeStages(status?.stages ?? null)
+  const expectedStageNames = getExpectedStageNames(
+    project.output_mode,
+    Boolean(project.config.diarize),
+  )
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -165,33 +162,12 @@ export function ProjectDetailPage() {
           <CardTitle className="text-base">Progreso</CardTitle>
         </CardHeader>
         <CardContent>
-          {stages.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {stages.map((stage) => (
-                <li
-                  key={stage.name}
-                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                >
-                  <span
-                    className={
-                      stage.name === status?.current_stage?.name
-                        ? 'font-medium text-primary'
-                        : ''
-                    }
-                  >
-                    {stage.name}
-                  </span>
-                  {stage.status && (
-                    <span className="text-muted-foreground">{String(stage.status)}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {FALLBACK_MESSAGES[dbStatus](project.error_message)}
-            </p>
-          )}
+          <StageTimeline
+            expectedStageNames={expectedStageNames}
+            stages={stages}
+            currentStageName={status?.current_stage?.name}
+            dbStatus={dbStatus}
+          />
         </CardContent>
       </Card>
 
