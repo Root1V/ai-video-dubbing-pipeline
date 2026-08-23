@@ -49,6 +49,27 @@ function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural
 }
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'inglés',
+  es: 'español',
+  fr: 'francés',
+  de: 'alemán',
+  it: 'italiano',
+  pt: 'portugués',
+  ja: 'japonés',
+  zh: 'chino',
+  ar: 'árabe',
+  ko: 'coreano',
+  ru: 'ruso',
+  nl: 'neerlandés',
+}
+
+/** Falls back to the raw ISO code (uppercased) for a language this map
+ * doesn't know about yet, rather than showing nothing. */
+function getLanguageName(code: string): string {
+  return LANGUAGE_NAMES[code.toLowerCase()] ?? code.toUpperCase()
+}
+
 const GENDER_LABELS: Record<string, string> = {
   male: 'hombre',
   female: 'mujer',
@@ -89,13 +110,21 @@ function summarizeSpeakers(speakers: RawSpeaker[]): string[] {
   return parts
 }
 
+interface StageSubtitleContext {
+  sourceLang?: string
+  targetLang?: string
+}
+
 /** Picks the most useful metrics out of a stage's raw metadata (see
  * `pipeline_timings.json`'s `stages[]` entries) and formats them as a short,
  * human-readable summary -- e.g. "38 segmentos · 2 lotes" for translation.
- * Returns null for stages that genuinely carry nothing beyond timing
- * bookkeeping (audio_extraction, subtitles_writing, audio_mixing_and_muxing,
- * rendering_*) -- that's expected, not a missing case. */
-export function getStageSubtitle(stage: ProjectStage): string | null {
+ * `context` carries project-level info (source/target language) that isn't
+ * part of any single stage's own JSON but is still relevant to show next to
+ * one (subtitles_writing). Returns null for stages that genuinely carry
+ * nothing beyond timing bookkeeping (audio_extraction,
+ * audio_mixing_and_muxing, rendering_*) -- that's expected, not a missing
+ * case. */
+export function getStageSubtitle(stage: ProjectStage, context: StageSubtitleContext = {}): string | null {
   const parts: string[] = []
   const num = (key: string): number | null => {
     const value = stage[key]
@@ -147,9 +176,17 @@ export function getStageSubtitle(stage: ProjectStage): string | null {
       if (reduction !== null) parts.push(`${reduction.toFixed(1)}% menos llamadas`)
       break
     }
-    // audio_extraction, subtitles_writing, audio_mixing_and_muxing, and the
-    // rendering_* stages carry no metrics beyond timing in practice -- no
-    // subtitle for those is correct, not an oversight.
+    case 'subtitles_writing': {
+      if (context.sourceLang && context.targetLang) {
+        parts.push(`${getLanguageName(context.sourceLang)} → ${getLanguageName(context.targetLang)}`)
+      }
+      break
+    }
+    // audio_extraction, audio_mixing_and_muxing, and the rendering_* stages
+    // carry no metrics of their own beyond timing -- audio_mixing_and_muxing
+    // gets a cross-referenced "voices used" subtitle instead, computed in
+    // StageTimeline.tsx (it needs speaker_profile_building's data, not just
+    // its own stage entry).
     default:
       break
   }

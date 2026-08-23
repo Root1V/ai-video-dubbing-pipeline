@@ -21,6 +21,10 @@ interface StageTimelineProps {
   stages: ProjectStage[]
   currentStageName?: string | null
   dbStatus: ProjectStatus
+  /** Not part of any stage's own data, but relevant to show next to
+   * subtitles_writing (which language pair the .srt files are actually in). */
+  sourceLang?: string
+  targetLang?: string
 }
 
 type StepState = 'done' | 'active' | 'failed' | 'pending'
@@ -58,14 +62,31 @@ function resolveOwnSeconds(
   return Math.max(0, stage.seconds - childrenTotal)
 }
 
+/** Not every diarized speaker ends up with a usable voice-reference clip
+ * (SpeakerProfile.reference_wav can be null -- too little clean audio, etc.),
+ * and those get a fallback voice instead of their own. So "how many voices
+ * are actually being mixed in" is `reference === true` count from
+ * speaker_profile_building, NOT diarization's raw speaker headcount -- the
+ * two can legitimately differ (e.g. 3 detected, only 1 usable). */
+function countUsableVoices(speakerProfileStage: ProjectStage | undefined): number | null {
+  const speakers = speakerProfileStage?.speakers
+  if (!Array.isArray(speakers)) return null
+  return speakers.filter(
+    (speaker) => speaker && typeof speaker === 'object' && (speaker as Record<string, unknown>).reference === true,
+  ).length
+}
+
 function buildSteps(
   expectedStageNames: string[],
   realStages: ProjectStage[],
   currentStageName: string | null | undefined,
   dbStatus: ProjectStatus,
   revealDelayKeys: Set<string>,
+  sourceLang: string | undefined,
+  targetLang: string | undefined,
 ): Step[] {
   const realByName = new Map(realStages.map((stage) => [stage.name, stage]))
+  const subtitleContext = { sourceLang, targetLang }
 
   const steps: Step[] = expectedStageNames.map((name) => {
     const real = realByName.get(name)
@@ -78,7 +99,7 @@ function buildSteps(
         label: getStageLabel(name),
         state,
         seconds: resolveOwnSeconds(real, realByName),
-        subtitle: getStageSubtitle(real),
+        subtitle: getStageSubtitle(real, subtitleContext),
       }
     }
     if (name === currentStageName) {
@@ -97,8 +118,20 @@ function buildSteps(
         label: getStageLabel(real.name),
         state: revealDelayKeys.has(real.name) ? 'active' : 'done',
         seconds: resolveOwnSeconds(real, realByName),
-        subtitle: getStageSubtitle(real),
+        subtitle: getStageSubtitle(real, subtitleContext),
       })
+    }
+  }
+
+  // audio_mixing_and_muxing's own stage entry has no metadata of its own --
+  // borrow speaker_profile_building's data to show how many distinct cloned
+  // voices are actually going into the mix (see countUsableVoices above).
+  const mixingStep = steps.find((step) => step.key === 'audio_mixing_and_muxing')
+  if (mixingStep?.state === 'done') {
+    const voiceCount = countUsableVoices(realByName.get('speaker_profile_building'))
+    if (voiceCount !== null) {
+      const label = `${voiceCount} ${voiceCount === 1 ? 'voz utilizada' : 'voces utilizadas'}`
+      mixingStep.subtitle = mixingStep.subtitle ? `${mixingStep.subtitle} · ${label}` : label
     }
   }
   if (currentStageName && !steps.some((step) => step.key === currentStageName)) {
@@ -169,6 +202,8 @@ export function StageTimeline({
   stages,
   currentStageName,
   dbStatus,
+  sourceLang,
+  targetLang,
 }: StageTimelineProps) {
   const [revealDelayKeys, setRevealDelayKeys] = useState<Set<string>>(new Set())
   const seenDoneKeys = useRef<Set<string>>(new Set())
@@ -202,7 +237,15 @@ export function StageTimeline({
     return () => timers.forEach(clearTimeout)
   }, [stages])
 
-  const steps = buildSteps(expectedStageNames, stages, currentStageName, dbStatus, revealDelayKeys)
+  const steps = buildSteps(
+    expectedStageNames,
+    stages,
+    currentStageName,
+    dbStatus,
+    revealDelayKeys,
+    sourceLang,
+    targetLang,
+  )
 
   return (
     <ol className="flex flex-col">

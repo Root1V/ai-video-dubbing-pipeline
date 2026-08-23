@@ -171,6 +171,8 @@ export function ProjectDetailPage() {
             stages={stages}
             currentStageName={status?.current_stage?.name}
             dbStatus={dbStatus}
+            sourceLang={typeof project.config.source_lang === 'string' ? project.config.source_lang : undefined}
+            targetLang={typeof project.config.target_lang === 'string' ? project.config.target_lang : undefined}
           />
         </CardContent>
       </Card>
