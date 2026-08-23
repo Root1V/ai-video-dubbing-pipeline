@@ -6,7 +6,12 @@ __pycache__/
 venv/
 .env
 .env.local
+.env.web
 .work/
+
+# Config local de Claude Code (por maquina/usuario), no del proyecto.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Videos de entrada y resultados generados: no forman parte del codigo del
 # proyecto y pueden pesar cientos de MB/varios GB. Cualquiera que clone el

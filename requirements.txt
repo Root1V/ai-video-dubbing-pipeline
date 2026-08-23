@@ -30,3 +30,17 @@ pytest-mock>=3.14.0
 pytest-cov>=5.0.0
 mypy>=1.10.0
 ruff>=0.4.8
+
+# Dashboard web (Prosodia Web): API REST + cola de tareas + persistencia.
+# Usado por las imagenes Docker "api" y "worker" (ver docker-compose.yml).
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.30
+alembic>=1.13.0
+psycopg[binary]>=3.1.19
+celery[redis]>=5.4.0
+redis>=5.0.4
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.9
+yt-dlp>=2024.7.1

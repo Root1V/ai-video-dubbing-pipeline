@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   ollama:
     image: ollama/ollama:latest
@@ -35,5 +33,29 @@ services:
               capabilities: [gpu]
     command: ["translate", "--input", "/data/video.mp4", "--output-dir", "/app/output", "--context", "/data/context.txt"]
 
+  # --- Dashboard web (Prosodia Web) --- ver src/video_translator/web/.
+  # postgres/redis alcanzan para desarrollo local del backend (M1); los
+  # servicios "api"/"worker"/"frontend" se agregan en un milestone posterior
+  # una vez validado el flujo end-to-end (ver plan de implementacion).
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=prosodia
+      - POSTGRES_USER=prosodia
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-prosodia}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
 volumes:
   ollama_data:
+  postgres_data:
+  redis_data:

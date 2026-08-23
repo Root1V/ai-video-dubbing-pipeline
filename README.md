@@ -69,6 +69,7 @@ single-file script.
   - [macOS: transcription and diarization on the GPU](#macos-transcription-and-diarization-on-the-gpu)
   - [Validated at scale](#validated-at-scale-3-minutes-to-a-full-72-minute-lecture)
 - [Observability](#observability-where-did-the-time-go)
+- [Web Dashboard (Prosodia Web)](#web-dashboard-prosodia-web--optional-admin-ui)
 - [Testing](#testing)
 - [Extensibility](#extensibility)
 - [Author](#author)
@@ -920,6 +921,82 @@ error, if the pipeline fails partway through) survives in the output
 directory alongside the subtitles and the timings report. Set
 `LOG_JSON=true` in your `.env` if you'd rather have the file (and console) in
 structured JSON-lines instead of the human-readable format.
+
+## Web Dashboard (Prosodia Web) — optional admin UI
+
+**Status: work in progress (Milestone 1 of 6 — foundation).** A web
+dashboard (React + FastAPI + Celery/Redis + Postgres) is being built as a
+second "driver" alongside the CLI — same `application`/`domain` layers,
+same `container.build_translate_video_use_case`, nothing in the core
+pipeline is modified for it. Today it supports: login, uploading a video by
+drag-and-drop, and tracking a project's status. **The actual dubbing/
+subtitling/transcription work is not wired up yet** — the background job
+that would call the real pipeline is currently a stub that just marks a
+project `completed` after a few seconds. Use the CLI (see
+[Usage](#usage)) for real processing until a later milestone lands.
+
+Code lives in `src/video_translator/web/` (backend) and `frontend/`
+(React SPA) — neither is required to use the CLI; this is purely additive.
+
+### Prerequisites
+
+- [Docker](https://www.docker.com/) (for Postgres + Redis — or point at
+  your own instances if you already run them).
+- [Node.js](https://nodejs.org/) 18+ (for the frontend).
+- The `web` extra installed: `uv sync --extra web`.
+
+### Running it locally
+
+```bash
+# 1. Postgres + Redis (only these two services exist so far in docker-compose.yml)
+docker compose up -d postgres redis
+
+# 2. Apply the database schema
+uv run alembic upgrade head
+
+# 3. Create the first admin user (no self-registration by design)
+uv run python scripts/create_admin.py --email admin@example.com --password "change-me" --name "Admin"
+
+# 4. API (in one terminal)
+uv run uvicorn video_translator.web.main:app --reload --port 8000
+
+# 5. Celery worker (in another terminal — required for projects to move past "queued")
+uv run celery -A video_translator.web.tasks.celery_app worker --loglevel=info
+
+# 6. Frontend (in another terminal)
+cd frontend
+npm install
+npm run dev   # http://localhost:5173, proxies /api to localhost:8000
+```
+
+Open `http://localhost:5173`, log in with the admin you just created, and
+upload a video from **Doblaje de Video** to see a project move through
+`queued` → `running` → `completed` (against the stub task, per the status
+note above).
+
+### Configuration
+
+Settings live in a separate `.env.web` file (not the pipeline's `.env` —
+this is a distinct concern), read by `WebSettings`
+(`src/video_translator/web/config.py`). Sane defaults matching the
+`docker compose up -d postgres redis` setup above are built in, so local
+development works with no `.env.web` at all:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `DATABASE_URL` | `postgresql+psycopg://prosodia:prosodia@localhost:5432/prosodia` | Matches `docker-compose.yml`'s `postgres` service |
+| `REDIS_URL` | `redis://localhost:6379/0` | Matches the `redis` service |
+| `JWT_SECRET_KEY` | an insecure, clearly-marked dev value | **Set a real secret before exposing this beyond localhost** |
+| `JWT_EXPIRE_MINUTES` | `720` (12h) | |
+| `STORAGE_ROOT` | `./data/prosodia_web` | Uploaded videos and per-project output directories |
+| `CORS_ORIGINS` | `["http://localhost:5173", "http://localhost:3000"]` | Add your deployed frontend origin here |
+
+### Testing the web module
+
+```bash
+uv run pytest tests/unit/web -v      # backend: in-memory SQLite, no Postgres/Redis needed
+cd frontend && npm run build          # frontend: TypeScript + Vite production build
+```
 
 ## Testing
 
