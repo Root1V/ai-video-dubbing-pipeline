@@ -924,16 +924,29 @@ structured JSON-lines instead of the human-readable format.
 
 ## Web Dashboard (Prosodia Web) — optional admin UI
 
-**Status: work in progress (Milestone 1 of 6 — foundation).** A web
-dashboard (React + FastAPI + Celery/Redis + Postgres) is being built as a
-second "driver" alongside the CLI — same `application`/`domain` layers,
-same `container.build_translate_video_use_case`, nothing in the core
-pipeline is modified for it. Today it supports: login, uploading a video by
-drag-and-drop, and tracking a project's status. **The actual dubbing/
-subtitling/transcription work is not wired up yet** — the background job
-that would call the real pipeline is currently a stub that just marks a
-project `completed` after a few seconds. Use the CLI (see
-[Usage](#usage)) for real processing until a later milestone lands.
+**Status: work in progress (Milestones 1-2 of 6 done).** A web dashboard
+(React + FastAPI + Celery/Redis + Postgres) is being built as a second
+"driver" alongside the CLI — same `application`/`domain` layers, same
+`container.build_translate_video_use_case`, nothing in the core pipeline is
+modified for it.
+
+**What actually works today:** login, creating a project by uploading a
+video via drag-and-drop, and **real** dubbing/subtitles/transcription
+processing — the background job calls the same pipeline the CLI does, and
+the project detail page polls live progress (stage by stage) straight from
+`pipeline_timings.json`, exactly like the CLI's own summary table. You can
+also download the finished video/subtitles and retry a failed project.
+
+**What's still missing** (tracked as later milestones, not bugs):
+
+| Milestone | What it adds | Status |
+|---|---|---|
+| M1 — Foundation | Auth, project CRUD, drag-and-drop upload | ✅ Done |
+| M2 — Real pipeline integration | Real dubbing/subtitles/transcription runs, live progress, downloads, retry | ✅ Done |
+| M3 — YouTube import | The "Buscar en YouTube" tab (currently disabled/"Próximamente") | Pending |
+| M4 — Subtitles/transcription pages | Dedicated forms for those two services (currently placeholder pages) | Pending |
+| M5 — Voices & templates libraries | Reusable saved voice clips / context presets | Pending |
+| M6 — Admin pages | User management UI, editable settings, dashboard stats (currently always "—") | Pending |
 
 Code lives in `src/video_translator/web/` (backend) and `frontend/`
 (React SPA) — neither is required to use the CLI; this is purely additive.
@@ -944,6 +957,12 @@ Code lives in `src/video_translator/web/` (backend) and `frontend/`
   your own instances if you already run them).
 - [Node.js](https://nodejs.org/) 18+ (for the frontend).
 - The `web` extra installed: `uv sync --extra web`.
+- To actually process videos (not just click around the UI), the Celery
+  worker needs the **same dependencies you'd use to run the CLI** — a
+  dubbing engine extra if you want `--mode dubbed` (see
+  [Optional extras](#optional-extras-dubbing-engines-apple-gpu-transcription)),
+  your LLM backend running, etc. The worker reads the same `.env` the CLI
+  does.
 
 ### Running it locally
 
@@ -960,7 +979,7 @@ uv run python scripts/create_admin.py --email admin@example.com --password "chan
 # 4. API (in one terminal)
 uv run uvicorn video_translator.web.main:app --reload --port 8000
 
-# 5. Celery worker (in another terminal — required for projects to move past "queued")
+# 5. Celery worker (in another terminal — required, or projects stay "queued" forever)
 uv run celery -A video_translator.web.tasks.celery_app worker --loglevel=info
 
 # 6. Frontend (in another terminal)
@@ -970,9 +989,22 @@ npm run dev   # http://localhost:5173, proxies /api to localhost:8000
 ```
 
 Open `http://localhost:5173`, log in with the admin you just created, and
-upload a video from **Doblaje de Video** to see a project move through
-`queued` → `running` → `completed` (against the stub task, per the status
-note above).
+upload a video from **Doblaje de Video** to watch it move through
+`queued` → `running` → `completed` against the real pipeline, with the
+stage timeline updating live.
+
+> **macOS + `transcription-mlx`, known `uv` resolution quirk:** installing
+> `transcription-mlx` **by itself** (`uv sync --extra web --extra
+> transcription-mlx`) makes `uv` resolve `mlx-whisper`'s `torch` dependency
+> to the Linux/CUDA wheel, which fails to install on macOS. This is a
+> pre-existing lockfile edge case, not specific to the web module. Workaround:
+> install `dubbing-indextts` alongside it (it happens to pull in a
+> macOS-compatible `torch` too, since IndexTTS-2.5 needs one):
+> ```bash
+> uv sync --extra web --extra dev --extra transcription-mlx --extra dubbing-indextts
+> ```
+> If you'd rather not deal with this, leave `WHISPER_BACKEND=faster_whisper`
+> (the default) in your `.env` — slower on Mac, but unaffected by this.
 
 ### Configuration
 
