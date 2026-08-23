@@ -14,7 +14,7 @@ import { StageTimeline } from '../components/projects/StageTimeline'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { formatDateTime } from '../lib/format'
+import { formatDateTime, formatSecondsDuration } from '../lib/format'
 import { PROJECT_STATUS_BADGE_VARIANT, PROJECT_STATUS_LABELS, isActiveStatus } from '../lib/status'
 import { OUTPUT_MODE_LABELS, SERVICE_TYPE_LABELS, getExpectedStageNames } from '../lib/labels'
 
@@ -241,6 +241,14 @@ export function ProjectDetailPage() {
               </dt>
               <dd className="mt-1 text-sm">{formatDateTime(project.completed_at)}</dd>
             </div>
+            {status?.total_seconds != null && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Duración total
+                </dt>
+                <dd className="mt-1 text-sm">{formatSecondsDuration(status.total_seconds)}</dd>
+              </div>
+            )}
             {status && (
               <div>
                 <dt className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -249,6 +257,14 @@ export function ProjectDetailPage() {
                 <dd className="mt-1 text-sm">
                   {status.realtime_factor !== null ? status.realtime_factor.toFixed(2) : '—'}
                 </dd>
+              </div>
+            )}
+            {status?.run_id && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  ID de ejecución
+                </dt>
+                <dd className="mt-1 font-mono text-sm">{status.run_id}</dd>
               </div>
             )}
           </dl>

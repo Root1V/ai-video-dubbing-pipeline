@@ -32,6 +32,27 @@ export function formatRelativeTime(value: string | null | undefined): string {
   return rtf.format(diffSeconds, 'second')
 }
 
+/** Time only (no date) -- used next to a stage's name, where the date is
+ * already obvious from the surrounding run and repeating it would just be
+ * noise. */
+export function formatTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleTimeString('es-ES', { timeStyle: 'medium' })
+}
+
+/** "4m 29s" / "268s" / "<1s" -- shared by the stage timeline and the overall
+ * run duration so both use the same rounding/format. */
+export function formatSecondsDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return '—'
+  if (seconds < 1) return '<1s'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = Math.round(seconds % 60)
+  return `${minutes}m ${rest}s`
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']

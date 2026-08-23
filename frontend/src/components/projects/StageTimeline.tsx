@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { formatSecondsDuration, formatTime } from '../../lib/format'
 import { getStageLabel, getStageSubtitle } from '../../lib/labels'
 import type { ProjectStage, ProjectStatus } from '../../types/project'
 
@@ -30,15 +31,6 @@ interface Step {
   state: StepState
   seconds?: number
   subtitle?: string | null
-}
-
-function formatDuration(seconds: number | undefined): string | null {
-  if (seconds === undefined) return null
-  if (seconds < 1) return '<1s'
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  const minutes = Math.floor(seconds / 60)
-  const rest = Math.round(seconds % 60)
-  return `${minutes}m ${rest}s`
 }
 
 /** `rendering_dubbed`'s own timer in translate_video.py wraps the whole
@@ -124,6 +116,27 @@ function buildSteps(
     }
   }
 
+  // The first and last steps are the only ones where "when exactly" is more
+  // useful than a domain metric -- they mark when the whole run itself
+  // started/finished, not just this one stage. Every stage already carries
+  // started_at/ended_at; only the first/last actually need showing it.
+  const first = steps[0]
+  if (first?.state === 'done') {
+    const startedAt = realByName.get(first.key)?.started_at
+    if (typeof startedAt === 'string') {
+      const label = `inicio ${formatTime(startedAt)}`
+      first.subtitle = first.subtitle ? `${first.subtitle} · ${label}` : label
+    }
+  }
+  const last = steps[steps.length - 1]
+  if (last && last !== first && last.state === 'done') {
+    const endedAt = realByName.get(last.key)?.ended_at
+    if (typeof endedAt === 'string') {
+      const label = `fin ${formatTime(endedAt)}`
+      last.subtitle = last.subtitle ? `${last.subtitle} · ${label}` : label
+    }
+  }
+
   return steps
 }
 
@@ -195,7 +208,7 @@ export function StageTimeline({
     <ol className="flex flex-col">
       {steps.map((step, index) => {
         const isLast = index === steps.length - 1
-        const duration = formatDuration(step.seconds)
+        const duration = step.seconds === undefined ? null : formatSecondsDuration(step.seconds)
         return (
           <li key={step.key} className="relative flex gap-4 pb-6 last:pb-0">
             {!isLast && (
