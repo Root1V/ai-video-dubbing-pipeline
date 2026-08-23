@@ -34,9 +34,6 @@ services:
     command: ["translate", "--input", "/data/video.mp4", "--output-dir", "/app/output", "--context", "/data/context.txt"]
 
   # --- Dashboard web (Prosodia Web) --- ver src/video_translator/web/.
-  # postgres/redis alcanzan para desarrollo local del backend (M1); los
-  # servicios "api"/"worker"/"frontend" se agregan en un milestone posterior
-  # una vez validado el flujo end-to-end (ver plan de implementacion).
   postgres:
     image: postgres:16-alpine
     environment:
@@ -54,6 +51,72 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+
+  # API REST (FastAPI/uvicorn). No necesita GPU: solo sirve HTTP y lee
+  # pipeline_timings.json del disco compartido con "worker" para el progreso
+  # en vivo -- ver services/status_reader.py.
+  api:
+    build: .
+    entrypoint: []
+    command: ["uvicorn", "video_translator.web.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg://prosodia:${POSTGRES_PASSWORD:-prosodia}@postgres:5432/prosodia
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_ROOT=/data/prosodia_web
+      - CORS_ORIGINS=["http://localhost:3000"]
+      # JWT_SECRET_KEY: sin valor real aca a proposito -- WebSettings ya trae
+      # un default inseguro marcado como tal para desarrollo. Fija uno real
+      # en tu .env de la raiz (docker compose lo carga automaticamente) antes
+      # de exponer esto mas alla de localhost.
+    volumes:
+      - ./data:/data
+
+  # Worker Celery: MISMA imagen que "video-translator" (necesita
+  # faster-whisper/IndexTTS/etc. para procesar de verdad), solo cambia el
+  # comando. --concurrency=1: cada corrida ya satura la maquina (ver
+  # container.py); para mas throughput, escala replicas del servicio, no la
+  # concurrencia interna.
+  worker:
+    build: .
+    entrypoint: []
+    command: ["celery", "-A", "video_translator.web.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql+psycopg://prosodia:${POSTGRES_PASSWORD:-prosodia}@postgres:5432/prosodia
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_ROOT=/data/prosodia_web
+      - TRANSLATION_BACKEND=llama_server
+      - LLAMA_SERVER_HOST=${LLAMA_SERVER_HOST:-http://host.docker.internal:8080}
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # SPA (build de Vite servido por nginx, ver frontend/Dockerfile). Para
+  # desarrollo activo del frontend (hot reload) segui usando
+  # `cd frontend && npm run dev` en vez de este servicio -- ver README.
+  frontend:
+    build: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
 
 volumes:
   postgres_data:

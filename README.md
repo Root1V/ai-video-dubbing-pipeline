@@ -980,10 +980,33 @@ Code lives in `src/video_translator/web/` (backend) and `frontend/`
   your LLM backend running, etc. The worker reads the same `.env` the CLI
   does.
 
-### Running it locally
+### Running it: two ways
+
+**Option A — one command (Linux/Windows with an NVIDIA GPU, same
+requirement as the CLI's [Docker](#docker-linux--windows-with-nvidia-gpu)
+path — doesn't apply to macOS):** `docker-compose.yml` now has every piece
+(`postgres`, `redis`, `api`, `worker`, `frontend`), reusing the same image as
+the `video-translator` CLI service for `worker` (it needs the same
+faster-whisper/TTS dependencies to actually process videos).
 
 ```bash
-# 1. Postgres + Redis (only these two services exist so far in docker-compose.yml)
+LLAMA_SERVER_HOST=http://host.docker.internal:8080 docker compose up --build postgres redis api worker frontend
+
+# once it's up, in another terminal:
+docker compose exec api python3.11 scripts/create_admin.py --email admin@example.com --password "change-me" --name "Admin"
+```
+
+Open `http://localhost:3000` (the dashboard is served by `frontend`'s nginx,
+which proxies `/api` to the `api` service — not `http://localhost:8000`
+directly, that's the raw API). Migrations don't run automatically either;
+apply them once against the `api` container the same way as the admin
+script above: `docker compose exec api alembic upgrade head`.
+
+**Option B — local processes with hot reload (recommended while actively
+developing the dashboard itself):**
+
+```bash
+# 1. Postgres + Redis only
 docker compose up -d postgres redis
 
 # 2. Apply the database schema
@@ -1001,13 +1024,13 @@ uv run celery -A video_translator.web.tasks.celery_app worker --loglevel=info
 # 6. Frontend (in another terminal)
 cd frontend
 npm install
-npm run dev   # http://localhost:5173, proxies /api to localhost:8000
+npm run dev   # http://localhost:5173, proxies /api to localhost:8000, hot-reloads on save
 ```
 
-Open `http://localhost:5173`, log in with the admin you just created, and
-upload a video from **Doblaje de Video** to watch it move through
-`queued` → `running` → `completed` against the real pipeline, with the
-stage timeline updating live.
+Either way, log in with the admin you just created and upload a video from
+**Doblaje de Video** to watch it move through `queued` → `running` →
+`completed` against the real pipeline, with the stage timeline updating
+live.
 
 > **macOS + `transcription-mlx`, known `uv` resolution quirk:** installing
 > `transcription-mlx` **by itself** (`uv sync --extra web --extra

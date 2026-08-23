@@ -8,9 +8,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 python3-pip python3.11-venv \
+    python3.11 python3-pip python3.11-venv python3.11-dev \
     ffmpeg \
     git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,6 +22,9 @@ RUN python3.11 -m pip install --upgrade pip \
 
 COPY src/ ./src/
 COPY tests/ ./tests/
+COPY scripts/ ./scripts/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 RUN python3.11 -m pip install -e .
 
 ENTRYPOINT ["video-translator"]

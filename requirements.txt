@@ -42,5 +42,10 @@ celery[redis]>=5.4.0
 redis>=5.0.4
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+# passlib 1.7.4 detects bcrypt's version via `bcrypt.__about__`, removed in
+# bcrypt>=4.1 -- without this pin every hash/verify call crashes. Keep in
+# sync with the same pin in pyproject.toml's "web" extra.
+bcrypt<4.1
 python-multipart>=0.0.9
 yt-dlp>=2024.7.1
+email-validator>=2.0.0
