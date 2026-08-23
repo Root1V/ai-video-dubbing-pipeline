@@ -73,6 +73,28 @@ def _worker_synthesize(job: SynthesisJob) -> Path:
     return job.output_path
 
 
+def _worker_synthesize_chunk(jobs: list[SynthesisJob]) -> None:
+    """Procesa VARIOS jobs dentro del mismo worker. Si el motor de sintesis
+    soporta ``synthesize_batch`` (duck-typed, igual que hace el caso de uso
+    con el pool completo), lo usa para aprovechar el batching interno del
+    modelo (ver IndexTTS2Synthesizer.synthesize_batch); si no, cae al bucle
+    de siempre, un job a la vez."""
+    global _worker_synth
+    if _worker_synth is None:  # pragma: no cover - no deberia pasar nunca
+        raise RuntimeError("Worker de sintesis sin modelo inicializado.")
+    if hasattr(_worker_synth, "synthesize_batch"):
+        _worker_synth.synthesize_batch(jobs)
+        return
+    for job in jobs:
+        _worker_synth.synthesize_segment(
+            text=job.text,
+            output_path=job.output_path,
+            target_duration_seconds=job.target_duration_seconds,
+            speaker_reference_wav=job.speaker_reference_wav,
+            language=job.language,
+        )
+
+
 class ParallelTTSPool:
     def __init__(
         self,
@@ -122,7 +144,17 @@ class ParallelTTSPool:
             return
         logger.info("parallel_tts_pool.batch_start", num_jobs=len(jobs), num_workers=self._num_workers)
         t0 = time.monotonic()
-        futures = [self._executor.submit(_worker_synthesize, job) for job in jobs]
+        # Reparte los jobs en tantos trozos como workers haya (contiguos, no
+        # uno-por-future): cada worker recibe VARIOS jobs y decide el mismo
+        # como agruparlos internamente para el batching del GPT (ver
+        # _worker_synthesize_chunk / IndexTTS2Synthesizer.synthesize_batch).
+        # El orden de entrada ya viene agrupado por hablante (ver
+        # synthesis_grouping.py), asi que trozos contiguos tienden a
+        # mantener el mismo hablante junto dentro de cada worker.
+        num_chunks = min(self._num_workers, len(jobs))
+        chunk_size = -(-len(jobs) // num_chunks)  # division hacia arriba
+        chunks = [jobs[i : i + chunk_size] for i in range(0, len(jobs), chunk_size)]
+        futures = [self._executor.submit(_worker_synthesize_chunk, chunk) for chunk in chunks]
         for future in futures:
             future.result()  # propaga excepciones y espera a que termine todo
         wall_seconds = time.monotonic() - t0

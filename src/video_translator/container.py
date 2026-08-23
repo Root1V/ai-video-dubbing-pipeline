@@ -32,13 +32,15 @@ logger = get_logger(__name__)
 # Tope de workers paralelos auto-detectados: cada uno carga su propia copia
 # del modelo de TTS en memoria (unos 4-6GB con IndexTTS-2.5), asi que en
 # maquinas con poca RAM crear demasiados puede ser contraproducente. VALIDADO
-# en un M4 Max (16 nucleos, 128GB RAM) con un clip real: mas workers de los
-# que sugeriria "mitad de los nucleos" siguio dando mejoras incluso con menos
-# hilos por worker (6 workers -> 367s, 10 -> 342s, 14 (uno por segmento en
-# esa prueba) -> 327s de sintesis) -- el paralelismo entre procesos pesa mas
-# que los hilos por proceso para esta carga de trabajo. En maquinas con RAM
-# limitada, baja esto explicitamente con TTS_PARALLEL_WORKERS.
-_AUTO_MAX_TTS_WORKERS = 12
+# en un M4 Max (16 nucleos, 128GB RAM) con el batching real de GPT (ver
+# IndexTTS2Synthesizer.synthesize_batch): en clips cortos (~14 jobs) mas
+# workers seguia ganando hasta usar uno por job, pero en videos largos (44 a
+# 269 jobs, de 10 a 60 min) el optimo real fue 8 workers -- 4 midio 17.7s/job,
+# 8 midio 14.3-17.3s/job (el mejor de los tres), 12 midio 18.3s/job (peor que
+# 8). Con menos hilos por worker de los que hay a partir de ~10 workers en 16
+# nucleos, la contencion empieza a pesar mas que el paralelismo ganado. En
+# maquinas con RAM limitada, baja esto explicitamente con TTS_PARALLEL_WORKERS.
+_AUTO_MAX_TTS_WORKERS = 8
 
 # Nucleos reservados para el subprocess de diarizacion cuando corre EN
 # PARALELO con la transcripcion (ver TranslateVideoUseCase._transcribe_and_diarize):
@@ -231,6 +233,7 @@ def _synthesizer_factory(
             use_bf16=settings.index_tts2_use_bf16,
             use_torch_compile=settings.index_tts2_use_torch_compile,
             num_beams=settings.index_tts2_num_beams,
+            gpt_batch_size=settings.index_tts2_gpt_batch_size,
             ffmpeg_binary=settings.ffmpeg_binary,
             device=device,
         )
