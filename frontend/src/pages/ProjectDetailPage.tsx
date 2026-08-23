@@ -279,9 +279,20 @@ export function ProjectDetailPage() {
                 Advertencias
               </p>
               <ul className="list-inside list-disc text-sm text-warning">
-                {status.warnings.map((warning, index) => (
-                  <li key={index}>{warning}</li>
-                ))}
+                {status.warnings.map((warning, index) => {
+                  const { source, ...details } = warning
+                  const detailsText = Object.entries(details)
+                    .map(([key, value]) => `${key}=${String(value)}`)
+                    .join(', ')
+                  return (
+                    <li key={index}>
+                      <span className="font-medium">{source}</span>
+                      {detailsText && (
+                        <span className="text-muted-foreground"> — {detailsText}</span>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}

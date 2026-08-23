@@ -65,6 +65,15 @@ export interface CurrentStage {
   [key: string]: unknown
 }
 
+/** Matches an entry in `PipelineTimings.as_dict()["warnings"]` (added via
+ * `timings.add_warning(**w)`). Always has a `source`, plus arbitrary extra
+ * fields that vary by warning type (e.g. `segment_index`, `overflow_seconds`
+ * for `audio_mixing.overflow_after_compression`) — not a plain string. */
+export interface PipelineWarning {
+  source: string
+  [key: string]: unknown
+}
+
 export interface ProjectStatusResponse {
   db_status: ProjectStatus
   run_id: string | null
@@ -73,7 +82,7 @@ export interface ProjectStatusResponse {
   stages: ProjectStage[] | Record<string, unknown> | null
   total_seconds: number | null
   realtime_factor: number | null
-  warnings: string[] | null
+  warnings: PipelineWarning[] | null
 }
 
 export type DownloadArtifact = 'video' | 'srt_source' | 'srt_target'
