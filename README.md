@@ -973,6 +973,20 @@ Code lives in `src/video_translator/web/` (backend) and `frontend/`
   your own instances if you already run them).
 - [Node.js](https://nodejs.org/) 18+ (for the frontend).
 - The `web` extra installed: `uv sync --extra web`.
+
+  > **If you already use this project for dubbing/transcription, don't run
+  > that command alone.** `uv sync` makes the environment match *exactly*
+  > the extras listed in that one invocation — it's not additive across
+  > separate calls. Running just `uv sync --extra web` on a venv that
+  > already had, say, `dubbing-indextts`/`transcription-mlx` installed
+  > **uninstalls them** (you'll see a long list of `- package` removals).
+  > Always list every extra you want installed *at once*:
+  > ```bash
+  > uv sync --extra web --extra dev --extra dubbing-indextts --extra transcription-mlx
+  > ```
+  > (swap in whichever dubbing/transcription extras you actually use). If
+  > this already happened to you, that same command restores everything.
+
 - To actually process videos (not just click around the UI), the Celery
   worker needs the **same dependencies you'd use to run the CLI** — a
   dubbing engine extra if you want `--mode dubbed` (see
