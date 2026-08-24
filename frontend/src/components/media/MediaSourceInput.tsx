@@ -69,8 +69,8 @@ export function MediaSourceInput({
         {(
           [
             { mode: 'upload' as const, label: 'Subir archivo', icon: UploadCloud },
-            { mode: 'url' as const, label: 'Pegar URL', icon: Link },
             { mode: 'search' as const, label: 'Buscar en YouTube', icon: Clapperboard },
+            { mode: 'url' as const, label: 'Pegar URL', icon: Link },
           ]
         ).map(({ mode, label, icon: Icon }) => (
           <button

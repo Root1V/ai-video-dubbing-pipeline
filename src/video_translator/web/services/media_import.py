@@ -90,11 +90,26 @@ def _validate_public_url(url: str) -> None:
             raise InvalidUrlError("Esa URL apunta a una direccion no permitida.")
 
 
+def _thumbnail_url(info: dict) -> str | None:
+    # Con extract_flat=True (usado en search_youtube) yt-dlp no llena
+    # "thumbnail" (queda None) -- solo la lista "thumbnails", ordenada de
+    # menor a mayor resolucion. fetch_preview (extraccion completa, no flat)
+    # si llena "thumbnail" directamente.
+    if info.get("thumbnail"):
+        return info["thumbnail"]
+    thumbnails = info.get("thumbnails") or []
+    return thumbnails[-1]["url"] if thumbnails else None
+
+
 def _to_preview(info: dict) -> MediaPreview:
-    is_youtube = info.get("extractor_key") == "Youtube"
+    # "extractor_key" se llena en extraccion completa (fetch_preview); en modo
+    # flat (search_youtube, extract_flat=True) yt-dlp solo llena "ie_key" en
+    # su lugar -- se chequean ambos para que la deteccion funcione en los dos
+    # casos.
+    is_youtube = info.get("extractor_key") == "Youtube" or info.get("ie_key") == "Youtube"
     return MediaPreview(
         title=info.get("title") or info.get("webpage_url") or "Sin titulo",
-        thumbnail_url=info.get("thumbnail"),
+        thumbnail_url=_thumbnail_url(info),
         duration_seconds=info.get("duration"),
         source_url=info.get("webpage_url") or info.get("url") or "",
         is_youtube=is_youtube,

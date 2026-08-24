@@ -113,22 +113,30 @@ def test_fetch_preview_wraps_youtube_dl_errors() -> None:
 
 
 def test_search_youtube_maps_entries_to_previews() -> None:
+    # extract_flat=True (usado por search_youtube) llena "ie_key" (no
+    # "extractor_key") y "thumbnails" -- una lista ordenada por resolucion
+    # (no "thumbnail", que queda None) -- ver el fixture real capturado con
+    # yt-dlp directamente. Un fixture con los nombres de campo "obvios" no
+    # habria detectado el bug real (title/duracion se mostraban bien, pero
+    # is_youtube/youtube_video_id/thumbnail_url quedaban vacios).
     fake_info = {
         "entries": [
             {
                 "title": "Resultado 1",
-                "thumbnail": "https://img.example/1.jpg",
+                "thumbnail": None,
+                "thumbnails": [{"url": "https://img.example/1-small.jpg"}, {"url": "https://img.example/1.jpg"}],
                 "duration": 60.0,
                 "webpage_url": "https://www.youtube.com/watch?v=r1",
-                "extractor_key": "Youtube",
+                "ie_key": "Youtube",
                 "id": "r1",
             },
             {
                 "title": "Resultado 2",
-                "thumbnail": "https://img.example/2.jpg",
+                "thumbnail": None,
+                "thumbnails": [{"url": "https://img.example/2.jpg"}],
                 "duration": 90.0,
                 "webpage_url": "https://www.youtube.com/watch?v=r2",
-                "extractor_key": "Youtube",
+                "ie_key": "Youtube",
                 "id": "r2",
             },
         ]
@@ -138,6 +146,8 @@ def test_search_youtube_maps_entries_to_previews() -> None:
 
     assert len(results) == 2
     assert results[0].title == "Resultado 1"
+    assert results[0].thumbnail_url == "https://img.example/1.jpg"
+    assert results[0].is_youtube is True
     assert results[1].youtube_video_id == "r2"
 
 
