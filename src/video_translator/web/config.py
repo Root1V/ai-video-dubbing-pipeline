@@ -23,6 +23,13 @@ class WebSettings(BaseSettings):
 
     storage_root: str = Field(default="./data/prosodia_web")
 
+    # Cap del tamano de descarga al importar un proyecto desde una URL (ver
+    # web/services/media_import.py) -- yt-dlp solo compara max_filesize contra
+    # el header Content-Length si el servidor lo manda, asi que ademas se usa
+    # como limite duro via progress_hooks durante la descarga.
+    download_max_bytes: int = Field(default=2 * 1024**3)
+    download_timeout_seconds: int = Field(default=1800)
+
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]
     )

@@ -18,8 +18,10 @@ from celery import Task
 from sqlalchemy.orm import Session
 
 from video_translator.domain.exceptions import VideoTranslatorError
+from video_translator.web.config import load_web_settings
 from video_translator.web.db.models import Project, ProjectMetrics, ProjectStatus, ServiceType
 from video_translator.web.db.session import SessionLocal
+from video_translator.web.services.media_import import MediaImportError, download_media
 from video_translator.web.services.project_mapper import (
     build_synthesize_use_case_and_request,
     build_transcribe_use_case_and_request,
@@ -63,6 +65,21 @@ def run_dubbing_project(self: Task, project_id: str, resume: bool = False) -> No
         project = session.get(Project, uuid.UUID(project_id))
         if project is None:
             return
+        if project.source_url and not project.input_video_path:
+            try:
+                project.status = ProjectStatus.DOWNLOADING
+                session.commit()
+                downloaded_path = download_media(project.source_url, project.id, load_web_settings())
+                project.input_video_path = str(downloaded_path)
+                session.commit()
+            except MediaImportError as exc:
+                project.status = ProjectStatus.FAILED
+                project.error_message = str(exc)
+                project.completed_at = datetime.now(timezone.utc)
+                _persist_metrics_snapshot(project, session, ProjectStatus.FAILED.value)
+                session.commit()
+                raise
+
         try:
             project.status = ProjectStatus.RUNNING
             project.started_at = datetime.now(timezone.utc)

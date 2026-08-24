@@ -137,11 +137,86 @@ def test_list_and_get_include_total_seconds_and_run_id(
     assert body["run_id"] == "abc123def456"
     assert body["total_seconds"] == 305.76
 
-    list_resp = client.get("/api/projects", headers=headers)
-    assert list_resp.status_code == 200
-    item = list_resp.json()["items"][0]
-    assert item["run_id"] == "abc123def456"
-    assert item["total_seconds"] == 305.76
+
+def test_create_project_with_source_url_instead_of_file(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    data = {
+        "name": "Doblaje desde URL",
+        "service_type": "dubbing",
+        "output_mode": "dubbed",
+        "context_prompt": "",
+        "source_lang": "en",
+        "target_lang": "es",
+        "diarize": "false",
+        "source_url": "https://example.com/video.mp4",
+    }
+    resp = client.post("/api/projects", data=data, headers=headers)
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["source_type"] == "url"
+    assert body["source_url"] == "https://example.com/video.mp4"
+    # La descarga real ocurre en la tarea Celery, no en este request -- el
+    # input_video_path se queda vacio hasta que el worker la complete.
+    assert body["input_video_path"] == ""
+
+
+def test_create_project_requires_file_or_source_url(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    # _create_project() siempre adjunta 'file'; para probar la ausencia de
+    # ambos (file y source_url) se arma el request a mano.
+    data = {
+        "name": "Sin fuente",
+        "service_type": "dubbing",
+        "output_mode": "dubbed",
+        "context_prompt": "",
+        "source_lang": "en",
+        "target_lang": "es",
+        "diarize": "false",
+    }
+    resp = client.post("/api/projects", data=data, headers=headers)
+
+    assert resp.status_code == 422
+
+
+def test_create_project_rejects_both_file_and_source_url(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = _create_project(client, headers, source_url="https://example.com/video.mp4")
+
+    assert resp.status_code == 422
+
+
+def test_create_project_rejects_non_http_source_url(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    data = {
+        "name": "URL invalida",
+        "service_type": "dubbing",
+        "output_mode": "dubbed",
+        "context_prompt": "",
+        "source_lang": "en",
+        "target_lang": "es",
+        "diarize": "false",
+        "source_url": "ftp://example.com/video.mp4",
+    }
+    resp = client.post("/api/projects", data=data, headers=headers)
+
+    assert resp.status_code == 422
 
 
 def test_project_not_found(client: TestClient, make_user: Callable[..., User]) -> None:

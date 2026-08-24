@@ -86,7 +86,8 @@ export async function createDubbingProject(
   formData.set('name', input.name)
   formData.set('service_type', 'dubbing')
   formData.set('output_mode', 'dubbed')
-  formData.set('file', input.file)
+  if (input.file) formData.set('file', input.file)
+  if (input.source_url) formData.set('source_url', input.source_url)
   formData.set('context_prompt', input.context_prompt ?? '')
   formData.set('tone', input.tone ?? '')
   formData.set('glossary', JSON.stringify(input.glossary ?? {}))
@@ -120,7 +121,8 @@ export async function createSubtitlesProject(
   formData.set('name', input.name)
   formData.set('service_type', 'subtitles')
   formData.set('output_mode', input.output_mode)
-  formData.set('file', input.file)
+  if (input.file) formData.set('file', input.file)
+  if (input.source_url) formData.set('source_url', input.source_url)
   formData.set('context_prompt', input.context_prompt ?? '')
   formData.set('tone', input.tone ?? '')
   formData.set('glossary', JSON.stringify(input.glossary ?? {}))
@@ -175,7 +177,8 @@ export async function createTranscriptionProject(
   // video en este flujo) -- se usa "subtitles_only" solo para satisfacer la
   // columna NOT NULL; project_mapper.py no lo lee para este service_type.
   formData.set('output_mode', 'subtitles_only')
-  formData.set('file', input.file)
+  if (input.file) formData.set('file', input.file)
+  if (input.source_url) formData.set('source_url', input.source_url)
   formData.set('context_prompt', '')
   formData.set('glossary', '{}')
   // Vacio explicito (no se omite el campo) para que el backend lo trate como

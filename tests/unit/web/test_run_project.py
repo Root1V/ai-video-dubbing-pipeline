@@ -23,6 +23,7 @@ from video_translator.web.db.models import (
     ServiceType,
     SourceType,
 )
+from video_translator.web.services.media_import import MediaImportError
 from video_translator.web.tasks import run_project as run_project_module
 
 
@@ -301,3 +302,84 @@ def test_run_dubbing_project_dispatches_tts_service_type(
     refreshed = verify_session.get(Project, uuid.UUID(project_id))
     assert refreshed is not None
     assert refreshed.status == ProjectStatus.COMPLETED
+
+
+def _make_url_project(tmp_path: Path) -> Project:
+    return Project(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        name="Proyecto desde URL",
+        service_type=ServiceType.DUBBING,
+        source_type=SourceType.URL,
+        source_url="https://example.com/video.mp4",
+        input_video_path="",  # se completa por download_media, no esta subido
+        output_dir=str(tmp_path / "output"),
+        output_mode="dubbed",
+        config={},
+        status=ProjectStatus.QUEUED,
+    )
+
+
+def test_run_dubbing_project_downloads_before_running_pipeline(
+    db_session_factory: sessionmaker[Session], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = db_session_factory()
+    project = _make_url_project(tmp_path)
+    session.add(project)
+    session.commit()
+    project_id = str(project.id)
+    session.close()
+
+    downloaded_path = tmp_path / "uploads" / project_id / "download.mp4"
+    downloaded_path.parent.mkdir(parents=True)
+    downloaded_path.write_bytes(b"fake-bytes")
+
+    download_mock = MagicMock(return_value=downloaded_path)
+    monkeypatch.setattr(run_project_module, "download_media", download_mock)
+
+    fake_use_case = MagicMock()
+    build_mock = MagicMock(return_value=(fake_use_case, MagicMock()))
+    monkeypatch.setattr(run_project_module, "build_use_case_and_request", build_mock)
+
+    run_project_module.run_dubbing_project.run(project_id)
+
+    download_mock.assert_called_once()
+    build_mock.assert_called_once()
+    fake_use_case.execute.assert_called_once()
+
+    verify_session = db_session_factory()
+    refreshed = verify_session.get(Project, uuid.UUID(project_id))
+    assert refreshed is not None
+    assert refreshed.status == ProjectStatus.COMPLETED
+    assert refreshed.input_video_path == str(downloaded_path)
+
+
+def test_run_dubbing_project_download_failure_marks_failed_without_running_pipeline(
+    db_session_factory: sessionmaker[Session], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = db_session_factory()
+    project = _make_url_project(tmp_path)
+    session.add(project)
+    session.commit()
+    project_id = str(project.id)
+    session.close()
+
+    download_mock = MagicMock(side_effect=MediaImportError("no se pudo descargar"))
+    monkeypatch.setattr(run_project_module, "download_media", download_mock)
+    build_mock = MagicMock()
+    monkeypatch.setattr(run_project_module, "build_use_case_and_request", build_mock)
+
+    with pytest.raises(MediaImportError):
+        run_project_module.run_dubbing_project.run(project_id)
+
+    build_mock.assert_not_called()
+
+    verify_session = db_session_factory()
+    refreshed = verify_session.get(Project, uuid.UUID(project_id))
+    assert refreshed is not None
+    assert refreshed.status == ProjectStatus.FAILED
+    assert refreshed.error_message == "no se pudo descargar"
+    assert refreshed.input_video_path == ""
+
+    metrics = verify_session.query(ProjectMetrics).filter_by(project_id=uuid.UUID(project_id)).one()
+    assert metrics.status == "failed"

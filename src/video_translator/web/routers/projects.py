@@ -6,6 +6,7 @@ import json
 import shutil
 import uuid
 from pathlib import Path as FsPath
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
@@ -69,6 +70,10 @@ def create_project(
     # referencia OPCIONAL, no el contenido principal (que es `text`). Para
     # el resto de servicios sigue siendo obligatorio (se valida abajo).
     file: UploadFile | None = File(None),
+    # URL para importar el media en vez de subirlo (ver
+    # web/services/media_import.py) -- mutuamente excluyente con `file` para
+    # los servicios que no son "tts" (validado abajo).
+    source_url: str | None = Form(None),
     text: str = Form(""),
     # Solo para "tts": "public_female" (default, voz de locutora), "public_male"
     # (voz de locutor), o "own" (usa `file` como voz de referencia).
@@ -109,11 +114,22 @@ def create_project(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="file es requerido cuando voice_option es 'own'.",
             )
-    elif file is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="file es requerido para este servicio.",
-        )
+    else:
+        if file is None and not source_url:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="file o source_url es requerido para este servicio.",
+            )
+        if file is not None and source_url:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Envia file o source_url, no ambos.",
+            )
+        if source_url and urlsplit(source_url).scheme not in ("http", "https"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="source_url debe ser una URL http:// o https://.",
+            )
 
     project_id = uuid.uuid4()
     config = {
@@ -132,8 +148,9 @@ def create_project(
         user_id=current_user.id,
         name=name,
         service_type=service_type,
-        source_type="upload",
-        input_video_path="",  # se completa abajo tras guardar el archivo/texto
+        source_type="url" if (not is_tts and source_url) else "upload",
+        source_url=source_url.strip() if (not is_tts and source_url) else None,
+        input_video_path="",  # se completa abajo (upload/texto) o en la tarea Celery (URL)
         output_dir=str(storage.output_dir_for(project_id, settings)),
         output_mode=output_mode,
         config=config,
@@ -149,9 +166,11 @@ def create_project(
         if voice_option == "own" and file is not None:
             voice_path = storage.save_upload(file, project.id, settings)
             project.config = {**project.config, "speaker_reference_wav": str(voice_path)}
-    else:
-        assert file is not None  # ya validado arriba
+    elif file is not None:
         project.input_video_path = str(storage.save_upload(file, project.id, settings))
+    # si vino source_url, input_video_path se queda en "" -- la descarga
+    # ocurre dentro de la tarea Celery (ver tasks/run_project.py), no aca,
+    # porque puede tardar minutos y no debe bloquear esta request HTTP.
     db.commit()
 
     task = run_dubbing_project.delay(str(project.id))

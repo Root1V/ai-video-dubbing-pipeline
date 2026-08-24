@@ -105,7 +105,9 @@ export interface GlossaryEntry {
 
 export interface CreateDubbingProjectInput {
   name: string
-  file: File
+  /** Exactamente uno de `file`/`source_url` -- ver components/media/MediaSourceInput.tsx. */
+  file?: File
+  source_url?: string
   context_prompt?: string
   tone?: string
   glossary?: Record<string, string>
@@ -118,7 +120,9 @@ export interface CreateDubbingProjectInput {
 
 export interface CreateSubtitlesProjectInput {
   name: string
-  file: File
+  /** Exactamente uno de `file`/`source_url` -- ver components/media/MediaSourceInput.tsx. */
+  file?: File
+  source_url?: string
   /** subtitles_only ".srt" / burn_subtitles (incrustados) / soft_subtitles
    * (pista seleccionable) -- "dubbed" no aplica a este servicio. */
   output_mode: Exclude<OutputMode, 'dubbed'>
@@ -131,7 +135,9 @@ export interface CreateSubtitlesProjectInput {
 
 export interface CreateTranscriptionProjectInput {
   name: string
-  file: File
+  /** Exactamente uno de `file`/`source_url` -- ver components/media/MediaSourceInput.tsx. */
+  file?: File
+  source_url?: string
   /** Vacio = detectar automaticamente (el backend lo trata como None, ver
    * `Transcriber.transcribe(language_hint=None)`). */
   source_lang?: string

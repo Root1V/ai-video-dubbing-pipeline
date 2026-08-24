@@ -46,6 +46,7 @@ class ServiceType(str, Enum):
 class SourceType(str, Enum):
     UPLOAD = "upload"
     YOUTUBE = "youtube"
+    URL = "url"
 
 
 class OutputModeValue(str, Enum):

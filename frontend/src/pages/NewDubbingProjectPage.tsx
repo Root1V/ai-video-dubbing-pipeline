@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDropzone } from 'react-dropzone'
 import axios from 'axios'
-import { Clapperboard, FileVideo, UploadCloud, X } from 'lucide-react'
 import { createDubbingProject } from '../api/projects'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -14,8 +12,7 @@ import { Switch } from '../components/ui/Switch'
 import { Alert } from '../components/ui/Alert'
 import { GlossaryEditor } from '../components/GlossaryEditor'
 import type { GlossaryRow } from '../components/GlossaryEditor'
-import { cn } from '../lib/cn'
-import { formatBytes } from '../lib/format'
+import { MediaSourceInput } from '../components/media/MediaSourceInput'
 
 const TONE_OPTIONS = [
   { value: '', label: 'Sin preferencia' },
@@ -33,6 +30,7 @@ export function NewDubbingProjectPage() {
   const navigate = useNavigate()
 
   const [file, setFile] = useState<File | null>(null)
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [contextPrompt, setContextPrompt] = useState('')
   const [tone, setTone] = useState('')
@@ -45,27 +43,17 @@ export function NewDubbingProjectPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: { 'video/*': [] },
-    multiple: false,
-    onDrop: (acceptedFiles) => {
-      const selected = acceptedFiles[0]
-      if (!selected) return
-      setFile(selected)
-      if (!name) {
-        setName(stripExtension(selected.name))
-      }
-    },
-  })
-
-  function removeFile() {
-    setFile(null)
+  function handleFileChange(selected: File | null) {
+    setFile(selected)
+    if (selected && !name) {
+      setName(stripExtension(selected.name))
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!file) {
-      setError('Selecciona un archivo de video para continuar.')
+    if (!file && !sourceUrl) {
+      setError('Selecciona un archivo de video o pega una URL para continuar.')
       return
     }
     if (!name.trim()) {
@@ -88,7 +76,8 @@ export function NewDubbingProjectPage() {
       const project = await createDubbingProject(
         {
           name: name.trim(),
-          file,
+          file: file ?? undefined,
+          source_url: sourceUrl ?? undefined,
           context_prompt: contextPrompt,
           tone,
           glossary,
@@ -122,91 +111,20 @@ export function NewDubbingProjectPage() {
         </p>
       </div>
 
-      <div className="flex border-b border-border">
-        <button
-          type="button"
-          className="border-b-2 border-primary px-4 py-2 text-sm font-medium text-primary"
-        >
-          Subir archivo
-        </button>
-        <button
-          type="button"
-          disabled
-          className="flex cursor-not-allowed items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground/60"
-        >
-          <Clapperboard className="h-4 w-4" />
-          Buscar en YouTube
-          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-            Próximamente
-          </span>
-        </button>
-      </div>
-
       {error && <Alert variant="error" onDismiss={() => setError(null)}>{error}</Alert>}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        {!file ? (
-          <div
-            {...getRootProps()}
-            className={cn(
-              'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary/30 px-6 py-14 text-center transition-colors',
-              isDragActive && 'border-primary bg-primary/5',
-            )}
-          >
-            <input {...getInputProps()} />
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <UploadCloud className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="font-medium">
-                Arrastra tu video aquí o haz clic para seleccionarlo
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Formatos de video compatibles (MP4, MOV, MKV, etc.)
-              </p>
-            </div>
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <FileVideo className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{file.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  {formatBytes(file.size)}
-                </p>
-              </div>
-              {!isSubmitting && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={removeFile}
-                  aria-label="Quitar archivo"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </CardContent>
-            {uploadProgress !== null && (
-              <CardContent className="pt-0">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {uploadProgress < 100
-                    ? `Subiendo… ${uploadProgress}%`
-                    : 'Subida completa, creando proyecto…'}
-                </p>
-              </CardContent>
-            )}
-          </Card>
-        )}
+        <MediaSourceInput
+          file={file}
+          onFileChange={handleFileChange}
+          sourceUrl={sourceUrl}
+          onSourceUrlChange={setSourceUrl}
+          accept={{ 'video/*': [] }}
+          dropTitle="Arrastra tu video aquí o haz clic para seleccionarlo"
+          dropSubtitle="Formatos de video compatibles (MP4, MOV, MKV, etc.)"
+          uploadProgress={uploadProgress}
+          disabled={isSubmitting}
+        />
 
         <Card>
           <CardContent className="flex flex-col gap-5 p-6">
