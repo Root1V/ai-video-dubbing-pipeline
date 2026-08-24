@@ -3,12 +3,22 @@ import { themeColor } from '../../lib/theme-color'
 
 export const BAR_COUNT = 48
 const IDLE_BAR_LEVEL = 0.06
-const ATTACK_RATE = 0.55
-const DECAY_RATE = 0.1
+// Tasas parejas (no el clasico "sube rapido, baja lento" de un VU-metro):
+// eso se ve bien para una aguja de pico, pero para una "ola" continua hace
+// que cada micro-golpe se dispare de inmediato y tarde en volver a bajar,
+// leyendose como parpadeo/sobrecarga. Con ambas tasas similares, la barra
+// sube y baja a un ritmo fluido y comparable.
+const ATTACK_RATE = 0.22
+const DECAY_RATE = 0.16
 /** Cuantas barras justo detras de la cabeza de reproduccion siguen
  * reaccionando en vivo (en vez de quedar fijas en su pico) -- suficientes
  * para que se vea una "ola" moviendose, no solo una aguja suelta. */
-const LIVE_TRAIL_BARS = 6
+const LIVE_TRAIL_BARS = 4
+/** Suavizado (0-1, mas alto = sigue la señal cruda mas de cerca) aplicado a
+ * la lectura RMS en vivo ANTES de usarla como objetivo -- una sola muestra
+ * de un fftSize corto es ruidosa cuadro a cuadro; sin este filtro paso-bajo
+ * ese ruido llegaba directo a la altura de la barra. */
+const LIVE_LEVEL_SMOOTHING = 0.12
 
 interface AudioGraph {
   context: AudioContext
@@ -69,6 +79,7 @@ export function LiveWaveformVisualizer({ mediaElement, peaks }: LiveWaveformVisu
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const audioGraphRef = useRef<AudioGraph | null>(null)
   const levelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(0))
+  const smoothedLiveLevelRef = useRef(0)
   const peaksRef = useRef<number[] | null>(peaks)
   peaksRef.current = peaks
 
@@ -87,7 +98,10 @@ export function LiveWaveformVisualizer({ mediaElement, peaks }: LiveWaveformVisu
         if (!AudioContextCtor || !mediaElement) return null
         const context = new AudioContextCtor()
         const analyser = context.createAnalyser()
-        analyser.fftSize = 128
+        // Ventana mas larga que el minimo (128) para que la lectura RMS de
+        // cada cuadro promedie mas muestras y sea naturalmente mas estable
+        // de por si, antes incluso de aplicarle el filtro paso-bajo de abajo.
+        analyser.fftSize = 1024
         const source = context.createMediaElementSource(mediaElement)
         source.connect(analyser)
         analyser.connect(context.destination)
@@ -144,7 +158,12 @@ export function LiveWaveformVisualizer({ mediaElement, peaks }: LiveWaveformVisu
       const playing = mediaElement !== null && !mediaElement.paused && !mediaElement.ended
       const graph = playing ? ensureAudioGraph() : audioGraphRef.current
       if (graph?.context.state === 'suspended') graph.context.resume().catch(() => {})
-      const liveLevel = playing && graph ? readLiveLevel(graph) : 0
+      const rawLiveLevel = playing && graph ? readLiveLevel(graph) : 0
+      // Filtro paso-bajo entre cuadros: sin esto, el ruido cuadro-a-cuadro de
+      // una sola lectura RMS llegaba directo a la altura de la barra y se
+      // sentia como parpadeo en vez de una ola fluida.
+      smoothedLiveLevelRef.current += (rawLiveLevel - smoothedLiveLevelRef.current) * LIVE_LEVEL_SMOOTHING
+      const liveLevel = smoothedLiveLevelRef.current
 
       const duration = mediaElement?.duration || 0
       const currentTime = mediaElement?.currentTime || 0
