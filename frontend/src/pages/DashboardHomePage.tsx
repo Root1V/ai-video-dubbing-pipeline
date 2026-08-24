@@ -12,6 +12,8 @@ import {
   Volume2,
 } from 'lucide-react'
 import { fetchProjects } from '../api/projects'
+import { fetchDashboardStats } from '../api/dashboard'
+import type { DashboardStats } from '../types/dashboard'
 import { Card, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -23,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/Table'
-import { formatDateTime } from '../lib/format'
+import { formatDateTime, formatSecondsDuration } from '../lib/format'
 import { PROJECT_STATUS_BADGE_VARIANT, PROJECT_STATUS_LABELS } from '../lib/status'
 import { SERVICE_TYPE_LABELS } from '../lib/labels'
 
@@ -33,12 +35,20 @@ interface StatCard {
   icon: typeof FolderKanban
 }
 
-const stats: StatCard[] = [
-  { label: 'Proyectos', value: '—', icon: FolderKanban },
-  { label: 'Tiempo procesado', value: '—', icon: Clock },
-  { label: 'Idiomas', value: '—', icon: Globe },
-  { label: 'Voces guardadas', value: '—', icon: Mic },
-]
+function buildStats(stats: DashboardStats | undefined): StatCard[] {
+  return [
+    { label: 'Proyectos', value: stats ? String(stats.total_projects) : '—', icon: FolderKanban },
+    {
+      label: 'Tiempo procesado',
+      value: stats ? formatSecondsDuration(stats.total_seconds_processed) : '—',
+      icon: Clock,
+    },
+    { label: 'Idiomas', value: stats ? String(stats.distinct_languages) : '—', icon: Globe },
+    // Fijo en 0 hasta que exista la libreria de voces (P1.5) -- ver
+    // schemas/dashboard.py::DashboardStatsOut.saved_voices.
+    { label: 'Voces guardadas', value: stats ? String(stats.saved_voices) : '—', icon: Mic },
+  ]
+}
 
 const services = [
   {
@@ -73,8 +83,13 @@ export function DashboardHomePage() {
     queryKey: ['projects', { page_size: 5 }],
     queryFn: () => fetchProjects({ page_size: 5 }),
   })
+  const { data: dashboardStats } = useQuery({
+    queryKey: ['dashboard', 'stats'],
+    queryFn: fetchDashboardStats,
+  })
 
   const projects = data?.items ?? []
+  const stats = buildStats(dashboardStats)
 
   return (
     <div className="flex flex-col gap-6">

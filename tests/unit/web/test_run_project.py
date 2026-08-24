@@ -4,6 +4,7 @@ mapper para no requerir el pipeline real (GPU/modelos)."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -15,7 +16,13 @@ from sqlalchemy.pool import StaticPool
 
 from video_translator.domain.exceptions import SynthesisError
 from video_translator.web.db.base import Base
-from video_translator.web.db.models import Project, ProjectStatus, ServiceType, SourceType
+from video_translator.web.db.models import (
+    Project,
+    ProjectMetrics,
+    ProjectStatus,
+    ServiceType,
+    SourceType,
+)
 from video_translator.web.tasks import run_project as run_project_module
 
 
@@ -177,6 +184,80 @@ def test_run_dubbing_project_dispatches_transcription_service_type(
     refreshed = verify_session.get(Project, uuid.UUID(project_id))
     assert refreshed is not None
     assert refreshed.status == ProjectStatus.COMPLETED
+
+
+def test_run_dubbing_project_success_persists_metrics_snapshot(
+    db_session_factory: sessionmaker[Session], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = db_session_factory()
+    project = _make_project(tmp_path)
+    session.add(project)
+    session.commit()
+    project_id = str(project.id)
+    session.close()
+
+    output_dir = Path(project.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "pipeline_timings.json").write_text(
+        json.dumps(
+            {
+                "total_seconds": 12.5,
+                "realtime_factor": 0.5,
+                "input": {"duration_seconds": 25.0},
+                "effective_config": {"tts_backend": "index_tts2"},
+                "stats": {"counter.ffmpeg.calls": 3},
+                "outputs": {"output_video_bytes": 1024},
+                "warnings": [{"source": "x"}, {"source": "y"}],
+            }
+        )
+    )
+
+    fake_use_case = MagicMock()
+    monkeypatch.setattr(
+        run_project_module,
+        "build_use_case_and_request",
+        lambda proj, resume=False: (fake_use_case, MagicMock()),
+    )
+
+    run_project_module.run_dubbing_project.run(project_id)
+
+    verify_session = db_session_factory()
+    metrics = verify_session.query(ProjectMetrics).filter_by(project_id=uuid.UUID(project_id)).one()
+    assert metrics.status == "completed"
+    assert metrics.service_type == "dubbing"
+    assert metrics.total_seconds == 12.5
+    assert metrics.input_duration_seconds == 25.0
+    assert metrics.realtime_factor == 0.5
+    assert metrics.effective_config == {"tts_backend": "index_tts2"}
+    assert metrics.warnings_count == 2
+    assert metrics.project_name == project.name
+    assert metrics.user_id == project.user_id
+
+
+def test_run_dubbing_project_failure_persists_minimal_metrics_when_no_timings_file(
+    db_session_factory: sessionmaker[Session], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = db_session_factory()
+    project = _make_project(tmp_path)
+    session.add(project)
+    session.commit()
+    project_id = str(project.id)
+    session.close()
+
+    def _boom(proj: Project, resume: bool = False) -> tuple[MagicMock, MagicMock]:
+        raise RuntimeError("fallo antes de escribir ninguna etapa")
+
+    monkeypatch.setattr(run_project_module, "build_use_case_and_request", _boom)
+
+    with pytest.raises(RuntimeError):
+        run_project_module.run_dubbing_project.run(project_id)
+
+    verify_session = db_session_factory()
+    metrics = verify_session.query(ProjectMetrics).filter_by(project_id=uuid.UUID(project_id)).one()
+    assert metrics.status == "failed"
+    assert metrics.total_seconds is None
+    assert metrics.input_duration_seconds is None
+    assert metrics.warnings_count == 0
 
 
 def _make_tts_project(tmp_path: Path) -> Project:

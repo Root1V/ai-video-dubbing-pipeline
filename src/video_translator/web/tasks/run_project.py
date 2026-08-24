@@ -15,16 +15,45 @@ import uuid
 from datetime import datetime, timezone
 
 from celery import Task
+from sqlalchemy.orm import Session
 
 from video_translator.domain.exceptions import VideoTranslatorError
-from video_translator.web.db.models import Project, ProjectStatus, ServiceType
+from video_translator.web.db.models import Project, ProjectMetrics, ProjectStatus, ServiceType
 from video_translator.web.db.session import SessionLocal
 from video_translator.web.services.project_mapper import (
     build_synthesize_use_case_and_request,
     build_transcribe_use_case_and_request,
     build_use_case_and_request,
 )
+from video_translator.web.services.status_reader import read_full_timings_report
 from video_translator.web.tasks.celery_app import celery_app
+
+
+def _persist_metrics_snapshot(project: Project, session: Session, status_value: str) -> None:
+    """Guarda una foto de `pipeline_timings.json` en `ProjectMetrics` al
+    finalizar (exito o falla) -- ver el docstring de esa tabla en
+    `db/models.py` para por que existe separada de `Project`. Si el archivo
+    de timings no llego a escribirse (p.ej. fallo antes de la primera etapa),
+    igual se guarda una fila minima: el conteo/estado de la corrida importa
+    para el dashboard aunque no haya metricas de duracion que reportar."""
+    report = read_full_timings_report(project) or {}
+    input_data = report.get("input") or {}
+    session.add(
+        ProjectMetrics(
+            project_id=project.id,
+            user_id=project.user_id,
+            project_name=project.name,
+            service_type=project.service_type.value,
+            status=status_value,
+            total_seconds=report.get("total_seconds"),
+            input_duration_seconds=input_data.get("duration_seconds"),
+            realtime_factor=report.get("realtime_factor"),
+            effective_config=report.get("effective_config") or {},
+            stats=report.get("stats") or {},
+            outputs=report.get("outputs") or {},
+            warnings_count=len(report.get("warnings") or []),
+        )
+    )
 
 
 @celery_app.task(bind=True, name="video_translator.web.run_project")
@@ -52,17 +81,20 @@ def run_dubbing_project(self: Task, project_id: str, resume: bool = False) -> No
 
             project.status = ProjectStatus.COMPLETED
             project.completed_at = datetime.now(timezone.utc)
+            _persist_metrics_snapshot(project, session, ProjectStatus.COMPLETED.value)
             session.commit()
         except VideoTranslatorError as exc:
             project.status = ProjectStatus.FAILED
             project.error_message = str(exc)
             project.completed_at = datetime.now(timezone.utc)
+            _persist_metrics_snapshot(project, session, ProjectStatus.FAILED.value)
             session.commit()
             raise
         except Exception as exc:
             project.status = ProjectStatus.FAILED
             project.error_message = f"Error inesperado: {exc}"
             project.completed_at = datetime.now(timezone.utc)
+            _persist_metrics_snapshot(project, session, ProjectStatus.FAILED.value)
             session.commit()
             raise
     finally:

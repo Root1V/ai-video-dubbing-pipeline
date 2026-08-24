@@ -44,6 +44,18 @@ def read_project_status(project: Project) -> dict[str, Any]:
     }
 
 
+def read_full_timings_report(project: Project) -> dict[str, Any] | None:
+    """Lee `pipeline_timings.json` completo, sin descartar `effective_config`/
+    `stats`/`outputs` como hace `read_project_status` (que solo expone lo
+    necesario para el polling de progreso en vivo). Usado por
+    `web/tasks/run_project.py` al finalizar una corrida para persistir una
+    foto de metricas de negocio (ver `db/models.py::ProjectMetrics`). None si
+    el archivo no existe o esta corrupto -- p.ej. una corrida que fallo antes
+    de escribir ninguna etapa."""
+    timings_path = Path(project.output_dir) / "pipeline_timings.json"
+    return _read_timings_file(timings_path)
+
+
 def _read_timings_file(path: Path) -> dict[str, Any] | None:
     try:
         raw = path.read_text(encoding="utf-8")

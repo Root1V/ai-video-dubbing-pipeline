@@ -102,3 +102,41 @@ class Project(Base):
     error_message: Mapped[str | None] = mapped_column(default=None)
 
     user: Mapped[User] = relationship(back_populates="projects")
+
+
+class ProjectMetrics(Base):
+    """Foto de las metricas de una corrida al finalizar (exito o falla),
+    tomada por `web/tasks/run_project.py` desde `pipeline_timings.json` (ver
+    `services/status_reader.py::read_full_timings_report`).
+
+    Existe SEPARADA de `Project` a proposito: `project_id` es nullable con
+    `ondelete="SET NULL"` para que las metricas de negocio (duracion
+    procesada, backend usado, etc.) sobrevivan aunque el usuario borre el
+    proyecto y sus archivos (`routers/projects.py::delete_project`) -- sin
+    esto, las tendencias historicas del dashboard se degradarian con el
+    tiempo a medida que se acumulan proyectos borrados.
+    """
+
+    __tablename__ = "project_metrics"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    # Copiado al momento de la foto (no una FK a Project.name) para que el
+    # dato siga siendo legible aunque el proyecto ya no exista.
+    project_name: Mapped[str] = mapped_column(nullable=False)
+    # Strings planos (no el enum `ServiceType`/`ProjectStatus`): esta tabla es
+    # un registro historico/analitico, no debe acoplarse a que esos enums
+    # nunca cambien de valores validos.
+    service_type: Mapped[str] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(nullable=False)
+    total_seconds: Mapped[float | None] = mapped_column(default=None)
+    input_duration_seconds: Mapped[float | None] = mapped_column(default=None)
+    realtime_factor: Mapped[float | None] = mapped_column(default=None)
+    effective_config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    stats: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    outputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    warnings_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=_utcnow)
