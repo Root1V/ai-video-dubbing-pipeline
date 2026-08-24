@@ -53,6 +53,22 @@ export function formatSecondsDuration(seconds: number | null | undefined): strin
   return `${minutes}m ${rest}s`
 }
 
+/** "0:05" / "4:29" / "1:02:03" -- mm:ss (or h:mm:ss) clock format for a media
+ * player's scrubber, distinct from formatSecondsDuration's rounded "4m 29s"
+ * summary style (that one collapses sub-second values to "<1s", which reads
+ * wrong for a live playback position). */
+export function formatClockTime(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  const paddedSecs = String(secs).padStart(2, '0')
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${paddedSecs}`
+  }
+  return `${minutes}:${paddedSecs}`
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']

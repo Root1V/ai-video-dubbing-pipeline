@@ -11,6 +11,7 @@ import {
 } from '../api/projects'
 import type { DownloadArtifact, ProjectStage } from '../types/project'
 import { StageTimeline } from '../components/projects/StageTimeline'
+import { MediaPreview } from '../components/media/MediaPreview'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { CopyableValue } from '../components/ui/CopyableValue'
 import { Badge } from '../components/ui/Badge'
@@ -120,6 +121,9 @@ export function ProjectDetailPage() {
     : isTts
       ? ['text_to_speech', 'audio_concatenation']
       : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize))
+  // Solo doblaje/subtitulos con output_mode distinto de "subtitles_only"
+  // producen un video real -- subtitles_only nunca renderiza (solo .srt).
+  const hasVideoOutput = !isTranscription && !isTts && project.output_mode !== 'subtitles_only'
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -195,6 +199,16 @@ export function ProjectDetailPage() {
             <CardTitle className="text-base">Descargas</CardTitle>
           </CardHeader>
           <CardContent>
+            {isTts && (
+              <div className="mb-4">
+                <MediaPreview projectId={id as string} artifact="speech_audio" kind="audio" />
+              </div>
+            )}
+            {hasVideoOutput && (
+              <div className="mb-4">
+                <MediaPreview projectId={id as string} artifact="video" kind="video" />
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {isTranscription ? (
                 <>

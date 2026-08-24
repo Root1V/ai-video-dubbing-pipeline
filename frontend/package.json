@@ -18,7 +18,8 @@
     "react-dom": "^19.2.8",
     "react-dropzone": "^20.1.1",
     "react-router-dom": "^6.30.6",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "wavesurfer.js": "^7.12.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
