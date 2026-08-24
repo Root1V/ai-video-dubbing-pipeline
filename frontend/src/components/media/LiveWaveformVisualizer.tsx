@@ -5,6 +5,10 @@ export const BAR_COUNT = 48
 const IDLE_BAR_LEVEL = 0.06
 const ATTACK_RATE = 0.55
 const DECAY_RATE = 0.1
+/** Cuantas barras justo detras de la cabeza de reproduccion siguen
+ * reaccionando en vivo (en vez de quedar fijas en su pico) -- suficientes
+ * para que se vea una "ola" moviendose, no solo una aguja suelta. */
+const LIVE_TRAIL_BARS = 6
 
 interface AudioGraph {
   context: AudioContext
@@ -166,15 +170,19 @@ export function LiveWaveformVisualizer({ mediaElement, peaks }: LiveWaveformVisu
       for (let i = 0; i < BAR_COUNT; i++) {
         const basePeak = barsPeaks ? barsPeaks[i] : 0
         let target = IDLE_BAR_LEVEL
-        if (i < currentBarIndex) {
-          // Ya reproducido: revelado a su altura real (misma forma que la
-          // onda estatica de abajo), sin depender de que siga sonando.
+        const distanceBehindPlayhead = currentBarIndex - i
+        if (playing && distanceBehindPlayhead >= 0 && distanceBehindPlayhead < LIVE_TRAIL_BARS) {
+          // Ventana "viva" justo detras de la cabeza de reproduccion: se
+          // mezcla con el nivel EN VIVO del audio real (que sube Y baja de
+          // verdad, no solo un piso) para dar sensacion de onda -- pesando
+          // cada vez mas su propio pico real cuanto mas atras haya quedado,
+          // para que se vaya "asentando" en vez de cortar en seco.
+          const liveWeight = 1 - distanceBehindPlayhead / LIVE_TRAIL_BARS
+          target = basePeak * (1 - liveWeight) + liveLevel * liveWeight
+        } else if (i < currentBarIndex) {
+          // Ya asentado, fuera de la ventana viva: se queda en su altura
+          // real (misma forma que la onda estatica de abajo).
           target = Math.max(IDLE_BAR_LEVEL, basePeak)
-        } else if (i === currentBarIndex && playing) {
-          // Cabeza de reproduccion: mezcla el pico real con el nivel EN VIVO
-          // del audio real -- late con el sonido en vez de solo saltar a un
-          // valor fijo.
-          target = Math.max(IDLE_BAR_LEVEL, basePeak, liveLevel)
         }
         const prev = levels[i]
         const rate = target > prev ? ATTACK_RATE : DECAY_RATE
