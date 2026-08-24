@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import type { Accept } from 'react-dropzone'
-import { Clapperboard, FileVideo, Link, UploadCloud, X } from 'lucide-react'
+import { ArrowLeft, Clapperboard, FileVideo, Link, UploadCloud, X } from 'lucide-react'
 import { Card, CardContent } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -44,6 +44,10 @@ export function MediaSourceInput({
   disabled,
 }: MediaSourceInputProps) {
   const [activeTab, setActiveTab] = useState<SourceMode>(sourceUrl ? 'url' : 'upload')
+  // Si la URL actual vino de elegir un resultado de busqueda, se ofrece un
+  // "volver a los resultados" en la pestaña URL -- se apaga en cuanto el
+  // usuario edita la URL a mano, porque ya no representa esa seleccion.
+  const [urlFromSearch, setUrlFromSearch] = useState(false)
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept,
@@ -60,6 +64,7 @@ export function MediaSourceInput({
   function selectSearchResult(url: string) {
     onFileChange(null)
     onSourceUrlChange(url)
+    setUrlFromSearch(true)
     setActiveTab('url')
   }
 
@@ -90,8 +95,8 @@ export function MediaSourceInput({
         ))}
       </div>
 
-      {activeTab === 'upload' &&
-        (!file ? (
+      <div className={activeTab === 'upload' ? undefined : 'hidden'}>
+        {!file ? (
           <div
             {...getRootProps()}
             className={cn(
@@ -146,10 +151,21 @@ export function MediaSourceInput({
               </CardContent>
             )}
           </Card>
-        ))}
+        )}
+      </div>
 
-      {activeTab === 'url' && (
+      <div className={activeTab === 'url' ? undefined : 'hidden'}>
         <div className="flex flex-col gap-3">
+          {urlFromSearch && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('search')}
+              className="flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver a los resultados de búsqueda
+            </button>
+          )}
           <Input
             type="url"
             value={sourceUrl ?? ''}
@@ -157,15 +173,18 @@ export function MediaSourceInput({
               const value = e.target.value
               onFileChange(null)
               onSourceUrlChange(value || null)
+              setUrlFromSearch(false)
             }}
             placeholder="https://... (video de YouTube u otro sitio, o enlace directo a un archivo)"
             disabled={disabled}
           />
           {sourceUrl && <MediaUrlPreview url={sourceUrl} />}
         </div>
-      )}
+      </div>
 
-      {activeTab === 'search' && <YoutubeSearchPanel onSelect={selectSearchResult} />}
+      <div className={activeTab === 'search' ? undefined : 'hidden'}>
+        <YoutubeSearchPanel onSelect={selectSearchResult} />
+      </div>
     </div>
   )
 }
