@@ -110,10 +110,12 @@ export function ProjectDetailPage() {
   const status = statusQuery.data
   const dbStatus = status?.db_status ?? project.status
   const stages = normalizeStages(status?.stages ?? null)
-  const expectedStageNames = getExpectedStageNames(
-    project.output_mode,
-    Boolean(project.config.diarize),
-  )
+  const isTranscription = project.service_type === 'transcription'
+  // La transcripcion standalone no traduce ni renderiza video -- su plan de
+  // etapas es fijo (ver TranscribeMediaUseCase), no depende de output_mode.
+  const expectedStageNames = isTranscription
+    ? ['audio_extraction', 'transcription']
+    : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize))
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -131,7 +133,12 @@ export function ProjectDetailPage() {
           <h1 className="text-xl font-semibold">{project.name}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{SERVICE_TYPE_LABELS[project.service_type]}</Badge>
-            <Badge variant="outline">{OUTPUT_MODE_LABELS[project.output_mode]}</Badge>
+            {/* output_mode es un valor interno sin significado para transcripcion
+                standalone (siempre "subtitles_only", solo para satisfacer la columna
+                NOT NULL) -- mostrarlo confundiria mas de lo que aclara. */}
+            {!isTranscription && (
+              <Badge variant="outline">{OUTPUT_MODE_LABELS[project.output_mode]}</Badge>
+            )}
             <Badge variant={PROJECT_STATUS_BADGE_VARIANT[dbStatus]}>
               {isActiveStatus(dbStatus) && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
               {PROJECT_STATUS_LABELS[dbStatus]}
@@ -185,35 +192,60 @@ export function ProjectDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {project.output_mode !== 'subtitles_only' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDownload('video')}
-                  disabled={downloading === 'video'}
-                >
-                  <Download className="h-4 w-4" />
-                  Video
-                </Button>
+              {isTranscription ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload('transcript_srt')}
+                    disabled={downloading === 'transcript_srt'}
+                  >
+                    <Download className="h-4 w-4" />
+                    Transcripción (SRT)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload('transcript_text')}
+                    disabled={downloading === 'transcript_text'}
+                  >
+                    <Download className="h-4 w-4" />
+                    Transcripción (texto)
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {project.output_mode !== 'subtitles_only' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload('video')}
+                      disabled={downloading === 'video'}
+                    >
+                      <Download className="h-4 w-4" />
+                      Video
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload('srt_source')}
+                    disabled={downloading === 'srt_source'}
+                  >
+                    <Download className="h-4 w-4" />
+                    Subtítulos (original)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload('srt_target')}
+                    disabled={downloading === 'srt_target'}
+                  >
+                    <Download className="h-4 w-4" />
+                    Subtítulos (traducidos)
+                  </Button>
+                </>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDownload('srt_source')}
-                disabled={downloading === 'srt_source'}
-              >
-                <Download className="h-4 w-4" />
-                Subtítulos (original)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDownload('srt_target')}
-                disabled={downloading === 'srt_target'}
-              >
-                <Download className="h-4 w-4" />
-                Subtítulos (traducidos)
-              </Button>
             </div>
             {downloadError && <p className="mt-2 text-sm text-destructive">{downloadError}</p>}
           </CardContent>

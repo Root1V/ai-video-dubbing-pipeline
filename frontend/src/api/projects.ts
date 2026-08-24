@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   CreateDubbingProjectInput,
+  CreateTranscriptionProjectInput,
   DownloadArtifact,
   Project,
   ProjectListParams,
@@ -44,6 +45,8 @@ const ARTIFACT_FILENAME_FALLBACK: Record<DownloadArtifact, string> = {
   video: 'video.mp4',
   srt_source: 'subtitles.en.srt',
   srt_target: 'subtitles.es.srt',
+  transcript_srt: 'transcript.srt',
+  transcript_text: 'transcript.txt',
 }
 
 /**
@@ -95,6 +98,34 @@ export async function createDubbingProject(
       formData.set('max_speakers', String(input.max_speakers))
     }
   }
+
+  const { data } = await apiClient.post<Project>('/projects', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!onUploadProgress || !event.total) return
+      onUploadProgress(Math.round((event.loaded / event.total) * 100))
+    },
+  })
+  return data
+}
+
+export async function createTranscriptionProject(
+  input: CreateTranscriptionProjectInput,
+  onUploadProgress?: (percent: number) => void,
+): Promise<Project> {
+  const formData = new FormData()
+  formData.set('name', input.name)
+  formData.set('service_type', 'transcription')
+  // No hay un output_mode propio para transcripcion (el pipeline no renderiza
+  // video en este flujo) -- se usa "subtitles_only" solo para satisfacer la
+  // columna NOT NULL; project_mapper.py no lo lee para este service_type.
+  formData.set('output_mode', 'subtitles_only')
+  formData.set('file', input.file)
+  formData.set('context_prompt', '')
+  formData.set('glossary', '{}')
+  // Vacio explicito (no se omite el campo) para que el backend lo trate como
+  // "detectar automaticamente" en vez de caer en el default "en" del form.
+  formData.set('source_lang', input.source_lang ?? '')
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

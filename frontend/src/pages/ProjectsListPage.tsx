@@ -143,7 +143,12 @@ export function ProjectsListPage() {
                   >
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {OUTPUT_MODE_LABELS[project.output_mode]}
+                      {/* output_mode es un sentinel sin significado para
+                          transcripcion standalone (siempre "subtitles_only") --
+                          mostrar el tipo de servicio en su lugar. */}
+                      {project.service_type === 'transcription'
+                        ? SERVICE_TYPE_LABELS.transcription
+                        : OUTPUT_MODE_LABELS[project.output_mode]}
                     </TableCell>
                     <TableCell>
                       <Badge variant={PROJECT_STATUS_BADGE_VARIANT[project.status]}>

@@ -90,7 +90,12 @@ export interface ProjectStatusResponse {
   warnings: PipelineWarning[] | null
 }
 
-export type DownloadArtifact = 'video' | 'srt_source' | 'srt_target'
+export type DownloadArtifact =
+  | 'video'
+  | 'srt_source'
+  | 'srt_target'
+  | 'transcript_srt'
+  | 'transcript_text'
 
 export interface GlossaryEntry {
   term: string
@@ -108,4 +113,12 @@ export interface CreateDubbingProjectInput {
   diarize?: boolean
   min_speakers?: number
   max_speakers?: number
+}
+
+export interface CreateTranscriptionProjectInput {
+  name: string
+  file: File
+  /** Vacio = detectar automaticamente (el backend lo trata como None, ver
+   * `Transcriber.transcribe(language_hint=None)`). */
+  source_lang?: string
 }

@@ -17,9 +17,12 @@ from datetime import datetime, timezone
 from celery import Task
 
 from video_translator.domain.exceptions import VideoTranslatorError
-from video_translator.web.db.models import Project, ProjectStatus
+from video_translator.web.db.models import Project, ProjectStatus, ServiceType
 from video_translator.web.db.session import SessionLocal
-from video_translator.web.services.project_mapper import build_use_case_and_request
+from video_translator.web.services.project_mapper import (
+    build_transcribe_use_case_and_request,
+    build_use_case_and_request,
+)
 from video_translator.web.tasks.celery_app import celery_app
 
 
@@ -36,8 +39,12 @@ def run_dubbing_project(self: Task, project_id: str, resume: bool = False) -> No
             project.error_message = None
             session.commit()
 
-            use_case, request = build_use_case_and_request(project, resume=resume)
-            use_case.execute(request)
+            if project.service_type == ServiceType.TRANSCRIPTION:
+                transcribe_use_case, transcribe_request = build_transcribe_use_case_and_request(project)
+                transcribe_use_case.execute(transcribe_request)
+            else:
+                dub_use_case, dub_request = build_use_case_and_request(project, resume=resume)
+                dub_use_case.execute(dub_request)
 
             project.status = ProjectStatus.COMPLETED
             project.completed_at = datetime.now(timezone.utc)

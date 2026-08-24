@@ -118,3 +118,24 @@ class TranslateVideoResult:
     duration_seconds: float
     speakers: list[SpeakerProfile] = field(default_factory=list)
     timings: dict = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TranscribeMediaRequest:
+    """Solicitud de transcripcion standalone (sin traduccion ni doblaje):
+    entrada principal de ``TranscribeMediaUseCase``."""
+
+    input_media: Path
+    output_dir: Path
+    source_lang_hint: str | None = None
+
+
+@dataclass(slots=True)
+class TranscribeMediaResult:
+    """Resultado de una transcripcion standalone."""
+
+    transcript_srt_path: Path
+    transcript_text_path: Path
+    segments: list[TranscriptSegment]
+    duration_seconds: float
+    timings: dict = field(default_factory=dict)

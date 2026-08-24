@@ -14,6 +14,7 @@ from collections.abc import Callable
 from functools import partial
 
 from video_translator.application.interfaces import SpeechSynthesizer, Transcriber, Translator
+from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import Settings
 from video_translator.domain.exceptions import ConfigurationError
@@ -179,6 +180,37 @@ def build_translate_video_use_case(
         group_max_gap_seconds=settings.tts_group_max_gap_seconds,
         group_max_chars=settings.tts_group_max_chars,
         resume=resume,
+        effective_config=effective_config,
+    )
+
+
+def build_transcribe_media_use_case(settings: Settings) -> TranscribeMediaUseCase:
+    """Construye el caso de uso de transcripcion standalone (sin traduccion ni
+    doblaje) -- solo necesita `MediaProcessor` + `Transcriber`, a diferencia de
+    `build_translate_video_use_case` que siempre arma tambien un `Translator`
+    y un `SubtitleWriter` para el pipeline completo."""
+    media_processor = FFmpegMediaProcessor(
+        ffmpeg_binary=settings.ffmpeg_binary,
+        ffprobe_binary=settings.ffprobe_binary,
+        audio_sample_rate=settings.audio_sample_rate,
+    )
+    transcriber = _build_transcriber(settings, enable_diarization=False)
+    subtitle_writer = SrtSubtitleWriter()
+
+    effective_config: dict = {
+        "whisper_backend": settings.whisper_backend,
+        "whisper_model": (
+            settings.mlx_whisper_model
+            if settings.whisper_backend.lower() == "mlx"
+            else settings.whisper_model_size
+        ),
+        "whisper_device": settings.whisper_device if settings.whisper_backend.lower() != "mlx" else "mps",
+    }
+
+    return TranscribeMediaUseCase(
+        media_processor=media_processor,
+        transcriber=transcriber,
+        subtitle_writer=subtitle_writer,
         effective_config=effective_config,
     )
 

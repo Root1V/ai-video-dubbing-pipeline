@@ -26,6 +26,11 @@ from video_translator.web.tasks.run_project import run_dubbing_project
 # nombre fijo -- se deriva del nombre del input -- por eso se busca por glob).
 _SRT_SOURCE_FILENAME = "subtitles.en.srt"
 _SRT_TARGET_FILENAME = "subtitles.es.srt"
+# Nombres fijos que escribe `TranscribeMediaUseCase` (servicio de
+# transcripcion standalone) -- distintos de los de arriba porque no hay
+# traduccion, solo una transcripcion en el idioma original.
+_TRANSCRIPT_SRT_FILENAME = "transcript.srt"
+_TRANSCRIPT_TEXT_FILENAME = "transcript.txt"
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -236,6 +241,10 @@ def download_project_artifact(
         file_path = output_dir / _SRT_SOURCE_FILENAME
     elif artifact == "srt_target":
         file_path = output_dir / _SRT_TARGET_FILENAME
+    elif artifact == "transcript_srt":
+        file_path = output_dir / _TRANSCRIPT_SRT_FILENAME
+    elif artifact == "transcript_text":
+        file_path = output_dir / _TRANSCRIPT_TEXT_FILENAME
     elif artifact == "video":
         matches = sorted(output_dir.glob("*.mp4")) if output_dir.is_dir() else []
         if not matches:

@@ -22,6 +22,7 @@ export const STAGE_LABELS: Record<string, string> = {
   speaker_profile_building: 'Perfiles de hablantes',
   translation: 'Traducción',
   subtitles_writing: 'Generación de subtítulos',
+  transcript_writing: 'Escritura de transcripción',
   tts_synthesis: 'Síntesis de voz',
   audio_mixing_and_muxing: 'Mezcla de audio',
   rendering_dubbed: 'Renderizado del video doblado',
@@ -49,7 +50,7 @@ function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural
 }
 
-const LANGUAGE_NAMES: Record<string, string> = {
+export const LANGUAGE_NAMES: Record<string, string> = {
   en: 'inglés',
   es: 'español',
   fr: 'francés',

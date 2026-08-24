@@ -12,10 +12,19 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import load_settings
-from video_translator.container import build_translate_video_use_case
-from video_translator.domain.models import OutputMode, TranslateVideoRequest, TranslationContext
+from video_translator.container import (
+    build_transcribe_media_use_case,
+    build_translate_video_use_case,
+)
+from video_translator.domain.models import (
+    OutputMode,
+    TranscribeMediaRequest,
+    TranslateVideoRequest,
+    TranslationContext,
+)
 from video_translator.utils.logging_config import configure_logging
 from video_translator.web.db.models import Project
 
@@ -68,4 +77,29 @@ def build_use_case_and_request(
         enable_diarization=request.diarize,
         resume=resume,
     )
+    return use_case, request
+
+
+def build_transcribe_use_case_and_request(
+    project: Project,
+) -> tuple[TranscribeMediaUseCase, TranscribeMediaRequest]:
+    """Version delgada de `build_use_case_and_request` para el servicio de
+    transcripcion standalone (`ServiceType.TRANSCRIPTION`): no hay traduccion
+    ni doblaje, asi que no hace falta `TranslationContext` ni las opciones de
+    diarizacion/hablantes. No soporta `resume` -- transcribir es lo bastante
+    rapido para no necesitar reanudacion por checkpoint."""
+    settings = load_settings()
+
+    output_dir = Path(project.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "logs" / f"run_{datetime.now().astimezone():%Y%m%d_%H%M%S}.log"
+    configure_logging(level=settings.log_level, json_logs=settings.log_json, log_file=log_file)
+
+    config = project.config or {}
+    request = TranscribeMediaRequest(
+        input_media=Path(project.input_video_path),
+        output_dir=output_dir,
+        source_lang_hint=config.get("source_lang") or None,
+    )
+    use_case = build_transcribe_media_use_case(settings)
     return use_case, request

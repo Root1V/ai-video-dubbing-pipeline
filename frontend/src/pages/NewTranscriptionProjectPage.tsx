@@ -1,0 +1,216 @@
+import { useState } from 'react'
+import type { FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useDropzone } from 'react-dropzone'
+import axios from 'axios'
+import { FileAudio, UploadCloud, X } from 'lucide-react'
+import { createTranscriptionProject } from '../api/projects'
+import { Card, CardContent } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
+import { Select } from '../components/ui/Select'
+import { Alert } from '../components/ui/Alert'
+import { cn } from '../lib/cn'
+import { formatBytes } from '../lib/format'
+import { LANGUAGE_NAMES } from '../lib/labels'
+
+const LANGUAGE_OPTIONS = [
+  { value: '', label: 'Detectar automáticamente' },
+  ...Object.entries(LANGUAGE_NAMES).map(([code, name]) => ({
+    value: code,
+    label: name.charAt(0).toUpperCase() + name.slice(1),
+  })),
+]
+
+function stripExtension(filename: string): string {
+  const lastDot = filename.lastIndexOf('.')
+  return lastDot > 0 ? filename.slice(0, lastDot) : filename
+}
+
+export function NewTranscriptionProjectPage() {
+  const navigate = useNavigate()
+
+  const [file, setFile] = useState<File | null>(null)
+  const [name, setName] = useState('')
+  const [sourceLang, setSourceLang] = useState('')
+
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: { 'video/*': [], 'audio/*': [] },
+    multiple: false,
+    onDrop: (acceptedFiles) => {
+      const selected = acceptedFiles[0]
+      if (!selected) return
+      setFile(selected)
+      if (!name) {
+        setName(stripExtension(selected.name))
+      }
+    },
+  })
+
+  function removeFile() {
+    setFile(null)
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!file) {
+      setError('Selecciona un archivo de audio o video para continuar.')
+      return
+    }
+    if (!name.trim()) {
+      setError('Ingresa un nombre para el proyecto.')
+      return
+    }
+
+    setError(null)
+    setIsSubmitting(true)
+    setUploadProgress(0)
+
+    try {
+      const project = await createTranscriptionProject(
+        { name: name.trim(), file, source_lang: sourceLang },
+        setUploadProgress,
+      )
+      navigate(`/projects/${project.id}`)
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setError(
+          (err.response?.data as { detail?: string } | undefined)?.detail ??
+            'No se pudo crear el proyecto. Intenta de nuevo.',
+        )
+      } else {
+        setError('No se pudo crear el proyecto. Intenta de nuevo.')
+      }
+      setIsSubmitting(false)
+      setUploadProgress(null)
+    }
+  }
+
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <div>
+        <h1 className="text-xl font-semibold">Nueva transcripción</h1>
+        <p className="text-sm text-muted-foreground">
+          Sube un audio o video para obtener su transcripción en el idioma original.
+        </p>
+      </div>
+
+      {error && <Alert variant="error" onDismiss={() => setError(null)}>{error}</Alert>}
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        {!file ? (
+          <div
+            {...getRootProps()}
+            className={cn(
+              'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary/30 px-6 py-14 text-center transition-colors',
+              isDragActive && 'border-primary bg-primary/5',
+            )}
+          >
+            <input {...getInputProps()} />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <UploadCloud className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="font-medium">
+                Arrastra tu archivo aquí o haz clic para seleccionarlo
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Video o audio (MP4, MOV, MKV, MP3, WAV, M4A, FLAC…)
+              </p>
+            </div>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="flex items-center gap-4 p-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <FileAudio className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{file.name}</p>
+                <p className="text-sm text-muted-foreground">{formatBytes(file.size)}</p>
+              </div>
+              {!isSubmitting && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={removeFile}
+                  aria-label="Quitar archivo"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </CardContent>
+            {uploadProgress !== null && (
+              <CardContent className="pt-0">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {uploadProgress < 100
+                    ? `Subiendo… ${uploadProgress}%`
+                    : 'Subida completa, creando proyecto…'}
+                </p>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        <Card>
+          <CardContent className="flex flex-col gap-5 p-6">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="name" className="text-sm font-medium">
+                Nombre del proyecto
+              </label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Mi transcripción"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="source-lang" className="text-sm font-medium">
+                Idioma del audio
+              </label>
+              <Select
+                id="source-lang"
+                value={sourceLang}
+                onChange={(e) => setSourceLang(e.target.value)}
+              >
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate('/')}
+            disabled={isSubmitting}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Creando proyecto…' : 'Transcribir'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

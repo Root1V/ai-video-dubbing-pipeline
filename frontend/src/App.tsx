@@ -9,6 +9,7 @@ import { DashboardHomePage } from './pages/DashboardHomePage'
 import { ProjectsListPage } from './pages/ProjectsListPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { NewDubbingProjectPage } from './pages/NewDubbingProjectPage'
+import { NewTranscriptionProjectPage } from './pages/NewTranscriptionProjectPage'
 import { ComingSoonPage } from './pages/ComingSoonPage'
 
 const queryClient = new QueryClient({
@@ -63,7 +64,7 @@ export default function App() {
               path="/transcription/new"
               element={
                 <ProtectedPage>
-                  <ComingSoonPage title="Transcripción" />
+                  <NewTranscriptionProjectPage />
                 </ProtectedPage>
               }
             />
