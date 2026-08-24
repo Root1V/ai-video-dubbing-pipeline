@@ -9,9 +9,9 @@ import { DashboardHomePage } from './pages/DashboardHomePage'
 import { ProjectsListPage } from './pages/ProjectsListPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { NewDubbingProjectPage } from './pages/NewDubbingProjectPage'
+import { NewSubtitlesProjectPage } from './pages/NewSubtitlesProjectPage'
 import { NewTranscriptionProjectPage } from './pages/NewTranscriptionProjectPage'
 import { NewTtsProjectPage } from './pages/NewTtsProjectPage'
-import { ComingSoonPage } from './pages/ComingSoonPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,7 +57,7 @@ export default function App() {
               path="/subtitles/new"
               element={
                 <ProtectedPage>
-                  <ComingSoonPage title="Traducción y Subtítulos" />
+                  <NewSubtitlesProjectPage />
                 </ProtectedPage>
               }
             />

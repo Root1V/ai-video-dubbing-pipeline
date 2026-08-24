@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   CreateDubbingProjectInput,
+  CreateSubtitlesProjectInput,
   CreateTranscriptionProjectInput,
   CreateTtsProjectInput,
   DownloadArtifact,
@@ -100,6 +101,31 @@ export async function createDubbingProject(
       formData.set('max_speakers', String(input.max_speakers))
     }
   }
+
+  const { data } = await apiClient.post<Project>('/projects', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!onUploadProgress || !event.total) return
+      onUploadProgress(Math.round((event.loaded / event.total) * 100))
+    },
+  })
+  return data
+}
+
+export async function createSubtitlesProject(
+  input: CreateSubtitlesProjectInput,
+  onUploadProgress?: (percent: number) => void,
+): Promise<Project> {
+  const formData = new FormData()
+  formData.set('name', input.name)
+  formData.set('service_type', 'subtitles')
+  formData.set('output_mode', input.output_mode)
+  formData.set('file', input.file)
+  formData.set('context_prompt', input.context_prompt ?? '')
+  formData.set('tone', input.tone ?? '')
+  formData.set('glossary', JSON.stringify(input.glossary ?? {}))
+  formData.set('source_lang', input.source_lang ?? 'en')
+  formData.set('target_lang', input.target_lang ?? 'es')
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

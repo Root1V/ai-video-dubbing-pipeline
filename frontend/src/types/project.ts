@@ -116,6 +116,19 @@ export interface CreateDubbingProjectInput {
   max_speakers?: number
 }
 
+export interface CreateSubtitlesProjectInput {
+  name: string
+  file: File
+  /** subtitles_only ".srt" / burn_subtitles (incrustados) / soft_subtitles
+   * (pista seleccionable) -- "dubbed" no aplica a este servicio. */
+  output_mode: Exclude<OutputMode, 'dubbed'>
+  context_prompt?: string
+  tone?: string
+  glossary?: Record<string, string>
+  source_lang?: string
+  target_lang?: string
+}
+
 export interface CreateTranscriptionProjectInput {
   name: string
   file: File
