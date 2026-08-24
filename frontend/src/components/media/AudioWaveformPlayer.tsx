@@ -4,7 +4,8 @@ import { Pause, Play } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { formatClockTime } from '../../lib/format'
 import { themeColor } from '../../lib/theme-color'
-import { LiveWaveformVisualizer } from './LiveWaveformVisualizer'
+import { computeAmplitudeEnvelope } from '../../lib/audio-peaks'
+import { LiveWaveformVisualizer, BAR_COUNT } from './LiveWaveformVisualizer'
 
 interface AudioWaveformPlayerProps {
   src: string
@@ -14,6 +15,7 @@ export function AudioWaveformPlayer({ src }: AudioWaveformPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const waveSurferRef = useRef<WaveSurfer | null>(null)
   const [mediaElement, setMediaElement] = useState<HTMLMediaElement | null>(null)
+  const [peaks, setPeaks] = useState<number[] | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -40,6 +42,8 @@ export function AudioWaveformPlayer({ src }: AudioWaveformPlayerProps) {
     ws.on('ready', () => {
       setIsReady(true)
       setDuration(ws.getDuration())
+      const decoded = ws.getDecodedData()
+      if (decoded) setPeaks(computeAmplitudeEnvelope(decoded, BAR_COUNT))
     })
     ws.on('play', () => setIsPlaying(true))
     ws.on('pause', () => setIsPlaying(false))
@@ -51,6 +55,7 @@ export function AudioWaveformPlayer({ src }: AudioWaveformPlayerProps) {
       ws.destroy()
       waveSurferRef.current = null
       setMediaElement(null)
+      setPeaks(null)
     }
   }, [src])
 
@@ -59,7 +64,7 @@ export function AudioWaveformPlayer({ src }: AudioWaveformPlayerProps) {
       {/* Ecualizador reactivo: se mueve con el audio real mientras suena,
           independiente de la forma de onda estatica de abajo (que sigue
           mostrando la pista completa y sirve de barra de progreso/seek). */}
-      <LiveWaveformVisualizer mediaElement={mediaElement} />
+      <LiveWaveformVisualizer mediaElement={mediaElement} peaks={peaks} />
       <div className="flex items-center gap-3">
         <Button
           type="button"

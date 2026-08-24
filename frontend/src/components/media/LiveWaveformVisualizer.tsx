@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { themeColor } from '../../lib/theme-color'
 
-const BAR_COUNT = 48
+export const BAR_COUNT = 48
 const IDLE_BAR_LEVEL = 0.06
 const ATTACK_RATE = 0.55
 const DECAY_RATE = 0.1
@@ -33,32 +33,40 @@ function drawRoundedBar(
 
 interface LiveWaveformVisualizerProps {
   mediaElement: HTMLMediaElement | null
+  /** Normalized (0-1) RMS amplitude per bar, one entry per BAR_COUNT segment
+   * across the full track -- see lib/audio-peaks.ts. Bars reveal themselves
+   * at this real height as playback reaches their time segment, so the
+   * shape matches the static waveform below instead of an arbitrary live
+   * frequency reading. Null while the track is still decoding. */
+  peaks: number[] | null
 }
 
 /**
- * Live, audio-reactive bar visualizer meant to sit alongside the static
+ * Live playback-position visualizer meant to sit alongside the static
  * waveform a player already draws (see AudioWaveformPlayer) -- that one
- * keeps showing the overall shape/progress of the track; this one reads
- * REAL frequency data from the actual playing audio (Web Audio API
- * AnalyserNode) and animates continuously via requestAnimationFrame, so the
- * player feels alive while something is actually playing instead of a
- * static image with a moving playhead.
+ * keeps showing the overall shape/progress of the track; this one "reveals"
+ * that same shape bar by bar as playback reaches each time segment (using
+ * `peaks`, precomputed once from the decoded audio), with the bar AT the
+ * current playhead blended with REAL live loudness from a Web Audio
+ * AnalyserNode (time-domain RMS) so it visibly pulses with the actual
+ * audio instead of just jumping to a fixed height.
  *
  * Bars are smoothed frame-to-frame with a fast attack / slow decay curve
  * (professional audio-meter convention: jump up quickly, fall back slowly)
- * rather than snapping straight to the raw FFT bins, which reads as
- * jittery. Falls back to a flat idle baseline (no crash, no console noise)
- * if the browser refuses to wire up an AudioContext for this element.
+ * rather than snapping straight to their target, which reads as jittery.
+ * Seeking backward correctly "unreveals" bars ahead of the new position.
  *
  * Like any canvas animation, requestAnimationFrame pauses while the tab is
  * hidden/unfocused -- that's standard browser behavior (audio itself keeps
  * playing; only the visual redraw pauses), not something this component
  * needs to work around.
  */
-export function LiveWaveformVisualizer({ mediaElement }: LiveWaveformVisualizerProps) {
+export function LiveWaveformVisualizer({ mediaElement, peaks }: LiveWaveformVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const audioGraphRef = useRef<AudioGraph | null>(null)
   const levelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(0))
+  const peaksRef = useRef<number[] | null>(peaks)
+  peaksRef.current = peaks
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -76,7 +84,6 @@ export function LiveWaveformVisualizer({ mediaElement }: LiveWaveformVisualizerP
         const context = new AudioContextCtor()
         const analyser = context.createAnalyser()
         analyser.fftSize = 128
-        analyser.smoothingTimeConstant = 0.75
         const source = context.createMediaElementSource(mediaElement)
         source.connect(analyser)
         analyser.connect(context.destination)
@@ -84,7 +91,7 @@ export function LiveWaveformVisualizer({ mediaElement }: LiveWaveformVisualizerP
           context,
           analyser,
           source,
-          data: new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount)),
+          data: new Uint8Array(new ArrayBuffer(analyser.fftSize)),
         }
         audioGraphRef.current = graph
         return graph
@@ -95,6 +102,20 @@ export function LiveWaveformVisualizer({ mediaElement }: LiveWaveformVisualizerP
         // reproduccion ni la forma de onda estatica de al lado.
         return null
       }
+    }
+
+    /** RMS del dominio del tiempo (0-1): una sola lectura de "que tan fuerte
+     * suena ahora mismo", en la misma escala (RMS normalizado) que los picos
+     * precalculados de `peaks`, para que la barra actual no salte a una
+     * escala visualmente distinta de sus vecinas ya reveladas. */
+    function readLiveLevel(graph: AudioGraph): number {
+      graph.analyser.getByteTimeDomainData(graph.data)
+      let sumSquares = 0
+      for (let i = 0; i < graph.data.length; i++) {
+        const v = (graph.data[i] - 128) / 128
+        sumSquares += v * v
+      }
+      return Math.sqrt(sumSquares / graph.data.length)
     }
 
     function resizeCanvas() {
@@ -118,10 +139,14 @@ export function LiveWaveformVisualizer({ mediaElement }: LiveWaveformVisualizerP
 
       const playing = mediaElement !== null && !mediaElement.paused && !mediaElement.ended
       const graph = playing ? ensureAudioGraph() : audioGraphRef.current
-      if (playing && graph) {
-        if (graph.context.state === 'suspended') graph.context.resume().catch(() => {})
-        graph.analyser.getByteFrequencyData(graph.data)
-      }
+      if (graph?.context.state === 'suspended') graph.context.resume().catch(() => {})
+      const liveLevel = playing && graph ? readLiveLevel(graph) : 0
+
+      const duration = mediaElement?.duration || 0
+      const currentTime = mediaElement?.currentTime || 0
+      const progressBars = duration > 0 ? (currentTime / duration) * BAR_COUNT : 0
+      const currentBarIndex = Math.floor(progressBars)
+      const barsPeaks = peaksRef.current
 
       const gradient = ctx2d!.createLinearGradient(0, height, 0, 0)
       gradient.addColorStop(0, themeColor('--primary', '#635bff'))
@@ -137,13 +162,19 @@ export function LiveWaveformVisualizer({ mediaElement }: LiveWaveformVisualizerP
       const barWidth = width / BAR_COUNT
       const gap = barWidth * 0.3
       const levels = levelsRef.current
-      const usableBins = graph ? Math.floor(graph.data.length * 0.8) : 0
 
       for (let i = 0; i < BAR_COUNT; i++) {
+        const basePeak = barsPeaks ? barsPeaks[i] : 0
         let target = IDLE_BAR_LEVEL
-        if (playing && graph) {
-          const binIndex = 2 + Math.floor((i / BAR_COUNT) * usableBins)
-          target = Math.max(IDLE_BAR_LEVEL, (graph.data[binIndex] ?? 0) / 255)
+        if (i < currentBarIndex) {
+          // Ya reproducido: revelado a su altura real (misma forma que la
+          // onda estatica de abajo), sin depender de que siga sonando.
+          target = Math.max(IDLE_BAR_LEVEL, basePeak)
+        } else if (i === currentBarIndex && playing) {
+          // Cabeza de reproduccion: mezcla el pico real con el nivel EN VIVO
+          // del audio real -- late con el sonido en vez de solo saltar a un
+          // valor fijo.
+          target = Math.max(IDLE_BAR_LEVEL, basePeak, liveLevel)
         }
         const prev = levels[i]
         const rate = target > prev ? ATTACK_RATE : DECAY_RATE
