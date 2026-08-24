@@ -1,4 +1,4 @@
-export type ServiceType = 'dubbing' | 'subtitles' | 'transcription'
+export type ServiceType = 'dubbing' | 'subtitles' | 'transcription' | 'tts'
 
 export type OutputMode =
   | 'subtitles_only'
@@ -96,6 +96,7 @@ export type DownloadArtifact =
   | 'srt_target'
   | 'transcript_srt'
   | 'transcript_text'
+  | 'speech_audio'
 
 export interface GlossaryEntry {
   term: string
@@ -121,4 +122,14 @@ export interface CreateTranscriptionProjectInput {
   /** Vacio = detectar automaticamente (el backend lo trata como None, ver
    * `Transcriber.transcribe(language_hint=None)`). */
   source_lang?: string
+}
+
+export interface CreateTtsProjectInput {
+  name: string
+  text: string
+  /** Idioma en el que se sintetiza el audio. */
+  target_lang?: string
+  /** Voz de referencia opcional -- sin ella, el backend usa una voz por
+   * defecto empaquetada (ver `container.py::DEFAULT_TTS_VOICE_WAV`). */
+  voiceFile?: File
 }

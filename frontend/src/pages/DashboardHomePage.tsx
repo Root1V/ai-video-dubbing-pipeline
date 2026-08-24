@@ -9,6 +9,7 @@ import {
   Globe,
   Mic,
   FolderKanban,
+  Volume2,
 } from 'lucide-react'
 import { fetchProjects } from '../api/projects'
 import { Card, CardContent } from '../components/ui/Card'
@@ -57,6 +58,12 @@ const services = [
     title: 'Transcripción',
     description: 'Obtén la transcripción del audio en su idioma original.',
     icon: FileText,
+  },
+  {
+    to: '/tts/new',
+    title: 'Texto a Voz',
+    description: 'Convierte texto escrito en audio narrado.',
+    icon: Volume2,
   },
 ]
 

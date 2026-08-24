@@ -20,6 +20,7 @@ from video_translator.domain.exceptions import VideoTranslatorError
 from video_translator.web.db.models import Project, ProjectStatus, ServiceType
 from video_translator.web.db.session import SessionLocal
 from video_translator.web.services.project_mapper import (
+    build_synthesize_use_case_and_request,
     build_transcribe_use_case_and_request,
     build_use_case_and_request,
 )
@@ -42,6 +43,9 @@ def run_dubbing_project(self: Task, project_id: str, resume: bool = False) -> No
             if project.service_type == ServiceType.TRANSCRIPTION:
                 transcribe_use_case, transcribe_request = build_transcribe_use_case_and_request(project)
                 transcribe_use_case.execute(transcribe_request)
+            elif project.service_type == ServiceType.TTS:
+                tts_use_case, tts_request = build_synthesize_use_case_and_request(project)
+                tts_use_case.execute(tts_request)
             else:
                 dub_use_case, dub_request = build_use_case_and_request(project, resume=resume)
                 dub_use_case.execute(dub_request)

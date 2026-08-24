@@ -270,6 +270,104 @@ def test_download_artifact_serves_existing_file(
     assert resp.content == b"1\n00:00:00,000 --> 00:00:01,000\nHola\n"
 
 
+def test_create_tts_project_without_voice_file_succeeds(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi audio",
+            "service_type": "tts",
+            "output_mode": "subtitles_only",
+            "text": "Hola, esto es una prueba.",
+            "target_lang": "es",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["service_type"] == "tts"
+    assert body["input_video_path"].endswith("input.txt")
+    assert "speaker_reference_wav" not in body["config"]
+
+
+def test_create_tts_project_requires_text(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={"name": "Mi audio", "service_type": "tts", "output_mode": "subtitles_only", "text": "   "},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_tts_project_with_voice_file_saves_speaker_reference(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi audio",
+            "service_type": "tts",
+            "output_mode": "subtitles_only",
+            "text": "Hola.",
+        },
+        files={"file": ("voice.wav", b"fake-wav-bytes", "audio/wav")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["speaker_reference_wav"].endswith("voice.wav")
+
+
+def test_create_project_without_file_rejects_for_non_tts_service(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={"name": "Sin archivo", "service_type": "dubbing", "output_mode": "dubbed"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_download_speech_audio_artifact_serves_existing_file(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = client.post(
+        "/api/projects",
+        data={"name": "Mi audio", "service_type": "tts", "output_mode": "subtitles_only", "text": "Hola."},
+        headers=headers,
+    ).json()
+
+    output_dir = Path(created["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "speech.wav").write_bytes(b"fake-speech-audio")
+
+    resp = client.get(f"/api/projects/{created['id']}/download/speech_audio", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.content == b"fake-speech-audio"
+
+
 def test_download_transcript_artifacts_serves_existing_files(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:

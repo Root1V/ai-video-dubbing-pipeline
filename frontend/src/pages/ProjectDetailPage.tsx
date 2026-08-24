@@ -111,11 +111,15 @@ export function ProjectDetailPage() {
   const dbStatus = status?.db_status ?? project.status
   const stages = normalizeStages(status?.stages ?? null)
   const isTranscription = project.service_type === 'transcription'
-  // La transcripcion standalone no traduce ni renderiza video -- su plan de
-  // etapas es fijo (ver TranscribeMediaUseCase), no depende de output_mode.
+  const isTts = project.service_type === 'tts'
+  // La transcripcion y el TTS standalone no traducen ni renderizan video --
+  // su plan de etapas es fijo (ver TranscribeMediaUseCase/SynthesizeTextUseCase),
+  // no depende de output_mode.
   const expectedStageNames = isTranscription
     ? ['audio_extraction', 'transcription']
-    : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize))
+    : isTts
+      ? ['text_to_speech', 'audio_concatenation']
+      : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize))
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -133,10 +137,10 @@ export function ProjectDetailPage() {
           <h1 className="text-xl font-semibold">{project.name}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{SERVICE_TYPE_LABELS[project.service_type]}</Badge>
-            {/* output_mode es un valor interno sin significado para transcripcion
-                standalone (siempre "subtitles_only", solo para satisfacer la columna
+            {/* output_mode es un valor interno sin significado para los servicios
+                sin video (siempre "subtitles_only", solo para satisfacer la columna
                 NOT NULL) -- mostrarlo confundiria mas de lo que aclara. */}
-            {!isTranscription && (
+            {!isTranscription && !isTts && (
               <Badge variant="outline">{OUTPUT_MODE_LABELS[project.output_mode]}</Badge>
             )}
             <Badge variant={PROJECT_STATUS_BADGE_VARIANT[dbStatus]}>
@@ -213,6 +217,16 @@ export function ProjectDetailPage() {
                     Transcripción (texto)
                   </Button>
                 </>
+              ) : isTts ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload('speech_audio')}
+                  disabled={downloading === 'speech_audio'}
+                >
+                  <Download className="h-4 w-4" />
+                  Audio (WAV)
+                </Button>
               ) : (
                 <>
                   {project.output_mode !== 'subtitles_only' && (

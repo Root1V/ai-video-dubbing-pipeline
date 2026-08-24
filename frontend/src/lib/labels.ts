@@ -4,6 +4,7 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   dubbing: 'Doblaje',
   subtitles: 'Subtítulos',
   transcription: 'Transcripción',
+  tts: 'Texto a voz',
 }
 
 export const OUTPUT_MODE_LABELS: Record<OutputMode, string> = {
@@ -23,6 +24,8 @@ export const STAGE_LABELS: Record<string, string> = {
   translation: 'Traducción',
   subtitles_writing: 'Generación de subtítulos',
   transcript_writing: 'Escritura de transcripción',
+  text_to_speech: 'Síntesis de voz',
+  audio_concatenation: 'Concatenación de audio',
   tts_synthesis: 'Síntesis de voz',
   audio_mixing_and_muxing: 'Mezcla de audio',
   rendering_dubbed: 'Renderizado del video doblado',
@@ -136,6 +139,11 @@ export function getStageSubtitle(stage: ProjectStage, context: StageSubtitleCont
     case 'transcription': {
       const segments = num('num_segments')
       if (segments !== null) parts.push(`${segments} ${pluralize(segments, 'segmento', 'segmentos')}`)
+      break
+    }
+    case 'text_to_speech': {
+      const chunks = num('num_chunks')
+      if (chunks !== null) parts.push(`${chunks} ${pluralize(chunks, 'fragmento', 'fragmentos')}`)
       break
     }
     case 'diarization': {

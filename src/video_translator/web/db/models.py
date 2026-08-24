@@ -40,6 +40,7 @@ class ServiceType(str, Enum):
     DUBBING = "dubbing"
     SUBTITLES = "subtitles"
     TRANSCRIPTION = "transcription"
+    TTS = "tts"
 
 
 class SourceType(str, Enum):

@@ -10,6 +10,7 @@ import { ProjectsListPage } from './pages/ProjectsListPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { NewDubbingProjectPage } from './pages/NewDubbingProjectPage'
 import { NewTranscriptionProjectPage } from './pages/NewTranscriptionProjectPage'
+import { NewTtsProjectPage } from './pages/NewTtsProjectPage'
 import { ComingSoonPage } from './pages/ComingSoonPage'
 
 const queryClient = new QueryClient({
@@ -65,6 +66,14 @@ export default function App() {
               element={
                 <ProtectedPage>
                   <NewTranscriptionProjectPage />
+                </ProtectedPage>
+              }
+            />
+            <Route
+              path="/tts/new"
+              element={
+                <ProtectedPage>
+                  <NewTtsProjectPage />
                 </ProtectedPage>
               }
             />

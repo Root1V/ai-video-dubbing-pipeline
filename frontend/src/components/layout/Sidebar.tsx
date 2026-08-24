@@ -6,6 +6,7 @@ import {
   FolderOpen,
   LayoutGrid,
   Sparkles,
+  Volume2,
 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
@@ -21,6 +22,7 @@ const servicesNav: NavItem[] = [
   { to: '/dubbing/new', label: 'Doblaje de Video', icon: AudioLines },
   { to: '/subtitles/new', label: 'Subtítulos', icon: Captions },
   { to: '/transcription/new', label: 'Transcripción', icon: FileText },
+  { to: '/tts/new', label: 'Texto a Voz', icon: Volume2 },
 ]
 
 const libraryNav: NavItem[] = [

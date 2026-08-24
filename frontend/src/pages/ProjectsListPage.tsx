@@ -37,6 +37,7 @@ const SERVICE_FILTER_OPTIONS: { value: ServiceType | ''; label: string }[] = [
   { value: 'dubbing', label: SERVICE_TYPE_LABELS.dubbing },
   { value: 'subtitles', label: SERVICE_TYPE_LABELS.subtitles },
   { value: 'transcription', label: SERVICE_TYPE_LABELS.transcription },
+  { value: 'tts', label: SERVICE_TYPE_LABELS.tts },
 ]
 
 export function ProjectsListPage() {
@@ -143,11 +144,11 @@ export function ProjectsListPage() {
                   >
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {/* output_mode es un sentinel sin significado para
-                          transcripcion standalone (siempre "subtitles_only") --
+                      {/* output_mode es un sentinel sin significado para los
+                          servicios sin video (siempre "subtitles_only") --
                           mostrar el tipo de servicio en su lugar. */}
-                      {project.service_type === 'transcription'
-                        ? SERVICE_TYPE_LABELS.transcription
+                      {project.service_type === 'transcription' || project.service_type === 'tts'
+                        ? SERVICE_TYPE_LABELS[project.service_type]
                         : OUTPUT_MODE_LABELS[project.output_mode]}
                     </TableCell>
                     <TableCell>

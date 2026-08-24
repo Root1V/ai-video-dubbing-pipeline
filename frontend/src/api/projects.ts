@@ -2,6 +2,7 @@ import { apiClient } from './client'
 import type {
   CreateDubbingProjectInput,
   CreateTranscriptionProjectInput,
+  CreateTtsProjectInput,
   DownloadArtifact,
   Project,
   ProjectListParams,
@@ -47,6 +48,7 @@ const ARTIFACT_FILENAME_FALLBACK: Record<DownloadArtifact, string> = {
   srt_target: 'subtitles.es.srt',
   transcript_srt: 'transcript.srt',
   transcript_text: 'transcript.txt',
+  speech_audio: 'speech.wav',
 }
 
 /**
@@ -97,6 +99,32 @@ export async function createDubbingProject(
     if (input.max_speakers !== undefined) {
       formData.set('max_speakers', String(input.max_speakers))
     }
+  }
+
+  const { data } = await apiClient.post<Project>('/projects', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!onUploadProgress || !event.total) return
+      onUploadProgress(Math.round((event.loaded / event.total) * 100))
+    },
+  })
+  return data
+}
+
+export async function createTtsProject(
+  input: CreateTtsProjectInput,
+  onUploadProgress?: (percent: number) => void,
+): Promise<Project> {
+  const formData = new FormData()
+  formData.set('name', input.name)
+  formData.set('service_type', 'tts')
+  // Sin significado para TTS (no renderiza video) -- solo satisface la
+  // columna NOT NULL, igual que hace la transcripcion standalone.
+  formData.set('output_mode', 'subtitles_only')
+  formData.set('text', input.text)
+  formData.set('target_lang', input.target_lang ?? 'es')
+  if (input.voiceFile) {
+    formData.set('file', input.voiceFile)
   }
 
   const { data } = await apiClient.post<Project>('/projects', formData, {

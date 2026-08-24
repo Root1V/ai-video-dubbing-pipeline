@@ -12,8 +12,10 @@ import os
 import platform
 from collections.abc import Callable
 from functools import partial
+from pathlib import Path
 
 from video_translator.application.interfaces import SpeechSynthesizer, Transcriber, Translator
+from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
 from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import Settings
@@ -211,6 +213,41 @@ def build_transcribe_media_use_case(settings: Settings) -> TranscribeMediaUseCas
         media_processor=media_processor,
         transcriber=transcriber,
         subtitle_writer=subtitle_writer,
+        effective_config=effective_config,
+    )
+
+
+# Voz de referencia usada cuando el usuario no sube la suya en el TTS
+# standalone (ver `build_synthesize_text_use_case`) -- ambos backends de TTS
+# son de clonacion zero-shot pura, ninguno tiene una voz "de fabrica" propia,
+# asi que hace falta un .wav real empaquetado con el proyecto.
+DEFAULT_TTS_VOICE_WAV = Path(__file__).resolve().parent / "assets" / "default_voices" / "default_voice.wav"
+
+
+def build_synthesize_text_use_case(settings: Settings) -> SynthesizeTextUseCase:
+    """Construye el caso de uso de TTS standalone (texto -> audio). A
+    diferencia de `_build_synthesizer` (usado para doblaje, donde vale la pena
+    paralelizar decenas/cientos de segmentos), aca siempre se fuerza un solo
+    worker: una sintesis de texto suelto rara vez tiene tantos fragmentos como
+    para justificar el costo de levantar varios procesos con su propia copia
+    del modelo en memoria cada uno."""
+    media_processor = FFmpegMediaProcessor(
+        ffmpeg_binary=settings.ffmpeg_binary,
+        ffprobe_binary=settings.ffprobe_binary,
+        audio_sample_rate=settings.audio_sample_rate,
+    )
+    notes: dict = {}
+    speech_synthesizer = _synthesizer_factory(settings, num_workers=1, notes=notes)()
+
+    effective_config: dict = {
+        "tts_backend": settings.tts_backend,
+        "tts_device_forced_cpu": notes.get("tts_device_forced_cpu", False),
+    }
+
+    return SynthesizeTextUseCase(
+        speech_synthesizer=speech_synthesizer,
+        media_processor=media_processor,
+        default_speaker_reference_wav=DEFAULT_TTS_VOICE_WAV,
         effective_config=effective_config,
     )
 

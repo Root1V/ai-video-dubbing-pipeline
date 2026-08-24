@@ -160,3 +160,53 @@ def test_build_transcribe_use_case_and_request_empty_source_lang_means_auto_dete
     _, request = project_mapper.build_transcribe_use_case_and_request(project)
 
     assert request.source_lang_hint is None
+
+
+def _make_tts_project(tmp_path: Path, text: str = "Hola mundo.", **config_overrides: object) -> Project:
+    text_path = tmp_path / "input.txt"
+    text_path.write_text(text, encoding="utf-8")
+    config = {"target_lang": "es", **config_overrides}
+    return Project(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        name="Proyecto de TTS",
+        service_type=ServiceType.TTS,
+        source_type=SourceType.UPLOAD,
+        input_video_path=str(text_path),
+        output_dir=str(tmp_path / "output"),
+        output_mode=OutputMode.SUBTITLES_ONLY.value,
+        config=config,
+        status=ProjectStatus.QUEUED,
+    )
+
+
+def test_build_synthesize_use_case_and_request_reads_text_and_maps_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_tts_project(tmp_path, text="Hola mundo.", target_lang="en")
+
+    fake_use_case = MagicMock()
+    build_mock = MagicMock(return_value=fake_use_case)
+    monkeypatch.setattr(project_mapper, "build_synthesize_text_use_case", build_mock)
+
+    use_case, request = project_mapper.build_synthesize_use_case_and_request(project)
+
+    assert use_case is fake_use_case
+    assert request.text == "Hola mundo."
+    assert request.output_dir == Path(project.output_dir)
+    assert request.output_dir.is_dir()
+    assert request.language == "en"
+    assert request.speaker_reference_wav is None
+    build_mock.assert_called_once()
+
+
+def test_build_synthesize_use_case_and_request_maps_speaker_reference_wav(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    voice_path = tmp_path / "voice.wav"
+    project = _make_tts_project(tmp_path, speaker_reference_wav=str(voice_path))
+    monkeypatch.setattr(project_mapper, "build_synthesize_text_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_synthesize_use_case_and_request(project)
+
+    assert request.speaker_reference_wav == voice_path

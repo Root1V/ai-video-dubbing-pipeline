@@ -31,6 +31,8 @@ _SRT_TARGET_FILENAME = "subtitles.es.srt"
 # traduccion, solo una transcripcion en el idioma original.
 _TRANSCRIPT_SRT_FILENAME = "transcript.srt"
 _TRANSCRIPT_TEXT_FILENAME = "transcript.txt"
+# Nombre fijo que escribe `SynthesizeTextUseCase` (servicio de TTS standalone).
+_SPEECH_AUDIO_FILENAME = "speech.wav"
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -63,7 +65,11 @@ def create_project(
     name: str = Form(...),
     service_type: str = Form(...),
     output_mode: str = Form(...),
-    file: UploadFile = File(...),
+    # Opcional solo para el servicio "tts": ahi el archivo es una voz de
+    # referencia OPCIONAL, no el contenido principal (que es `text`). Para
+    # el resto de servicios sigue siendo obligatorio (se valida abajo).
+    file: UploadFile | None = File(None),
+    text: str = Form(""),
     context_prompt: str = Form(""),
     tone: str | None = Form(None),
     glossary: str = Form("{}"),
@@ -88,6 +94,19 @@ def create_project(
             detail="glossary debe ser un objeto JSON.",
         )
 
+    is_tts = service_type == "tts"
+    if is_tts:
+        if not text.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="text es requerido para el servicio de TTS.",
+            )
+    elif file is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="file es requerido para este servicio.",
+        )
+
     project_id = uuid.uuid4()
     config = {
         "context_prompt": context_prompt,
@@ -106,7 +125,7 @@ def create_project(
         name=name,
         service_type=service_type,
         source_type="upload",
-        input_video_path="",  # se completa abajo tras guardar el archivo
+        input_video_path="",  # se completa abajo tras guardar el archivo/texto
         output_dir=str(storage.output_dir_for(project_id, settings)),
         output_mode=output_mode,
         config=config,
@@ -116,8 +135,14 @@ def create_project(
     db.commit()
     db.refresh(project)
 
-    saved_path = storage.save_upload(file, project.id, settings)
-    project.input_video_path = str(saved_path)
+    if is_tts:
+        project.input_video_path = str(storage.save_text(text, project.id, settings))
+        if file is not None:
+            voice_path = storage.save_upload(file, project.id, settings)
+            project.config = {**project.config, "speaker_reference_wav": str(voice_path)}
+    else:
+        assert file is not None  # ya validado arriba
+        project.input_video_path = str(storage.save_upload(file, project.id, settings))
     db.commit()
 
     task = run_dubbing_project.delay(str(project.id))
@@ -245,6 +270,8 @@ def download_project_artifact(
         file_path = output_dir / _TRANSCRIPT_SRT_FILENAME
     elif artifact == "transcript_text":
         file_path = output_dir / _TRANSCRIPT_TEXT_FILENAME
+    elif artifact == "speech_audio":
+        file_path = output_dir / _SPEECH_AUDIO_FILENAME
     elif artifact == "video":
         matches = sorted(output_dir.glob("*.mp4")) if output_dir.is_dir() else []
         if not matches:

@@ -139,3 +139,23 @@ class TranscribeMediaResult:
     segments: list[TranscriptSegment]
     duration_seconds: float
     timings: dict = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SynthesizeTextRequest:
+    """Solicitud de sintesis de voz standalone (texto -> audio), entrada
+    principal de ``SynthesizeTextUseCase``."""
+
+    text: str
+    output_dir: Path
+    language: str = "es"
+    speaker_reference_wav: Path | None = None  # None = usa la voz por defecto
+
+
+@dataclass(slots=True)
+class SynthesizeTextResult:
+    """Resultado de una sintesis de voz standalone."""
+
+    audio_path: Path
+    duration_seconds: float
+    timings: dict = field(default_factory=dict)

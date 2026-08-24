@@ -12,15 +12,18 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
 from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import load_settings
 from video_translator.container import (
+    build_synthesize_text_use_case,
     build_transcribe_media_use_case,
     build_translate_video_use_case,
 )
 from video_translator.domain.models import (
     OutputMode,
+    SynthesizeTextRequest,
     TranscribeMediaRequest,
     TranslateVideoRequest,
     TranslationContext,
@@ -102,4 +105,34 @@ def build_transcribe_use_case_and_request(
         source_lang_hint=config.get("source_lang") or None,
     )
     use_case = build_transcribe_media_use_case(settings)
+    return use_case, request
+
+
+def build_synthesize_use_case_and_request(
+    project: Project,
+) -> tuple[SynthesizeTextUseCase, SynthesizeTextRequest]:
+    """Version delgada para el servicio de TTS standalone
+    (`ServiceType.TTS`): el texto a sintetizar se guardo como
+    `input_video_path` (ver `routers/projects.py::create_project`, mismo
+    patron de "archivo de entrada" que los demas servicios), y la voz de
+    referencia opcional vive en `config['speaker_reference_wav']` -- si no
+    esta, `SynthesizeTextUseCase` cae a su voz por defecto."""
+    settings = load_settings()
+
+    output_dir = Path(project.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "logs" / f"run_{datetime.now().astimezone():%Y%m%d_%H%M%S}.log"
+    configure_logging(level=settings.log_level, json_logs=settings.log_json, log_file=log_file)
+
+    config = project.config or {}
+    text = Path(project.input_video_path).read_text(encoding="utf-8")
+    speaker_reference_wav = config.get("speaker_reference_wav")
+
+    request = SynthesizeTextRequest(
+        text=text,
+        output_dir=output_dir,
+        language=config.get("target_lang", "es"),
+        speaker_reference_wav=Path(speaker_reference_wav) if speaker_reference_wav else None,
+    )
+    use_case = build_synthesize_text_use_case(settings)
     return use_case, request

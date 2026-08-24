@@ -177,3 +177,46 @@ def test_run_dubbing_project_dispatches_transcription_service_type(
     refreshed = verify_session.get(Project, uuid.UUID(project_id))
     assert refreshed is not None
     assert refreshed.status == ProjectStatus.COMPLETED
+
+
+def _make_tts_project(tmp_path: Path) -> Project:
+    return Project(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        name="Proyecto de TTS",
+        service_type=ServiceType.TTS,
+        source_type=SourceType.UPLOAD,
+        input_video_path=str(tmp_path / "input.txt"),
+        output_dir=str(tmp_path / "output"),
+        output_mode="subtitles_only",
+        config={},
+        status=ProjectStatus.QUEUED,
+    )
+
+
+def test_run_dubbing_project_dispatches_tts_service_type(
+    db_session_factory: sessionmaker[Session], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = db_session_factory()
+    project = _make_tts_project(tmp_path)
+    session.add(project)
+    session.commit()
+    project_id = str(project.id)
+    session.close()
+
+    fake_use_case = MagicMock()
+    tts_mock = MagicMock(return_value=(fake_use_case, MagicMock()))
+    monkeypatch.setattr(run_project_module, "build_synthesize_use_case_and_request", tts_mock)
+    dubbing_mock = MagicMock()
+    monkeypatch.setattr(run_project_module, "build_use_case_and_request", dubbing_mock)
+
+    run_project_module.run_dubbing_project.run(project_id)
+
+    tts_mock.assert_called_once()
+    dubbing_mock.assert_not_called()
+    fake_use_case.execute.assert_called_once()
+
+    verify_session = db_session_factory()
+    refreshed = verify_session.get(Project, uuid.UUID(project_id))
+    assert refreshed is not None
+    assert refreshed.status == ProjectStatus.COMPLETED

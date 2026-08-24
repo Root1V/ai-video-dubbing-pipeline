@@ -28,6 +28,9 @@ data/
 *.srt
 *.log
 !tests/**/*.srt
+# Voz de referencia por defecto para el TTS standalone: es un asset del
+# producto (empaquetado con el codigo), no un output generado.
+!src/video_translator/assets/**/*.wav
 
 # Modelos y checkpoints descargados (varios GB): se bajan con los scripts de
 # setup, no se versionan.
