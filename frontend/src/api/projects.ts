@@ -123,7 +123,8 @@ export async function createTtsProject(
   formData.set('output_mode', 'subtitles_only')
   formData.set('text', input.text)
   formData.set('target_lang', input.target_lang ?? 'es')
-  if (input.voiceFile) {
+  formData.set('voice_option', input.voice_option)
+  if (input.voice_option === 'own' && input.voiceFile) {
     formData.set('file', input.voiceFile)
   }
 

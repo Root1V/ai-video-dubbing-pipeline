@@ -70,6 +70,9 @@ def create_project(
     # el resto de servicios sigue siendo obligatorio (se valida abajo).
     file: UploadFile | None = File(None),
     text: str = Form(""),
+    # Solo para "tts": "public_female" (default, voz de locutora), "public_male"
+    # (voz de locutor), o "own" (usa `file` como voz de referencia).
+    voice_option: str = Form("public_female"),
     context_prompt: str = Form(""),
     tone: str | None = Form(None),
     glossary: str = Form("{}"),
@@ -100,6 +103,11 @@ def create_project(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="text es requerido para el servicio de TTS.",
+            )
+        if voice_option == "own" and file is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="file es requerido cuando voice_option es 'own'.",
             )
     elif file is None:
         raise HTTPException(
@@ -137,7 +145,8 @@ def create_project(
 
     if is_tts:
         project.input_video_path = str(storage.save_text(text, project.id, settings))
-        if file is not None:
+        project.config = {**project.config, "voice_option": voice_option}
+        if voice_option == "own" and file is not None:
             voice_path = storage.save_upload(file, project.id, settings)
             project.config = {**project.config, "speaker_reference_wav": str(voice_path)}
     else:

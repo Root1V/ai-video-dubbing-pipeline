@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone'
 import axios from 'axios'
 import { FileAudio, UploadCloud, X } from 'lucide-react'
 import { createTtsProject } from '../api/projects'
+import type { TtsVoiceOption } from '../types/project'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -20,12 +21,19 @@ const LANGUAGE_OPTIONS = Object.entries(LANGUAGE_NAMES).map(([code, name]) => ({
   label: name.charAt(0).toUpperCase() + name.slice(1),
 }))
 
+const VOICE_OPTIONS: { value: TtsVoiceOption; label: string; description: string }[] = [
+  { value: 'public_female', label: 'Locutora', description: 'Voz pública femenina (por defecto)' },
+  { value: 'public_male', label: 'Locutor', description: 'Voz pública masculina' },
+  { value: 'own', label: 'Mi voz', description: 'Sube tu propia muestra de voz' },
+]
+
 export function NewTtsProjectPage() {
   const navigate = useNavigate()
 
   const [name, setName] = useState('')
   const [text, setText] = useState('')
   const [targetLang, setTargetLang] = useState('es')
+  const [voiceOption, setVoiceOption] = useState<TtsVoiceOption>('public_female')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
 
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +59,10 @@ export function NewTtsProjectPage() {
       setError('Ingresa un nombre para el proyecto.')
       return
     }
+    if (voiceOption === 'own' && !voiceFile) {
+      setError('Sube tu voz de referencia o elige una de las voces públicas.')
+      return
+    }
 
     setError(null)
     setIsSubmitting(true)
@@ -62,6 +74,7 @@ export function NewTtsProjectPage() {
           name: name.trim(),
           text: text.trim(),
           target_lang: targetLang,
+          voice_option: voiceOption,
           voiceFile: voiceFile ?? undefined,
         },
         setUploadProgress,
@@ -139,46 +152,63 @@ export function NewTtsProjectPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Voz de referencia (opcional)</span>
-              <p className="text-xs text-muted-foreground">
-                Sube un audio de 6-15s con la voz a clonar. Si no subes nada, se usa una voz por defecto.
-              </p>
-              {!voiceFile ? (
-                <div
-                  {...getRootProps()}
-                  className={cn(
-                    'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-secondary/30 px-6 py-8 text-center transition-colors',
-                    isDragActive && 'border-primary bg-primary/5',
-                  )}
-                >
-                  <input {...getInputProps()} />
-                  <UploadCloud className="h-5 w-5 text-primary" />
-                  <p className="text-sm text-muted-foreground">
-                    Arrastra un .wav/.mp3 aquí o haz clic para seleccionarlo
-                  </p>
-                </div>
-              ) : (
-                <div className="flex items-center gap-4 rounded-xl border border-border p-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <FileAudio className="h-5 w-5" />
+              <span className="text-sm font-medium">Voz</span>
+              <div className="grid grid-cols-3 gap-2">
+                {VOICE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setVoiceOption(option.value)}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors',
+                      voiceOption === option.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-secondary/50',
+                    )}
+                  >
+                    <span className="text-sm font-medium">{option.label}</span>
+                    <span className="text-xs text-muted-foreground">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+
+              {voiceOption === 'own' &&
+                (!voiceFile ? (
+                  <div
+                    {...getRootProps()}
+                    className={cn(
+                      'mt-2 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-secondary/30 px-6 py-8 text-center transition-colors',
+                      isDragActive && 'border-primary bg-primary/5',
+                    )}
+                  >
+                    <input {...getInputProps()} />
+                    <UploadCloud className="h-5 w-5 text-primary" />
+                    <p className="text-sm text-muted-foreground">
+                      Arrastra un .wav/.mp3 aquí o haz clic para seleccionarlo (6-15s de la voz a clonar)
+                    </p>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{voiceFile.name}</p>
-                    <p className="text-sm text-muted-foreground">{formatBytes(voiceFile.size)}</p>
+                ) : (
+                  <div className="mt-2 flex items-center gap-4 rounded-xl border border-border p-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <FileAudio className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{voiceFile.name}</p>
+                      <p className="text-sm text-muted-foreground">{formatBytes(voiceFile.size)}</p>
+                    </div>
+                    {!isSubmitting && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setVoiceFile(null)}
+                        aria-label="Quitar voz de referencia"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
-                  {!isSubmitting && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setVoiceFile(null)}
-                      aria-label="Quitar voz de referencia"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              )}
+                ))}
             </div>
 
             {uploadProgress !== null && (

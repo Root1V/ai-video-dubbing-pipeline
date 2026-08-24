@@ -217,11 +217,15 @@ def build_transcribe_media_use_case(settings: Settings) -> TranscribeMediaUseCas
     )
 
 
-# Voz de referencia usada cuando el usuario no sube la suya en el TTS
-# standalone (ver `build_synthesize_text_use_case`) -- ambos backends de TTS
-# son de clonacion zero-shot pura, ninguno tiene una voz "de fabrica" propia,
-# asi que hace falta un .wav real empaquetado con el proyecto.
-DEFAULT_TTS_VOICE_WAV = Path(__file__).resolve().parent / "assets" / "default_voices" / "default_voice.wav"
+# Voces de referencia publicas para el TTS standalone (ver
+# `build_synthesize_text_use_case` y `web/services/project_mapper.py`) --
+# ambos backends de TTS son de clonacion zero-shot pura, ninguno tiene una voz
+# "de fabrica" propia, asi que hace falta un .wav real empaquetado con el
+# proyecto para cada opcion seleccionable.
+_DEFAULT_VOICES_DIR = Path(__file__).resolve().parent / "assets" / "default_voices"
+PUBLIC_VOICE_MALE_WAV = _DEFAULT_VOICES_DIR / "locutor.wav"
+PUBLIC_VOICE_FEMALE_WAV = _DEFAULT_VOICES_DIR / "locutora.wav"
+DEFAULT_TTS_VOICE_WAV = PUBLIC_VOICE_FEMALE_WAV
 
 
 def build_synthesize_text_use_case(settings: Settings) -> SynthesizeTextUseCase:

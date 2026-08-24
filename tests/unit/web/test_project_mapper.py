@@ -196,15 +196,38 @@ def test_build_synthesize_use_case_and_request_reads_text_and_maps_fields(
     assert request.output_dir == Path(project.output_dir)
     assert request.output_dir.is_dir()
     assert request.language == "en"
-    assert request.speaker_reference_wav is None
     build_mock.assert_called_once()
 
 
-def test_build_synthesize_use_case_and_request_maps_speaker_reference_wav(
+def test_build_synthesize_use_case_and_request_defaults_to_public_female_voice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_tts_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_synthesize_text_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_synthesize_use_case_and_request(project)
+
+    assert request.speaker_reference_wav == project_mapper.PUBLIC_VOICE_FEMALE_WAV
+
+
+def test_build_synthesize_use_case_and_request_maps_public_male_voice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_tts_project(tmp_path, voice_option="public_male")
+    monkeypatch.setattr(project_mapper, "build_synthesize_text_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_synthesize_use_case_and_request(project)
+
+    assert request.speaker_reference_wav == project_mapper.PUBLIC_VOICE_MALE_WAV
+
+
+def test_build_synthesize_use_case_and_request_own_voice_overrides_voice_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     voice_path = tmp_path / "voice.wav"
-    project = _make_tts_project(tmp_path, speaker_reference_wav=str(voice_path))
+    project = _make_tts_project(
+        tmp_path, voice_option="own", speaker_reference_wav=str(voice_path)
+    )
     monkeypatch.setattr(project_mapper, "build_synthesize_text_use_case", MagicMock(return_value=MagicMock()))
 
     _, request = project_mapper.build_synthesize_use_case_and_request(project)

@@ -323,6 +323,7 @@ def test_create_tts_project_with_voice_file_saves_speaker_reference(
             "service_type": "tts",
             "output_mode": "subtitles_only",
             "text": "Hola.",
+            "voice_option": "own",
         },
         files={"file": ("voice.wav", b"fake-wav-bytes", "audio/wav")},
         headers=headers,
@@ -330,6 +331,43 @@ def test_create_tts_project_with_voice_file_saves_speaker_reference(
 
     assert resp.status_code == 201
     assert resp.json()["config"]["speaker_reference_wav"].endswith("voice.wav")
+
+
+def test_create_tts_project_requires_file_when_voice_option_is_own(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi audio",
+            "service_type": "tts",
+            "output_mode": "subtitles_only",
+            "text": "Hola.",
+            "voice_option": "own",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_tts_project_defaults_voice_option_to_public_female(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={"name": "Mi audio", "service_type": "tts", "output_mode": "subtitles_only", "text": "Hola."},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["voice_option"] == "public_female"
 
 
 def test_create_project_without_file_rejects_for_non_tts_service(

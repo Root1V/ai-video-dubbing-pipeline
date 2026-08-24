@@ -17,6 +17,8 @@ from video_translator.application.use_cases.transcribe_media import TranscribeMe
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import load_settings
 from video_translator.container import (
+    PUBLIC_VOICE_FEMALE_WAV,
+    PUBLIC_VOICE_MALE_WAV,
     build_synthesize_text_use_case,
     build_transcribe_media_use_case,
     build_translate_video_use_case,
@@ -108,15 +110,26 @@ def build_transcribe_use_case_and_request(
     return use_case, request
 
 
+# Voces publicas seleccionables desde el formulario de TTS (ver
+# `routers/projects.py::create_project`, campo `voice_option`). "own" no
+# aparece aca: en ese caso `config['speaker_reference_wav']` ya trae la ruta
+# del archivo subido, que tiene prioridad sobre este mapa.
+_PUBLIC_VOICE_PATHS = {
+    "public_male": PUBLIC_VOICE_MALE_WAV,
+    "public_female": PUBLIC_VOICE_FEMALE_WAV,
+}
+
+
 def build_synthesize_use_case_and_request(
     project: Project,
 ) -> tuple[SynthesizeTextUseCase, SynthesizeTextRequest]:
     """Version delgada para el servicio de TTS standalone
     (`ServiceType.TTS`): el texto a sintetizar se guardo como
     `input_video_path` (ver `routers/projects.py::create_project`, mismo
-    patron de "archivo de entrada" que los demas servicios), y la voz de
-    referencia opcional vive en `config['speaker_reference_wav']` -- si no
-    esta, `SynthesizeTextUseCase` cae a su voz por defecto."""
+    patron de "archivo de entrada" que los demas servicios). La voz de
+    referencia se resuelve en este orden: (1) `config['speaker_reference_wav']`
+    si el usuario subio la suya, (2) la voz publica de `config['voice_option']`
+    ("public_male"/"public_female"), (3) voz publica femenina por defecto."""
     settings = load_settings()
 
     output_dir = Path(project.output_dir)
@@ -127,12 +140,18 @@ def build_synthesize_use_case_and_request(
     config = project.config or {}
     text = Path(project.input_video_path).read_text(encoding="utf-8")
     speaker_reference_wav = config.get("speaker_reference_wav")
+    voice_option = config.get("voice_option", "public_female")
+    reference_wav = (
+        Path(speaker_reference_wav)
+        if speaker_reference_wav
+        else _PUBLIC_VOICE_PATHS.get(voice_option, PUBLIC_VOICE_FEMALE_WAV)
+    )
 
     request = SynthesizeTextRequest(
         text=text,
         output_dir=output_dir,
         language=config.get("target_lang", "es"),
-        speaker_reference_wav=Path(speaker_reference_wav) if speaker_reference_wav else None,
+        speaker_reference_wav=reference_wav,
     )
     use_case = build_synthesize_text_use_case(settings)
     return use_case, request

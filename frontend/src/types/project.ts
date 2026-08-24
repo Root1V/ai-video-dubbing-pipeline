@@ -124,12 +124,15 @@ export interface CreateTranscriptionProjectInput {
   source_lang?: string
 }
 
+export type TtsVoiceOption = 'public_female' | 'public_male' | 'own'
+
 export interface CreateTtsProjectInput {
   name: string
   text: string
   /** Idioma en el que se sintetiza el audio. */
   target_lang?: string
-  /** Voz de referencia opcional -- sin ella, el backend usa una voz por
-   * defecto empaquetada (ver `container.py::DEFAULT_TTS_VOICE_WAV`). */
+  /** "public_female" (voz de locutora, por defecto) / "public_male" (voz de
+   * locutor) / "own" (usa `voiceFile` como voz de referencia). */
+  voice_option: TtsVoiceOption
   voiceFile?: File
 }
