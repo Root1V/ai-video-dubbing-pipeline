@@ -60,3 +60,17 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Roadmap & Backlog
+
+**Split index from detail.** Most roadmap questions ("what's left?", "what's the status of X?") should cost reading one small table, not a full document. A single file with full detail in every row forces everyone to pay that cost on every glance. Splitting it means the cheap, common case (a quick status check) stays cheap, and the expensive case (reading an item's full rationale) is only paid when someone is about to actually work on that specific item.
+
+**Two files, not one:**
+- `roadmap.md` (repo root) — the **index**. A markdown table only: `#` | `Feature` | `Status` | one-line `Description`, no exceptions. IDs use a short, consistent prefix (`RM-01`, `RM-02`, ...) — reuse that same ID in branch names and commit messages for that item. Statuses stay simple: `done` / `todo`; add `in-progress` / `blocked` only if the project actually needs them. This file must never grow beyond a table.
+- `docs/roadmap.md` — the **detail**. One section per item, with at most a **Why** (1-3 sentences) and a **Scope** (short bullets: what's included, what's deliberately left out). This is not a changelog — history lives in commits/PRs, not here.
+
+**Maintenance rules (permanent — apply in every future session, not just when this was first set up):**
+- Never duplicate text between the two files — the index links to the detail section, it doesn't repeat it.
+- Once an item is `done` and has been stable for a while, trim its detail section down to 2-3 lines plus a link to the commit/PR — don't preserve the full original reasoning forever.
+- Before adding anything to either file, ask: "is this needed to decide or act, or is it just history?" If it's just history, leave it out.
+- Large architectural decisions don't live in the roadmap. If the project has (or gets) a dedicated place for those, the roadmap only links to it.
+
