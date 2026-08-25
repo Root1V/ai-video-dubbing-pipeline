@@ -237,6 +237,12 @@ class PipelineTimings:
 
         Al entrar escribe un snapshot del reporte (con ``current_stage``
         apuntando a esta etapa) y al salir escribe otro ya con su duracion.
+
+        Si el bloque lanza una excepcion, la etapa NO se agrega como
+        "completed" (no llego a terminar) -- ``current_stage`` se deja tal
+        cual, apuntando a esta etapa, para que el reporte refleje donde se
+        interrumpio realmente en vez de mostrarla como exitosa con una
+        duracion que en los hechos midio hasta el punto del error.
         """
         log = logger.bind(run_id=self.run_id, stage=name, **metadata)
         log.info("pipeline.stage_started")
@@ -246,7 +252,11 @@ class PipelineTimings:
         self._flush_report()
         try:
             yield
-        finally:
+        except BaseException:
+            log.info("pipeline.stage_failed", seconds=round(time.monotonic() - start, 2))
+            self._flush_report()
+            raise
+        else:
             elapsed = time.monotonic() - start
             self._current_stage = None
             self._append(

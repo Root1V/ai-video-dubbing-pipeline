@@ -168,16 +168,20 @@ function buildSteps(
     steps.unshift({ key: 'download', label: getStageLabel('download'), state: downloadState })
   }
 
-  // On failure, the stage right after the last completed one is the most
-  // likely point of failure (it either errored mid-run or never got a
-  // chance to start) -- mark just that one as failed and leave the rest
-  // visibly pending, so it's clear both where it broke and what never ran.
-  // Skipped when the download step already pinpointed the failure, so only
-  // one step ever shows as failed at a time.
+  // On failure, prefer the step still marked "active" (matches
+  // currentStageName) as the point of failure -- the backend leaves
+  // current_stage pointing at whichever stage was running when it raised
+  // (see PipelineTimings.stage()), so that's the actual crash site, not
+  // just a guess. Only fall back to "the stage right after the last
+  // completed one" when there's no active step (e.g. it crashed between
+  // stages, before the next one ever started). Skipped when the download
+  // step already pinpointed the failure, so only one step ever shows as
+  // failed at a time.
   if (dbStatus === 'failed' && !downloadFailed) {
-    const firstPendingIndex = steps.findIndex((step) => step.state === 'pending')
-    if (firstPendingIndex !== -1) {
-      steps[firstPendingIndex] = { ...steps[firstPendingIndex], state: 'failed' }
+    const activeIndex = steps.findIndex((step) => step.state === 'active')
+    const targetIndex = activeIndex !== -1 ? activeIndex : steps.findIndex((step) => step.state === 'pending')
+    if (targetIndex !== -1) {
+      steps[targetIndex] = { ...steps[targetIndex], state: 'failed' }
     }
   }
 

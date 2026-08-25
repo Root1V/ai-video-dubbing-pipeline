@@ -104,6 +104,26 @@ def test_current_stage_is_visible_while_running(tmp_path: Path):
     assert "current_stage" not in _read(report_path)
 
 
+def test_stage_that_raises_is_not_recorded_as_completed(tmp_path: Path):
+    report_path = tmp_path / "pipeline_timings.json"
+    t = PipelineTimings(report_path=report_path)
+    try:
+        with t.stage("translation", num_segments=10):
+            raise RuntimeError("llama-server no responde")
+    except RuntimeError:
+        pass
+
+    data = t.as_dict()
+    # No debe aparecer como una etapa "completed" -- nunca termino.
+    assert data["stages"] == []
+    # current_stage se deja tal cual (no se limpia), asi el reporte refleja
+    # donde se interrumpio realmente en vez de mostrarla como exitosa.
+    assert data["current_stage"]["name"] == "translation"
+    on_disk = _read(report_path)
+    assert on_disk["stages"] == []
+    assert on_disk["current_stage"]["name"] == "translation"
+
+
 def test_completed_flag_only_on_final_write(tmp_path: Path):
     report_path = tmp_path / "pipeline_timings.json"
     t = PipelineTimings(report_path=report_path)
