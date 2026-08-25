@@ -113,14 +113,17 @@ export function ProjectDetailPage() {
   const stages = normalizeStages(status?.stages ?? null)
   const isTranscription = project.service_type === 'transcription'
   const isTts = project.service_type === 'tts'
+  // TTS standalone recibe texto, nunca una URL -- solo dubbing/subtitles/
+  // transcription pueden haberse creado desde una URL (ver MediaSourceInput).
+  const hasSourceUrl = !isTts && Boolean(project.source_url)
   // La transcripcion y el TTS standalone no traducen ni renderizan video --
   // su plan de etapas es fijo (ver TranscribeMediaUseCase/SynthesizeTextUseCase),
   // no depende de output_mode.
   const expectedStageNames = isTranscription
-    ? ['audio_extraction', 'transcription']
+    ? [...(hasSourceUrl ? ['download'] : []), 'audio_extraction', 'transcription']
     : isTts
       ? ['text_to_speech', 'audio_concatenation']
-      : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize))
+      : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize), hasSourceUrl)
   // Solo doblaje/subtitulos con output_mode distinto de "subtitles_only"
   // producen un video real -- subtitles_only nunca renderiza (solo .srt).
   const hasVideoOutput = !isTranscription && !isTts && project.output_mode !== 'subtitles_only'

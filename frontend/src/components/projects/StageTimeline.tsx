@@ -88,7 +88,16 @@ function buildSteps(
   const realByName = new Map(realStages.map((stage) => [stage.name, stage]))
   const subtitleContext = { sourceLang, targetLang }
 
-  const steps: Step[] = expectedStageNames.map((name) => {
+  // "download" no es una etapa real del pipeline (nunca aparece en `stages`
+  // ni como `currentStageName` -- pipeline_timings.json ni siquiera existe
+  // todavia mientras se descarga, ver ProjectStatus.DOWNLOADING en
+  // tasks/run_project.py), asi que su estado se deriva directamente de
+  // `dbStatus` en vez del mapeo real/current de abajo.
+  const hasDownloadStep = expectedStageNames[0] === 'download'
+  const pipelineStageNames = hasDownloadStep ? expectedStageNames.slice(1) : expectedStageNames
+  let downloadFailed = false
+
+  const steps: Step[] = pipelineStageNames.map((name) => {
     const real = realByName.get(name)
     if (real) {
       // Held as "active" for a moment even though the backend already
@@ -138,11 +147,34 @@ function buildSteps(
     steps.push({ key: currentStageName, label: getStageLabel(currentStageName), state: 'active' })
   }
 
+  if (hasDownloadStep) {
+    // No real pipeline stage/current-stage ever ran yet -- if the project
+    // failed at this point, the download itself is what failed (a later
+    // pipeline failure would have already produced at least one real stage
+    // or a currentStageName).
+    const pipelineStartedYet = realStages.length > 0 || Boolean(currentStageName)
+    let downloadState: StepState
+    if (dbStatus === 'downloading') {
+      downloadState = 'active'
+    } else if (dbStatus === 'failed' && !pipelineStartedYet) {
+      downloadState = 'failed'
+      downloadFailed = true
+    } else if (dbStatus === 'queued') {
+      downloadState = 'pending'
+    } else {
+      // running / completed, or failed after the real pipeline already began.
+      downloadState = 'done'
+    }
+    steps.unshift({ key: 'download', label: getStageLabel('download'), state: downloadState })
+  }
+
   // On failure, the stage right after the last completed one is the most
   // likely point of failure (it either errored mid-run or never got a
   // chance to start) -- mark just that one as failed and leave the rest
   // visibly pending, so it's clear both where it broke and what never ran.
-  if (dbStatus === 'failed') {
+  // Skipped when the download step already pinpointed the failure, so only
+  // one step ever shows as failed at a time.
+  if (dbStatus === 'failed' && !downloadFailed) {
     const firstPendingIndex = steps.findIndex((step) => step.state === 'pending')
     if (firstPendingIndex !== -1) {
       steps[firstPendingIndex] = { ...steps[firstPendingIndex], state: 'failed' }

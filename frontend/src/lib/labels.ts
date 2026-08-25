@@ -17,6 +17,7 @@ export const OUTPUT_MODE_LABELS: Record<OutputMode, string> = {
 /** Human-readable Spanish names for the pipeline's internal stage
  * identifiers (see `utils/timing.py` / `application/use_cases/translate_video.py`). */
 export const STAGE_LABELS: Record<string, string> = {
+  download: 'Descarga del video',
   audio_extraction: 'Extracción de audio',
   transcription: 'Transcripción',
   diarization: 'Detección de hablantes',
@@ -212,8 +213,18 @@ export function getStageSubtitle(stage: ProjectStage, context: StageSubtitleCont
  * `pipeline_timings.json`), so this is what lets the UI show the whole plan
  * upfront and progressively fill it in, instead of stages only appearing
  * one by one as they happen. */
-export function getExpectedStageNames(outputMode: OutputMode, diarize: boolean): string[] {
-  const names: string[] = ['audio_extraction', 'transcription']
+export function getExpectedStageNames(
+  outputMode: OutputMode,
+  diarize: boolean,
+  hasSourceUrl = false,
+): string[] {
+  const names: string[] = []
+  // Los proyectos importados desde una URL pasan por una descarga previa
+  // (ver ProjectStatus.DOWNLOADING en tasks/run_project.py) antes de que
+  // exista pipeline_timings.json -- se antepone como su propio paso para que
+  // no desaparezca del plan visible mientras el proyecto esta "Descargando".
+  if (hasSourceUrl) names.push('download')
+  names.push('audio_extraction', 'transcription')
   if (diarize) {
     names.push('diarization', 'speaker_profile_building')
   }

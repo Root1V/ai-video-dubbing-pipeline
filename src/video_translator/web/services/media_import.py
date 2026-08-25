@@ -179,7 +179,14 @@ def download_media(url: str, project_id: UUID, settings: WebSettings) -> Path:
 
     opts = {
         "outtmpl": str(upload_dir / "download.%(ext)s"),
-        "format": "best[ext=mp4]/best",
+        # Sitios como YouTube ya casi no exponen un unico stream progresivo
+        # (video+audio muxeados) mas alla de resoluciones bajas -- forzar
+        # solo "best[ext=mp4]/best" fallaba con "Requested format is not
+        # available" en la mayoria de los videos actuales. bestvideo+bestaudio
+        # cubre ese caso (yt-dlp mezcla los streams via ffmpeg, ya una
+        # dependencia del proyecto), con "best" como ultimo fallback.
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best",
+        "merge_output_format": "mp4",
         "noplaylist": True,
         "max_filesize": settings.download_max_bytes,
         "progress_hooks": [_abort_if_too_large],
