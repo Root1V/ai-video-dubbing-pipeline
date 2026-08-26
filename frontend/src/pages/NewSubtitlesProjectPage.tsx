@@ -42,6 +42,7 @@ export function NewSubtitlesProjectPage() {
 
   const [file, setFile] = useState<File | null>(null)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
+  const [sourceUrlValidated, setSourceUrlValidated] = useState(false)
   const [name, setName] = useState('')
   const [outputMode, setOutputMode] =
     useState<CreateSubtitlesProjectInput['output_mode']>('subtitles_only')
@@ -64,6 +65,10 @@ export function NewSubtitlesProjectPage() {
     event.preventDefault()
     if (!file && !sourceUrl) {
       setError('Selecciona un archivo de video o pega una URL para continuar.')
+      return
+    }
+    if (sourceUrl && !sourceUrlValidated) {
+      setError('Espera a que la URL se valide antes de continuar.')
       return
     }
     if (!name.trim()) {
@@ -120,6 +125,7 @@ export function NewSubtitlesProjectPage() {
           onFileChange={handleFileChange}
           sourceUrl={sourceUrl}
           onSourceUrlChange={setSourceUrl}
+          onSourceUrlValidatedChange={setSourceUrlValidated}
           accept={{ 'video/*': [] }}
           dropTitle="Arrastra tu video aquí o haz clic para seleccionarlo"
           dropSubtitle="Formatos de video compatibles (MP4, MOV, MKV, etc.)"
@@ -212,7 +218,10 @@ export function NewSubtitlesProjectPage() {
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            disabled={isSubmitting || (Boolean(sourceUrl) && !sourceUrlValidated)}
+          >
             {isSubmitting ? 'Creando proyecto…' : 'Generar subtítulos'}
           </Button>
         </div>

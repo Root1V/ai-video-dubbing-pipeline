@@ -17,6 +17,10 @@ interface MediaSourceInputProps {
   onFileChange: (file: File | null) => void
   sourceUrl: string | null
   onSourceUrlChange: (url: string | null) => void
+  /** Si la URL pegada ya se confirmo alcanzable/descargable -- ver
+   * MediaUrlPreview. El formulario que envuelve a este componente debe
+   * exigir esto (ademas de `sourceUrl` no vacio) antes de dejar enviar. */
+  onSourceUrlValidatedChange: (validated: boolean) => void
   accept: Accept
   dropTitle: string
   dropSubtitle: string
@@ -37,13 +41,18 @@ export function MediaSourceInput({
   onFileChange,
   sourceUrl,
   onSourceUrlChange,
+  onSourceUrlValidatedChange,
   accept,
   dropTitle,
   dropSubtitle,
   uploadProgress,
   disabled,
 }: MediaSourceInputProps) {
-  const [activeTab, setActiveTab] = useState<SourceMode>(sourceUrl ? 'url' : 'upload')
+  const [activeTab, setActiveTab] = useState<SourceMode>(() => {
+    if (sourceUrl) return 'url'
+    if (file) return 'upload'
+    return 'search'
+  })
   // Si la URL actual vino de elegir un resultado de busqueda, se ofrece un
   // "volver a los resultados" en la pestaña URL -- se apaga en cuanto el
   // usuario edita la URL a mano, porque ya no representa esa seleccion.
@@ -57,6 +66,7 @@ export function MediaSourceInput({
       const selected = acceptedFiles[0]
       if (!selected) return
       onSourceUrlChange(null)
+      onSourceUrlValidatedChange(false)
       onFileChange(selected)
     },
   })
@@ -73,8 +83,8 @@ export function MediaSourceInput({
       <div className="flex border-b border-border">
         {(
           [
-            { mode: 'upload' as const, label: 'Subir archivo', icon: UploadCloud },
             { mode: 'search' as const, label: 'Buscar en YouTube', icon: Clapperboard },
+            { mode: 'upload' as const, label: 'Subir archivo', icon: UploadCloud },
             { mode: 'url' as const, label: 'Pegar URL', icon: Link },
           ]
         ).map(({ mode, label, icon: Icon }) => (
@@ -173,12 +183,15 @@ export function MediaSourceInput({
               const value = e.target.value
               onFileChange(null)
               onSourceUrlChange(value || null)
+              onSourceUrlValidatedChange(false)
               setUrlFromSearch(false)
             }}
             placeholder="https://... (video de YouTube u otro sitio, o enlace directo a un archivo)"
             disabled={disabled}
           />
-          {sourceUrl && <MediaUrlPreview url={sourceUrl} />}
+          {sourceUrl && (
+            <MediaUrlPreview url={sourceUrl} onValidatedChange={onSourceUrlValidatedChange} />
+          )}
         </div>
       </div>
 

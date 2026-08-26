@@ -29,6 +29,7 @@ export function NewTranscriptionProjectPage() {
 
   const [file, setFile] = useState<File | null>(null)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
+  const [sourceUrlValidated, setSourceUrlValidated] = useState(false)
   const [name, setName] = useState('')
   const [sourceLang, setSourceLang] = useState('')
 
@@ -47,6 +48,10 @@ export function NewTranscriptionProjectPage() {
     event.preventDefault()
     if (!file && !sourceUrl) {
       setError('Selecciona un archivo de audio/video o pega una URL para continuar.')
+      return
+    }
+    if (sourceUrl && !sourceUrlValidated) {
+      setError('Espera a que la URL se valide antes de continuar.')
       return
     }
     if (!name.trim()) {
@@ -93,6 +98,7 @@ export function NewTranscriptionProjectPage() {
           onFileChange={handleFileChange}
           sourceUrl={sourceUrl}
           onSourceUrlChange={setSourceUrl}
+          onSourceUrlValidatedChange={setSourceUrlValidated}
           accept={{ 'video/*': [], 'audio/*': [] }}
           dropTitle="Arrastra tu archivo aquí o haz clic para seleccionarlo"
           dropSubtitle="Video o audio (MP4, MOV, MKV, MP3, WAV, M4A, FLAC…)"
@@ -143,7 +149,10 @@ export function NewTranscriptionProjectPage() {
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            disabled={isSubmitting || (Boolean(sourceUrl) && !sourceUrlValidated)}
+          >
             {isSubmitting ? 'Creando proyecto…' : 'Transcribir'}
           </Button>
         </div>
