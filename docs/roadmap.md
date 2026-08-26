@@ -71,8 +71,8 @@ Commit: `5d02d64`
 **Scope:** sección nueva en el menú (solo admin) con listado de usuarios, cambio de rol, activar/desactivar. Requiere un router nuevo (`GET/PATCH /users`, protegido con `require_admin`, ya existe como dependency). Fuera de alcance: auto-registro, invitaciones por email, recuperación de password self-service.
 
 ## RM-16 — Columnas de ejecución en la tabla de proyectos
-**Why:** hoy el `run_id` y la duración total solo se ven entrando al detalle de cada proyecto; para comparar corridas rápido conviene verlo en el listado.
-**Scope:** dos columnas nuevas en `ProjectsListPage` junto al nombre, usando datos que `ProjectOut` ya expone (`run_id`, `total_seconds`) — sin cambios de backend.
+**Ya implementado** antes de esta sesión (dashboard M1-M6 / v1.2.0) — `ProjectsListPage` ya muestra "Duración" y "ID de ejecución" por fila.
+Commit: `2d2f149`
 
 ## RM-17 — Selector de fuente de media: orden y validación de URL
 **Why:** hoy "Pegar URL" no bloquea el envío del formulario aunque la previsualización automática falle (a propósito, para no frenar URLs válidas que el preview no sabe renderizar, ej. Google Drive/Vimeo) — pero eso deja pasar URLs realmente rotas sin ningún aviso.

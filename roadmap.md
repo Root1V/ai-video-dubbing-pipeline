@@ -19,7 +19,7 @@
 | RM-13 | Workspace multi-usuario + facturación | todo | Equipos con varios usuarios y billing. |
 | RM-14 | Imagen+texto → micro-video social | todo | Generar shorts/reels desde imágenes y texto de venta. |
 | RM-15 | Gestión de usuarios | todo | Sección en el menú para administrar usuarios y su rol. |
-| RM-16 | Columnas de ejecución en la tabla de proyectos | todo | Agregar ID de ejecución y duración total al listado. |
+| RM-16 | Columnas de ejecución en la tabla de proyectos | done | Agregar ID de ejecución y duración total al listado. |
 | RM-17 | Selector de fuente de media: orden y validación de URL | todo | YouTube primero; validar URL antes de habilitar el envío si falla el preview. |
 | RM-18 | Resumen con highlights en Transcripción | todo | Modo de salida: transcripción completa o resumen de puntos clave. |
 | RM-19 | Modo oscuro | todo | Botón para alternar entre tema claro y oscuro. |
