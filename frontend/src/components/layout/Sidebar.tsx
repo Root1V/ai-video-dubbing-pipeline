@@ -6,8 +6,10 @@ import {
   FolderOpen,
   LayoutGrid,
   Sparkles,
+  Users,
   Volume2,
 } from 'lucide-react'
+import { useAuth } from '../../hooks/useAuth'
 import { cn } from '../../lib/cn'
 
 interface NavItem {
@@ -27,6 +29,10 @@ const servicesNav: NavItem[] = [
 
 const libraryNav: NavItem[] = [
   { to: '/projects', label: 'Proyectos', icon: FolderOpen },
+]
+
+const adminNav: NavItem[] = [
+  { to: '/users', label: 'Usuarios', icon: Users },
 ]
 
 function NavSection({ title, items }: { title?: string; items: NavItem[] }) {
@@ -60,6 +66,8 @@ function NavSection({ title, items }: { title?: string; items: NavItem[] }) {
 }
 
 export function Sidebar() {
+  const { user } = useAuth()
+
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-card px-4 py-6">
       <div className="mb-6 flex items-center gap-2 px-2">
@@ -73,6 +81,7 @@ export function Sidebar() {
         <NavSection items={mainNav} />
         <NavSection title="Servicios" items={servicesNav} />
         <NavSection title="Biblioteca" items={libraryNav} />
+        {user?.role === 'admin' && <NavSection title="Administración" items={adminNav} />}
       </nav>
     </aside>
   )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr
@@ -25,3 +26,4 @@ class UserOut(BaseModel):
     name: str
     role: str
     is_active: bool
+    created_at: datetime

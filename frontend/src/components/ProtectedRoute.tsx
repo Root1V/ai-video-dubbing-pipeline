@@ -2,8 +2,16 @@ import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
-export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoadingUser } = useAuth()
+interface ProtectedRouteProps {
+  children: ReactNode
+  /** Ademas de requerir sesion, exige que el usuario tenga role "admin" --
+   * redirige a "/" en vez de "/login" ya que si llega aca ya esta
+   * autenticado, solo le falta el permiso. */
+  adminOnly?: boolean
+}
+
+export function ProtectedRoute({ children, adminOnly }: ProtectedRouteProps) {
+  const { isAuthenticated, isLoadingUser, user } = useAuth()
 
   if (isLoadingUser) {
     return (
@@ -15,6 +23,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
+  }
+
+  if (adminOnly && user?.role !== 'admin') {
+    return <Navigate to="/" replace />
   }
 
   return <>{children}</>

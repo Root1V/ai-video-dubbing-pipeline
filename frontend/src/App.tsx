@@ -12,6 +12,7 @@ import { NewDubbingProjectPage } from './pages/NewDubbingProjectPage'
 import { NewSubtitlesProjectPage } from './pages/NewSubtitlesProjectPage'
 import { NewTranscriptionProjectPage } from './pages/NewTranscriptionProjectPage'
 import { NewTtsProjectPage } from './pages/NewTtsProjectPage'
+import { UsersListPage } from './pages/UsersListPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,9 +23,15 @@ const queryClient = new QueryClient({
   },
 })
 
-function ProtectedPage({ children }: { children: ReactNode }) {
+function ProtectedPage({
+  children,
+  adminOnly,
+}: {
+  children: ReactNode
+  adminOnly?: boolean
+}) {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute adminOnly={adminOnly}>
       <AppShell>{children}</AppShell>
     </ProtectedRoute>
   )
@@ -90,6 +97,14 @@ export default function App() {
               element={
                 <ProtectedPage>
                   <ProjectDetailPage />
+                </ProtectedPage>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <ProtectedPage adminOnly>
+                  <UsersListPage />
                 </ProtectedPage>
               }
             />
