@@ -81,8 +81,9 @@ Commit: `2d2f149`
 Commit: `f1b101e`
 
 ## RM-18 — Resumen con highlights en Transcripción
-**Why:** pedido explícito para el servicio de transcripción; comparte con RM-11 la necesidad de un paso de resumen (LLM) que hoy no existe en ningún puerto.
-**Scope:** nuevo modo de salida (transcripción completa vs. resumen de puntos clave) en `NewTranscriptionProjectPage`/`TranscribeMediaUseCase`. Diseñar junto con RM-11 en vez de por separado, ya que ambos necesitan la misma capacidad de resumen.
+**Why:** pedido explícito para el servicio de transcripción; introdujo la primera capacidad de resumen vía LLM, reusable por RM-11.
+**Scope:** toggle "incluir un resumen" (aditivo, no reemplaza la transcripción completa) en `NewTranscriptionProjectPage`. Nuevo puerto `Summarizer` (`application/interfaces.py`) separado de `Translator` — resumir texto libre no tiene el invariante "N líneas → N líneas" que necesita `translate_batch`. `OllamaTranslator`/`LlamaServerTranslator` ganaron `summarize()` reusando su transporte HTTP existente (`_call_llm`), sin cliente nuevo. Videos largos se resumen map-reduce (por fragmentos + resumen final) para cubrir todo el video, no solo el principio.
+Commit: `e840cb4`
 
 ## RM-19 — Modo oscuro
 **Why:** pedido explícito del usuario; usuarios distintos tienen preferencias distintas de tema.
