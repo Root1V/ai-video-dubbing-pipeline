@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
 import { createSubtitlesProject } from '../api/projects'
 import type { CreateSubtitlesProjectInput } from '../types/project'
 import { Card, CardContent } from '../components/ui/Card'
@@ -14,6 +13,7 @@ import { GlossaryEditor } from '../components/GlossaryEditor'
 import type { GlossaryRow } from '../components/GlossaryEditor'
 import { MediaSourceInput } from '../components/media/MediaSourceInput'
 import { cn } from '../lib/cn'
+import { getErrorMessage } from '../lib/errors'
 import { OUTPUT_MODE_LABELS } from '../lib/labels'
 
 const TONE_OPTIONS = [
@@ -97,14 +97,7 @@ export function NewSubtitlesProjectPage() {
       )
       navigate(`/projects/${project.id}`)
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(
-          (err.response?.data as { detail?: string } | undefined)?.detail ??
-            'No se pudo crear el proyecto. Intenta de nuevo.',
-        )
-      } else {
-        setError('No se pudo crear el proyecto. Intenta de nuevo.')
-      }
+      setError(getErrorMessage(err, 'No se pudo crear el proyecto. Intenta de nuevo.'))
       setIsSubmitting(false)
       setUploadProgress(null)
     }

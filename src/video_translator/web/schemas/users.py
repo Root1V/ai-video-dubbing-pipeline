@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
 from video_translator.web.schemas.auth import UserOut
 
@@ -14,6 +14,13 @@ class UserListOut(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class UserCreateIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str
+    role: Literal["admin", "member"] = "member"
 
 
 class UserUpdateIn(BaseModel):

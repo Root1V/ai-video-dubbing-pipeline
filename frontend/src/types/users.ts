@@ -11,3 +11,10 @@ export interface UpdateUserInput {
   role?: User['role']
   is_active?: boolean
 }
+
+export interface CreateUserInput {
+  email: string
+  password: string
+  name: string
+  role: User['role']
+}

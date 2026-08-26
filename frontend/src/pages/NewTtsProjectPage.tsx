@@ -2,7 +2,6 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
-import axios from 'axios'
 import { FileAudio, UploadCloud, X } from 'lucide-react'
 import { createTtsProject } from '../api/projects'
 import type { TtsVoiceOption } from '../types/project'
@@ -13,6 +12,7 @@ import { Textarea } from '../components/ui/Textarea'
 import { Select } from '../components/ui/Select'
 import { Alert } from '../components/ui/Alert'
 import { cn } from '../lib/cn'
+import { getErrorMessage } from '../lib/errors'
 import { formatBytes } from '../lib/format'
 import { LANGUAGE_NAMES } from '../lib/labels'
 
@@ -81,14 +81,7 @@ export function NewTtsProjectPage() {
       )
       navigate(`/projects/${project.id}`)
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(
-          (err.response?.data as { detail?: string } | undefined)?.detail ??
-            'No se pudo crear el proyecto. Intenta de nuevo.',
-        )
-      } else {
-        setError('No se pudo crear el proyecto. Intenta de nuevo.')
-      }
+      setError(getErrorMessage(err, 'No se pudo crear el proyecto. Intenta de nuevo.'))
       setIsSubmitting(false)
       setUploadProgress(null)
     }

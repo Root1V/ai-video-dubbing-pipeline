@@ -1,4 +1,4 @@
-"""Tests de /api/users: listado, cambio de rol/estado -- solo admin."""
+"""Tests de /api/users: crear, listar, cambio de rol/estado -- solo admin."""
 
 from __future__ import annotations
 
@@ -14,6 +14,94 @@ def _auth_headers(client: TestClient, email: str, password: str) -> dict[str, st
     assert resp.status_code == 200
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_create_user_requires_admin(client: TestClient, make_user: Callable[..., User]) -> None:
+    make_user(email="member@example.com", password="hunter2", role=UserRole.MEMBER)
+    headers = _auth_headers(client, "member@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/users",
+        json={"email": "new@example.com", "password": "hunter2222", "name": "New User"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 403
+
+
+def test_create_user_success(client: TestClient, make_user: Callable[..., User]) -> None:
+    make_user(email="admin@example.com", password="hunter2", role=UserRole.ADMIN)
+    headers = _auth_headers(client, "admin@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/users",
+        json={
+            "email": "new@example.com",
+            "password": "hunter2222",
+            "name": "New User",
+            "role": "member",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["email"] == "new@example.com"
+    assert body["role"] == "member"
+    assert body["is_active"] is True
+
+    # La contraseña recien creada debe servir para loguearse.
+    login_resp = client.post(
+        "/api/auth/login", data={"username": "new@example.com", "password": "hunter2222"}
+    )
+    assert login_resp.status_code == 200
+
+
+def test_create_user_defaults_to_member_role(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="admin@example.com", password="hunter2", role=UserRole.ADMIN)
+    headers = _auth_headers(client, "admin@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/users",
+        json={"email": "new@example.com", "password": "hunter2222", "name": "New User"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "member"
+
+
+def test_create_user_rejects_duplicate_email(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="admin@example.com", password="hunter2", role=UserRole.ADMIN)
+    make_user(email="taken@example.com", password="hunter2")
+    headers = _auth_headers(client, "admin@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/users",
+        json={"email": "taken@example.com", "password": "hunter2222", "name": "New User"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 409
+
+
+def test_create_user_rejects_short_password(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="admin@example.com", password="hunter2", role=UserRole.ADMIN)
+    headers = _auth_headers(client, "admin@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/users",
+        json={"email": "new@example.com", "password": "short", "name": "New User"},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
 
 
 def test_list_users_requires_auth(client: TestClient) -> None:

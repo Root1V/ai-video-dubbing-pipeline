@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
 import { createDubbingProject } from '../api/projects'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -13,6 +12,7 @@ import { Alert } from '../components/ui/Alert'
 import { GlossaryEditor } from '../components/GlossaryEditor'
 import type { GlossaryRow } from '../components/GlossaryEditor'
 import { MediaSourceInput } from '../components/media/MediaSourceInput'
+import { getErrorMessage } from '../lib/errors'
 
 const TONE_OPTIONS = [
   { value: '', label: 'Sin preferencia' },
@@ -89,14 +89,7 @@ export function NewDubbingProjectPage() {
       )
       navigate(`/projects/${project.id}`)
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(
-          (err.response?.data as { detail?: string } | undefined)?.detail ??
-            'No se pudo crear el proyecto. Intenta de nuevo.',
-        )
-      } else {
-        setError('No se pudo crear el proyecto. Intenta de nuevo.')
-      }
+      setError(getErrorMessage(err, 'No se pudo crear el proyecto. Intenta de nuevo.'))
       setIsSubmitting(false)
       setUploadProgress(null)
     }

@@ -1,8 +1,9 @@
-"""Router de administracion de usuarios: listado, cambio de rol, activar/desactivar.
+"""Router de administracion de usuarios: crear, listar, cambiar rol, activar/desactivar.
 
-Solo accesible para admins (`Depends(require_admin)`). No crea usuarios
-nuevos -- eso sigue siendo via `scripts/create_admin.py` (sin auto-registro
-ni invitaciones por diseno, ver docs/roadmap.md#RM-15).
+Solo accesible para admins (`Depends(require_admin)`). Crear un usuario aca
+es equivalente a `scripts/create_admin.py` pero desde la UI -- sigue sin
+haber auto-registro ni invitaciones por email (alguien con acceso admin
+sigue siendo el unico que puede dar de alta una cuenta).
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ from sqlalchemy.orm import Session
 from video_translator.web.db.models import User, UserRole
 from video_translator.web.deps import get_db_session, require_admin
 from video_translator.web.schemas.auth import UserOut
-from video_translator.web.schemas.users import UserListOut, UserUpdateIn
+from video_translator.web.schemas.users import UserCreateIn, UserListOut, UserUpdateIn
+from video_translator.web.security import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -42,6 +44,32 @@ def list_users(
         page=page,
         page_size=page_size,
     )
+
+
+@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreateIn,
+    _current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+) -> UserOut:
+    existing = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe un usuario con ese email.",
+        )
+
+    user = User(
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        name=payload.name,
+        role=UserRole(payload.role),
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)
 
 
 @router.patch("/{user_id}", response_model=UserOut)
