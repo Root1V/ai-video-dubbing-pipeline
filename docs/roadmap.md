@@ -67,8 +67,9 @@ Commit: `5d02d64`
 **Scope:** no existe ningún puerto de generación de imagen/video hoy; requiere investigación de factibilidad propia (modelo, costo de cómputo, formatos) antes de poder planearse.
 
 ## RM-15 — Gestión de usuarios
-**Why:** hoy los usuarios solo se crean por script (`create_admin.py`); no hay forma de verlos, cambiar su rol o desactivarlos desde la UI.
-**Scope:** sección nueva en el menú (solo admin) con listado de usuarios, cambio de rol, activar/desactivar. Requiere un router nuevo (`GET/PATCH /users`, protegido con `require_admin`, ya existe como dependency). Fuera de alcance: auto-registro, invitaciones por email, recuperación de password self-service.
+**Why:** hoy los usuarios solo se crean por script (`create_admin.py`); no había forma de verlos, cambiar su rol o desactivarlos desde la UI.
+**Scope:** sección "Administración" en el menú (solo admin) con listado de usuarios, cambio de rol y activar/desactivar inline; `GET/PATCH /api/users` protegidos con `require_admin`. Un admin no puede quitarse su propio rol ni desactivarse a sí mismo (bloqueado en backend y reflejado en la UI). Sigue sin haber creación de usuarios desde la UI (fuera de alcance, ver script).
+Commit: `11a3556`
 
 ## RM-16 — Columnas de ejecución en la tabla de proyectos
 **Ya implementado** antes de esta sesión (dashboard M1-M6 / v1.2.0) — `ProjectsListPage` ya muestra "Duración" y "ID de ejecución" por fila.
