@@ -128,6 +128,7 @@ class TranscribeMediaRequest:
     input_media: Path
     output_dir: Path
     source_lang_hint: str | None = None
+    include_summary: bool = False
 
 
 @dataclass(slots=True)
@@ -139,6 +140,7 @@ class TranscribeMediaResult:
     segments: list[TranscriptSegment]
     duration_seconds: float
     timings: dict = field(default_factory=dict)
+    summary_text: str | None = None
 
 
 @dataclass(slots=True)

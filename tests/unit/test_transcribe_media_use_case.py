@@ -61,6 +61,15 @@ class FakeSubtitleWriter:
         return output_path
 
 
+class FakeSummarizer:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def summarize(self, text: str) -> str:
+        self.calls.append(text)
+        return f"summary of: {text[:20]}"
+
+
 @pytest.fixture()
 def media_file(tmp_path: Path) -> Path:
     p = tmp_path / "input.mp4"
@@ -68,11 +77,12 @@ def media_file(tmp_path: Path) -> Path:
     return p
 
 
-def _make_use_case(transcriber=None):
+def _make_use_case(transcriber=None, summarizer=None):
     return TranscribeMediaUseCase(
         media_processor=FakeMediaProcessor(),
         transcriber=transcriber or FakeTranscriber(),
         subtitle_writer=FakeSubtitleWriter(),
+        summarizer=summarizer,
     )
 
 
@@ -123,6 +133,88 @@ def test_rejects_unsupported_extension(tmp_path: Path):
 def test_raises_when_transcription_is_empty(tmp_path: Path, media_file: Path):
     use_case = _make_use_case(transcriber=EmptyTranscriber())
     request = TranscribeMediaRequest(input_media=media_file, output_dir=tmp_path / "out")
+
+    with pytest.raises(VideoTranslatorError):
+        use_case.execute(request)
+
+
+def test_default_does_not_summarize(tmp_path: Path, media_file: Path):
+    summarizer = FakeSummarizer()
+    use_case = _make_use_case(summarizer=summarizer)
+    request = TranscribeMediaRequest(input_media=media_file, output_dir=tmp_path / "out")
+
+    result = use_case.execute(request)
+
+    assert summarizer.calls == []
+    assert result.summary_text is None
+    assert not (tmp_path / "out" / "summary.txt").exists()
+
+
+def test_include_summary_writes_summary_file(tmp_path: Path, media_file: Path):
+    summarizer = FakeSummarizer()
+    use_case = _make_use_case(summarizer=summarizer)
+    request = TranscribeMediaRequest(
+        input_media=media_file, output_dir=tmp_path / "out", include_summary=True
+    )
+
+    result = use_case.execute(request)
+
+    # _chunk_text normaliza espacios en blanco (corta por palabra, no
+    # preserva saltos de linea) -- para un texto que entra en un solo
+    # fragmento el contenido es el mismo, solo cambia el whitespace.
+    assert len(summarizer.calls) == 1
+    assert summarizer.calls[0] == "Hello there. This is a test."
+    summary_path = tmp_path / "out" / "summary.txt"
+    assert summary_path.exists()
+    assert result.summary_text == summary_path.read_text(encoding="utf-8")
+    assert result.timings["outputs"]["summary_text_bytes"] > 0
+
+
+def test_include_summary_chunks_long_transcripts(tmp_path: Path):
+    long_segments_transcriber = type(
+        "LongTranscriber",
+        (),
+        {
+            "transcribe": lambda self, audio_path, language_hint=None: [
+                TranscriptSegment(id=0, start=0.0, end=1.0, text="word " * 20),
+                TranscriptSegment(id=1, start=1.0, end=2.0, text="word " * 20),
+            ]
+        },
+    )()
+    audio_file = tmp_path / "clip.mp3"
+    audio_file.write_bytes(b"fake-mp3")
+    summarizer = FakeSummarizer()
+    use_case = _make_use_case(transcriber=long_segments_transcriber, summarizer=summarizer)
+    request = TranscribeMediaRequest(
+        input_media=audio_file, output_dir=tmp_path / "out", include_summary=True
+    )
+
+    # chunk_chars chico a proposito para forzar el camino map-reduce (2
+    # fragmentos + 1 resumen final = 3 llamadas) sin necesitar un texto real
+    # de miles de caracteres en el test.
+    import video_translator.application.use_cases.transcribe_media as transcribe_media_module
+
+    original_chunk_chars = transcribe_media_module._SUMMARY_CHUNK_CHARS
+    transcribe_media_module._SUMMARY_CHUNK_CHARS = 50
+    try:
+        use_case.execute(request)
+    finally:
+        transcribe_media_module._SUMMARY_CHUNK_CHARS = original_chunk_chars
+
+    # Con chunk_chars=50 el texto (40 palabras) se parte en varios
+    # fragmentos -- no importa el numero exacto de fragmentos, lo que
+    # importa es que hubo mas de un llamado (se tomo el camino map-reduce)
+    # y que el ULTIMO llamado resume los resumenes parciales, no texto
+    # crudo (confirma el paso de reduce final).
+    assert len(summarizer.calls) > 1
+    assert "summary of:" in summarizer.calls[-1]
+
+
+def test_include_summary_without_summarizer_raises(tmp_path: Path, media_file: Path):
+    use_case = _make_use_case(summarizer=None)
+    request = TranscribeMediaRequest(
+        input_media=media_file, output_dir=tmp_path / "out", include_summary=True
+    )
 
     with pytest.raises(VideoTranslatorError):
         use_case.execute(request)

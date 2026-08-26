@@ -49,6 +49,7 @@ const ARTIFACT_FILENAME_FALLBACK: Record<DownloadArtifact, string> = {
   srt_target: 'subtitles.es.srt',
   transcript_srt: 'transcript.srt',
   transcript_text: 'transcript.txt',
+  summary_text: 'summary.txt',
   speech_audio: 'speech.wav',
 }
 
@@ -184,6 +185,7 @@ export async function createTranscriptionProject(
   // Vacio explicito (no se omite el campo) para que el backend lo trate como
   // "detectar automaticamente" en vez de caer en el default "en" del form.
   formData.set('source_lang', input.source_lang ?? '')
+  formData.set('include_summary', String(input.include_summary ?? false))
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -119,8 +119,14 @@ export function ProjectDetailPage() {
   // La transcripcion y el TTS standalone no traducen ni renderizan video --
   // su plan de etapas es fijo (ver TranscribeMediaUseCase/SynthesizeTextUseCase),
   // no depende de output_mode.
+  const includesSummary = isTranscription && Boolean(project.config.include_summary)
   const expectedStageNames = isTranscription
-    ? [...(hasSourceUrl ? ['download'] : []), 'audio_extraction', 'transcription']
+    ? [
+        ...(hasSourceUrl ? ['download'] : []),
+        'audio_extraction',
+        'transcription',
+        ...(includesSummary ? ['summarization'] : []),
+      ]
     : isTts
       ? ['text_to_speech', 'audio_concatenation']
       : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize), hasSourceUrl)
@@ -233,6 +239,17 @@ export function ProjectDetailPage() {
                     <Download className="h-4 w-4" />
                     Transcripción (texto)
                   </Button>
+                  {includesSummary && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload('summary_text')}
+                      disabled={downloading === 'summary_text'}
+                    >
+                      <Download className="h-4 w-4" />
+                      Resumen (texto)
+                    </Button>
+                  )}
                 </>
               ) : isTts ? (
                 <Button

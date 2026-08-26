@@ -6,6 +6,7 @@ import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
+import { Switch } from '../components/ui/Switch'
 import { Alert } from '../components/ui/Alert'
 import { MediaSourceInput } from '../components/media/MediaSourceInput'
 import { getErrorMessage } from '../lib/errors'
@@ -32,6 +33,7 @@ export function NewTranscriptionProjectPage() {
   const [sourceUrlValidated, setSourceUrlValidated] = useState(false)
   const [name, setName] = useState('')
   const [sourceLang, setSourceLang] = useState('')
+  const [includeSummary, setIncludeSummary] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -70,6 +72,7 @@ export function NewTranscriptionProjectPage() {
           file: file ?? undefined,
           source_url: sourceUrl ?? undefined,
           source_lang: sourceLang,
+          include_summary: includeSummary,
         },
         setUploadProgress,
       )
@@ -136,6 +139,17 @@ export function NewTranscriptionProjectPage() {
                   </option>
                 ))}
               </Select>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-border p-4">
+              <div>
+                <p className="text-sm font-medium">Incluir un resumen</p>
+                <p className="text-xs text-muted-foreground">
+                  Además de la transcripción completa, genera un resumen con los highlights
+                  más importantes del video.
+                </p>
+              </div>
+              <Switch checked={includeSummary} onCheckedChange={setIncludeSummary} />
             </div>
           </CardContent>
         </Card>

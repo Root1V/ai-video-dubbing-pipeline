@@ -126,6 +126,27 @@ def translate_batch_with_recovery(
         return left + right
 
 
+SUMMARY_SYSTEM_PROMPT = """Eres un asistente que resume transcripciones de audio/video en sus \
+puntos mas importantes.
+
+Reglas:
+- Responde en el MISMO idioma en el que esta escrito el texto que te pasen -- no traduzcas.
+- Devuelve una lista breve de highlights (puntos clave), no un parrafo largo ni un resumen \
+palabra por palabra.
+- Cubre los temas mas relevantes de TODO el texto recibido, no solo el principio.
+- No agregues una introduccion ni una conclusion generica ("este texto trata sobre..."): \
+anda directo a los puntos.
+"""
+
+
+def build_summary_system_prompt() -> str:
+    return SUMMARY_SYSTEM_PROMPT
+
+
+def build_summary_user_prompt(text: str) -> str:
+    return f"Resume el siguiente texto en sus puntos mas importantes:\n\n{text}"
+
+
 def parse_numbered_lines(raw_text: str, expected: int) -> list[str]:
     pattern = re.compile(r"^\s*(\d+)\.\s?(.*)$")
     found: dict[int, str] = {}

@@ -25,6 +25,7 @@ export const STAGE_LABELS: Record<string, string> = {
   translation: 'Traducción',
   subtitles_writing: 'Generación de subtítulos',
   transcript_writing: 'Escritura de transcripción',
+  summarization: 'Resumen',
   text_to_speech: 'Síntesis de voz',
   audio_concatenation: 'Concatenación de audio',
   tts_synthesis: 'Síntesis de voz',

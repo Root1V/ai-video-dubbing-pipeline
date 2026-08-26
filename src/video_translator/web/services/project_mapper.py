@@ -101,12 +101,14 @@ def build_transcribe_use_case_and_request(
     configure_logging(level=settings.log_level, json_logs=settings.log_json, log_file=log_file)
 
     config = project.config or {}
+    include_summary = bool(config.get("include_summary"))
     request = TranscribeMediaRequest(
         input_media=Path(project.input_video_path),
         output_dir=output_dir,
         source_lang_hint=config.get("source_lang") or None,
+        include_summary=include_summary,
     )
-    use_case = build_transcribe_media_use_case(settings)
+    use_case = build_transcribe_media_use_case(settings, include_summary=include_summary)
     return use_case, request
 
 

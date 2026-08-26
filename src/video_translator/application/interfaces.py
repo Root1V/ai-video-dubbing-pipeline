@@ -84,6 +84,14 @@ class Translator(Protocol):
         ...
 
 
+class Summarizer(Protocol):
+    """Resume un texto largo en sus puntos mas importantes, asistido por LLM."""
+
+    def summarize(self, text: str) -> str:
+        """Devuelve un resumen del texto, en el mismo idioma que el original."""
+        ...
+
+
 class SpeechSynthesizer(Protocol):
     """Motor de Text-to-Speech para generar el doblaje (implementado con Coqui TTS)."""
 

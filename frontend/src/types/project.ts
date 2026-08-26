@@ -96,6 +96,7 @@ export type DownloadArtifact =
   | 'srt_target'
   | 'transcript_srt'
   | 'transcript_text'
+  | 'summary_text'
   | 'speech_audio'
 
 export interface GlossaryEntry {
@@ -141,6 +142,9 @@ export interface CreateTranscriptionProjectInput {
   /** Vacio = detectar automaticamente (el backend lo trata como None, ver
    * `Transcriber.transcribe(language_hint=None)`). */
   source_lang?: string
+  /** Ademas de la transcripcion completa, genera un resumen con los
+   * highlights via LLM (ver TranscribeMediaUseCase). */
+  include_summary?: boolean
 }
 
 export type TtsVoiceOption = 'public_female' | 'public_male' | 'own'

@@ -162,6 +162,34 @@ def test_build_transcribe_use_case_and_request_empty_source_lang_means_auto_dete
     assert request.source_lang_hint is None
 
 
+def test_build_transcribe_use_case_and_request_include_summary_defaults_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_transcription_project(tmp_path)
+    build_mock = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(project_mapper, "build_transcribe_media_use_case", build_mock)
+
+    _, request = project_mapper.build_transcribe_use_case_and_request(project)
+
+    assert request.include_summary is False
+    _, kwargs = build_mock.call_args
+    assert kwargs["include_summary"] is False
+
+
+def test_build_transcribe_use_case_and_request_include_summary_true(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_transcription_project(tmp_path, include_summary=True)
+    build_mock = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(project_mapper, "build_transcribe_media_use_case", build_mock)
+
+    _, request = project_mapper.build_transcribe_use_case_and_request(project)
+
+    assert request.include_summary is True
+    _, kwargs = build_mock.call_args
+    assert kwargs["include_summary"] is True
+
+
 def _make_tts_project(tmp_path: Path, text: str = "Hola mundo.", **config_overrides: object) -> Project:
     text_path = tmp_path / "input.txt"
     text_path.write_text(text, encoding="utf-8")

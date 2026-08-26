@@ -13,8 +13,14 @@ import platform
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import cast
 
-from video_translator.application.interfaces import SpeechSynthesizer, Transcriber, Translator
+from video_translator.application.interfaces import (
+    SpeechSynthesizer,
+    Summarizer,
+    Transcriber,
+    Translator,
+)
 from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
 from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
@@ -186,11 +192,21 @@ def build_translate_video_use_case(
     )
 
 
-def build_transcribe_media_use_case(settings: Settings) -> TranscribeMediaUseCase:
+def build_transcribe_media_use_case(
+    settings: Settings, include_summary: bool = False
+) -> TranscribeMediaUseCase:
     """Construye el caso de uso de transcripcion standalone (sin traduccion ni
     doblaje) -- solo necesita `MediaProcessor` + `Transcriber`, a diferencia de
     `build_translate_video_use_case` que siempre arma tambien un `Translator`
-    y un `SubtitleWriter` para el pipeline completo."""
+    y un `SubtitleWriter` para el pipeline completo.
+
+    `include_summary` arma ademas un `Summarizer` (solo si hace falta, para no
+    exigirle configuracion de LLM a un caso de uso que por defecto no la
+    necesita). `OllamaTranslator`/`LlamaServerTranslator` ya implementan
+    `summarize()` (ver infrastructure/translation/) ademas de
+    `translate_batch()`, asi que el mismo backend de `_build_translator` sirve
+    tal cual -- se castea a `Summarizer` en vez de duplicar el switch
+    ollama/llama_server, para que ambas construcciones no puedan divergir."""
     media_processor = FFmpegMediaProcessor(
         ffmpeg_binary=settings.ffmpeg_binary,
         ffprobe_binary=settings.ffprobe_binary,
@@ -198,6 +214,7 @@ def build_transcribe_media_use_case(settings: Settings) -> TranscribeMediaUseCas
     )
     transcriber = _build_transcriber(settings, enable_diarization=False)
     subtitle_writer = SrtSubtitleWriter()
+    summarizer = cast(Summarizer, _build_translator(settings)) if include_summary else None
 
     effective_config: dict = {
         "whisper_backend": settings.whisper_backend,
@@ -213,6 +230,7 @@ def build_transcribe_media_use_case(settings: Settings) -> TranscribeMediaUseCas
         media_processor=media_processor,
         transcriber=transcriber,
         subtitle_writer=subtitle_writer,
+        summarizer=summarizer,
         effective_config=effective_config,
     )
 

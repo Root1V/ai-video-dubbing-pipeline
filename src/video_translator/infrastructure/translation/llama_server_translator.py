@@ -24,6 +24,8 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from video_translator.domain.exceptions import TranslationError
 from video_translator.domain.models import TranscriptSegment, TranslationContext
 from video_translator.infrastructure.translation.prompting import (
+    build_summary_system_prompt,
+    build_summary_user_prompt,
     build_system_prompt,
     build_user_prompt,
     parse_numbered_lines,
@@ -72,6 +74,9 @@ class LlamaServerTranslator:
             return parse_numbered_lines(raw_response, expected=len(subset))
 
         return translate_batch_with_recovery(segments, _translate_subset)
+
+    def summarize(self, text: str) -> str:
+        return self._call_llm(build_summary_system_prompt(), build_summary_user_prompt(text))
 
     @retry(
         reraise=True,

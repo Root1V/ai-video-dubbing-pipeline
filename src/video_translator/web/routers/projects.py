@@ -32,6 +32,8 @@ _SRT_TARGET_FILENAME = "subtitles.es.srt"
 # traduccion, solo una transcripcion en el idioma original.
 _TRANSCRIPT_SRT_FILENAME = "transcript.srt"
 _TRANSCRIPT_TEXT_FILENAME = "transcript.txt"
+# Solo existe si el proyecto se creo con include_summary=True.
+_SUMMARY_TEXT_FILENAME = "summary.txt"
 # Nombre fijo que escribe `SynthesizeTextUseCase` (servicio de TTS standalone).
 _SPEECH_AUDIO_FILENAME = "speech.wav"
 
@@ -86,6 +88,9 @@ def create_project(
     diarize: bool = Form(False),
     min_speakers: int | None = Form(None),
     max_speakers: int | None = Form(None),
+    # Solo para "transcription": ademas de la transcripcion completa, genera
+    # un resumen con los highlights vía LLM (ver TranscribeMediaUseCase).
+    include_summary: bool = Form(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
@@ -141,6 +146,7 @@ def create_project(
         "diarize": diarize,
         "min_speakers": min_speakers,
         "max_speakers": max_speakers,
+        "include_summary": include_summary,
     }
 
     project = Project(
@@ -298,6 +304,8 @@ def download_project_artifact(
         file_path = output_dir / _TRANSCRIPT_SRT_FILENAME
     elif artifact == "transcript_text":
         file_path = output_dir / _TRANSCRIPT_TEXT_FILENAME
+    elif artifact == "summary_text":
+        file_path = output_dir / _SUMMARY_TEXT_FILENAME
     elif artifact == "speech_audio":
         file_path = output_dir / _SPEECH_AUDIO_FILENAME
     elif artifact == "video":

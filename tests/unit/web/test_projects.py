@@ -500,3 +500,46 @@ def test_download_transcript_artifacts_serves_existing_files(
     assert srt_resp.content == b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
     assert text_resp.status_code == 200
     assert text_resp.content == b"Hello"
+
+
+def test_create_transcription_project_defaults_include_summary_false(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    created = _create_project(client, headers, service_type="transcription").json()
+
+    assert created["config"]["include_summary"] is False
+
+
+def test_create_transcription_project_with_include_summary_true(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    created = _create_project(
+        client, headers, service_type="transcription", include_summary="true"
+    ).json()
+
+    assert created["config"]["include_summary"] is True
+
+
+def test_download_summary_text_artifact_serves_existing_file(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    created = _create_project(
+        client, headers, service_type="transcription", include_summary="true"
+    ).json()
+
+    output_dir = Path(created["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "summary.txt").write_text("Puntos clave del video.")
+
+    resp = client.get(f"/api/projects/{created['id']}/download/summary_text", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.content == b"Puntos clave del video."
