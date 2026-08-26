@@ -66,6 +66,34 @@ Commit: `5d02d64`
 **Why:** idea de negocio B2C (shorts/reels desde imágenes + texto de venta) fuera de la arquitectura actual.
 **Scope:** no existe ningún puerto de generación de imagen/video hoy; requiere investigación de factibilidad propia (modelo, costo de cómputo, formatos) antes de poder planearse.
 
+## RM-15 — Gestión de usuarios
+**Why:** hoy los usuarios solo se crean por script (`create_admin.py`); no hay forma de verlos, cambiar su rol o desactivarlos desde la UI.
+**Scope:** sección nueva en el menú (solo admin) con listado de usuarios, cambio de rol, activar/desactivar. Requiere un router nuevo (`GET/PATCH /users`, protegido con `require_admin`, ya existe como dependency). Fuera de alcance: auto-registro, invitaciones por email, recuperación de password self-service.
+
+## RM-16 — Columnas de ejecución en la tabla de proyectos
+**Why:** hoy el `run_id` y la duración total solo se ven entrando al detalle de cada proyecto; para comparar corridas rápido conviene verlo en el listado.
+**Scope:** dos columnas nuevas en `ProjectsListPage` junto al nombre, usando datos que `ProjectOut` ya expone (`run_id`, `total_seconds`) — sin cambios de backend.
+
+## RM-17 — Selector de fuente de media: orden y validación de URL
+**Why:** hoy "Pegar URL" no bloquea el envío del formulario aunque la previsualización automática falle (a propósito, para no frenar URLs válidas que el preview no sabe renderizar, ej. Google Drive/Vimeo) — pero eso deja pasar URLs realmente rotas sin ningún aviso.
+**Scope:** en doblaje/subtítulos/transcripción, reordenar los tabs (Buscar en YouTube → Subir archivo → Pegar URL); cuando la previsualización automática falla, mostrar un botón "Validar URL" que intente la descarga real antes de habilitar el botón de envío del formulario.
+
+## RM-18 — Resumen con highlights en Transcripción
+**Why:** pedido explícito para el servicio de transcripción; comparte con RM-11 la necesidad de un paso de resumen (LLM) que hoy no existe en ningún puerto.
+**Scope:** nuevo modo de salida (transcripción completa vs. resumen de puntos clave) en `NewTranscriptionProjectPage`/`TranscribeMediaUseCase`. Diseñar junto con RM-11 en vez de por separado, ya que ambos necesitan la misma capacidad de resumen.
+
+## RM-19 — Modo oscuro
+**Why:** pedido explícito del usuario; usuarios distintos tienen preferencias distintas de tema.
+**Scope:** Tailwind ya tiene `darkMode: 'class'` configurado, pero no existe paleta oscura en `index.css` ni ningún toggle. Falta: definir la paleta oscura, agregar el toggle (persistido en `localStorage`), y revisar que los canvas (waveform) que ya leen variables CSS de tema se vean bien en ambos modos.
+
+## RM-20 — Auditoría de diseño responsive
+**Why:** se esperan usuarios conectándose desde iPad y celulares; el diseño no se ha validado fuera de desktop.
+**Scope:** auditar dashboard, formularios de creación y detalle de proyecto en anchos de tablet/mobile; corregir donde el layout se rompa. No incluye una app nativa ni un rediseño mobile-first desde cero.
+
+## RM-21 — Mensajes de error legibles del pipeline
+**Why:** hoy `project.error_message` muestra el mensaje técnico crudo de la excepción tal cual (a veces legible, a veces un stack trace de Python) — un usuario no técnico no puede entender por qué falló ni qué hacer al respecto.
+**Scope:** mapear los tipos de error conocidos del pipeline (conexión al LLM, formato de descarga, disco lleno, modelo no encontrado, etc.) a un mensaje corto con causa probable + acción sugerida, mostrado en el detalle del proyecto en vez del texto crudo; conservar el mensaje técnico original visible en un detalle expandible para debugging.
+
 ---
 
 **Descartado:** reemplazo/agregado de pista de audio en un video existente — evaluado, sin caso de uso claro con el negocio. Sin ID (nunca entró en desarrollo activo).
