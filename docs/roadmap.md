@@ -76,8 +76,9 @@ Commits: `11a3556`, `31a6b03`
 Commit: `2d2f149`
 
 ## RM-17 — Selector de fuente de media: orden y validación de URL
-**Why:** hoy "Pegar URL" no bloquea el envío del formulario aunque la previsualización automática falle (a propósito, para no frenar URLs válidas que el preview no sabe renderizar, ej. Google Drive/Vimeo) — pero eso deja pasar URLs realmente rotas sin ningún aviso.
-**Scope:** en doblaje/subtítulos/transcripción, reordenar los tabs (Buscar en YouTube → Subir archivo → Pegar URL); cuando la previsualización automática falla, mostrar un botón "Validar URL" que intente la descarga real antes de habilitar el botón de envío del formulario.
+**Why:** antes "Pegar URL" no bloqueaba el envío del formulario aunque la previsualización automática fallara — dejaba pasar URLs realmente rotas sin ningún aviso hasta que el pipeline fallaba recién al intentar descargar.
+**Scope:** en doblaje/subtítulos/transcripción, tabs reordenados (Buscar en YouTube → Subir archivo → Pegar URL, YouTube es el tab por defecto). `MediaUrlPreview` ahora es también la validación real (reusa `GET /media/preview`, la misma extracción de yt-dlp que usaría la descarga) y reporta éxito/fallo al formulario; el botón de envío queda deshabilitado hasta validar, con un botón "Validar URL" para reintentar a mano si falla. Editar la URL resetea la validación de inmediato.
+Commit: `f1b101e`
 
 ## RM-18 — Resumen con highlights en Transcripción
 **Why:** pedido explícito para el servicio de transcripción; comparte con RM-11 la necesidad de un paso de resumen (LLM) que hoy no existe en ningún puerto.
