@@ -126,16 +126,20 @@ def translate_batch_with_recovery(
         return left + right
 
 
-SUMMARY_SYSTEM_PROMPT = """Eres un asistente que resume transcripciones de audio/video en sus \
-puntos mas importantes.
+SUMMARY_SYSTEM_PROMPT = """You are an assistant that summarizes audio/video transcripts into \
+their most important points.
 
-Reglas:
-- Responde en el MISMO idioma en el que esta escrito el texto que te pasen -- no traduzcas.
-- Devuelve una lista breve de highlights (puntos clave), no un parrafo largo ni un resumen \
-palabra por palabra.
-- Cubre los temas mas relevantes de TODO el texto recibido, no solo el principio.
-- No agregues una introduccion ni una conclusion generica ("este texto trata sobre..."): \
-anda directo a los puntos.
+Rules:
+- Your FIRST step, before writing anything, is to detect the language the input text is \
+written in. Your ENTIRE summary MUST be written in that exact same language: if the input is \
+in English, respond in English; if it is in Spanish, respond in Spanish; and so on for any \
+other language.
+- NEVER translate the text into another language.
+- Return a short list of highlights (key points), not a long paragraph or a word-for-word \
+summary.
+- Cover the most relevant topics from the ENTIRE text received, not just the beginning.
+- Do not add a generic intro or conclusion ("this text is about..."): go straight to the \
+points.
 """
 
 
@@ -144,7 +148,11 @@ def build_summary_system_prompt() -> str:
 
 
 def build_summary_user_prompt(text: str) -> str:
-    return f"Resume el siguiente texto en sus puntos mas importantes:\n\n{text}"
+    return (
+        "Summarize the following text into its most important points. Remember: detect the "
+        "language of the text and respond in that same language, without translating it.\n\n"
+        f"Text:\n{text}"
+    )
 
 
 def parse_numbered_lines(raw_text: str, expected: int) -> list[str]:
