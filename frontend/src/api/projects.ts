@@ -43,6 +43,21 @@ export async function resumeProject(id: string): Promise<Project> {
   return data
 }
 
+/**
+ * Reads an artifact's raw text content for inline display (as opposed to
+ * `downloadProjectArtifact`, which saves it to disk) -- only meaningful for
+ * text artifacts like `summary_text`.
+ */
+export async function fetchProjectArtifactText(
+  id: string,
+  artifact: DownloadArtifact,
+): Promise<string> {
+  const { data } = await apiClient.get<string>(`/projects/${id}/download/${artifact}`, {
+    responseType: 'text',
+  })
+  return data
+}
+
 const ARTIFACT_FILENAME_FALLBACK: Record<DownloadArtifact, string> = {
   video: 'video.mp4',
   srt_source: 'subtitles.en.srt',

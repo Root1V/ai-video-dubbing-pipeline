@@ -6,6 +6,7 @@ import {
   deleteProject,
   downloadProjectArtifact,
   fetchProject,
+  fetchProjectArtifactText,
   fetchProjectStatus,
   resumeProject,
 } from '../api/projects'
@@ -54,6 +55,18 @@ export function ProjectDetailPage() {
       // this so even a stage this still misses gets visual feedback.
       return dbStatus && isActiveStatus(dbStatus) ? 1500 : false
     },
+  })
+
+  const dbStatusForSummary = statusQuery.data?.db_status ?? projectQuery.data?.status
+  const summaryQuery = useQuery({
+    queryKey: ['projects', id, 'summary'],
+    queryFn: () => fetchProjectArtifactText(id as string, 'summary_text'),
+    enabled: Boolean(
+      id &&
+        projectQuery.data?.service_type === 'transcription' &&
+        projectQuery.data?.config.include_summary &&
+        dbStatusForSummary === 'completed',
+    ),
   })
 
   const deleteMutation = useMutation({
@@ -198,6 +211,7 @@ export function ProjectDetailPage() {
             dbStatus={dbStatus}
             sourceLang={typeof project.config.source_lang === 'string' ? project.config.source_lang : undefined}
             targetLang={typeof project.config.target_lang === 'string' ? project.config.target_lang : undefined}
+            errorMessage={project.error_message}
           />
         </CardContent>
       </Card>
@@ -296,6 +310,22 @@ export function ProjectDetailPage() {
               )}
             </div>
             {downloadError && <p className="mt-2 text-sm text-destructive">{downloadError}</p>}
+            {includesSummary && (
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  Resumen
+                </p>
+                {summaryQuery.isLoading && (
+                  <p className="text-sm text-muted-foreground">Cargando resumen…</p>
+                )}
+                {summaryQuery.isError && (
+                  <p className="text-sm text-destructive">No se pudo cargar el resumen.</p>
+                )}
+                {summaryQuery.data && (
+                  <p className="whitespace-pre-line text-sm">{summaryQuery.data}</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -376,10 +406,6 @@ export function ProjectDetailPage() {
                 })}
               </ul>
             </div>
-          )}
-
-          {project.error_message && dbStatus === 'failed' && (
-            <p className="mt-4 text-sm text-destructive">{project.error_message}</p>
           )}
         </CardContent>
       </Card>

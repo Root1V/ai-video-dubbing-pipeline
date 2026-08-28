@@ -25,6 +25,10 @@ interface StageTimelineProps {
    * subtitles_writing (which language pair the .srt files are actually in). */
   sourceLang?: string
   targetLang?: string
+  /** Raw technical error from `project.error_message`, shown right under the
+   * failed step's title instead of buried in the "Detalles" card below --
+   * that's where the user is already looking when a step fails. */
+  errorMessage?: string | null
 }
 
 type StepState = 'done' | 'active' | 'failed' | 'pending'
@@ -240,6 +244,7 @@ export function StageTimeline({
   dbStatus,
   sourceLang,
   targetLang,
+  errorMessage,
 }: StageTimelineProps) {
   const [revealDelayKeys, setRevealDelayKeys] = useState<Set<string>>(new Set())
   const seenDoneKeys = useRef<Set<string>>(new Set())
@@ -312,6 +317,9 @@ export function StageTimeline({
                 </span>
                 {step.subtitle && (
                   <span className="mt-0.5 text-xs text-muted-foreground/80">{step.subtitle}</span>
+                )}
+                {step.state === 'failed' && errorMessage && (
+                  <span className="mt-0.5 text-xs text-destructive/70">{errorMessage}</span>
                 )}
               </div>
               {duration && (
