@@ -71,6 +71,18 @@ Commit: `200594e`
 **Why:** alternativa a RM-14 que anima la imagen con un modelo de video generativo real en vez de un simple zoom, para un resultado visualmente más rico.
 **Scope:** sin diseñar todavía — requiere investigación de factibilidad propia (qué modelo usar, local vs. API paga, costo de cómputo/GPU, tiempos de generación) antes de poder planearse.
 
+## RM-23 — Estilo de resaltado de captions: caja o color de texto
+**Why:** hoy el resaltado de los captions del micro-video (RM-14) es siempre una caja de fondo opaca detrás del texto blanco; algunos usuarios van a preferir un estilo sin caja, solo cambiando el color de la palabra.
+**Scope:** selector en la UI ("Caja de fondo" / "Color de texto") junto al color picker ya existente. Para "color de texto", el color elegido reemplaza `PrimaryColour` (blanco) en el estilo ASS en vez de `BackColour`/`OutlineColour`.
+
+## RM-24 — Música de fondo en micro-video
+**Why:** un micro-video sin música de fondo se siente incompleto para redes sociales; pedido explícito del usuario.
+**Scope:** opción "Sin música" (default, comportamiento actual) o elegir una pista de una biblioteca de música libre de derechos ofrecida por la app (no upload propio en esta primera versión). La pista se mezcla con la narración a un volumen bajo (no debe tapar la voz) y se ajusta a la duración final del video (loop o corte, según corresponda).
+
+## RM-25 — Resaltado por palabra en captions (karaoke)
+**Why:** hoy el resaltado (RM-14/RM-23) pinta el caption completo durante toda su ventana de tiempo; un estilo "karaoke" que solo resalta la palabra que se está diciendo en ese instante es más dinámico y común en redes sociales.
+**Scope:** selector en la UI para elegir entre "Resaltar toda la frase" (actual) o "Resaltar solo la palabra actual" (se muestra el caption completo, pero el resaltado avanza palabra por palabra). Requiere estimar el timing de cada palabra dentro de un caption (no hay timestamps por palabra del motor de TTS — se aproxima por duración proporcional a la cantidad de caracteres, mismo criterio que ya usa `_build_caption_segments` a nivel de caption).
+
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
 **Scope:** sección "Administración" en el menú (solo admin): listado, botón "Agregar usuario" (nombre/email/password/rol), cambio de rol y activar/desactivar inline. `GET/POST/PATCH /api/users`, todos protegidos con `require_admin`. Un admin no puede quitarse su propio rol ni desactivarse a sí mismo (bloqueado en backend y reflejado en la UI). Sigue sin auto-registro ni invitaciones por email — crear una cuenta requiere acceso admin, por diseño.
