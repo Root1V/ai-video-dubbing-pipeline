@@ -78,13 +78,14 @@
     --input: 240 8% 20%;
     --ring: 243 75% 66%;
 
-    /* Mas claro y con un tinte violeta mas saturado que --background (240
-       10% 8%, casi neutro) para que el menu se lea como un panel distinto,
-       no una variacion casi imperceptible del mismo gris. */
-    --sidebar: 245 35% 16%;
-    --sidebar-foreground: 240 15% 94%;
-    --sidebar-border: 245 25% 24%;
-    --sidebar-accent: 245 25% 22%;
+    /* Gris neutro casi sin saturacion, apenas mas claro que --background --
+       la convencion de sidebars oscuros de shadcn/ui, Linear y Vercel (un
+       "panel elevado" sutil, no un color propio) en vez de un tinte violeta
+       llamativo. */
+    --sidebar: 240 6% 14%;
+    --sidebar-foreground: 240 5% 95%;
+    --sidebar-border: 240 6% 20%;
+    --sidebar-accent: 240 6% 20%;
   }
 }
 
