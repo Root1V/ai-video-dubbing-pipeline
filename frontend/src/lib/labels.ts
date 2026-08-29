@@ -4,7 +4,7 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   dubbing: 'Doblaje',
   subtitles: 'Subtítulos',
   transcription: 'Transcripción',
-  tts: 'Texto a voz',
+  tts: 'Voz y clonación',
 }
 
 export const OUTPUT_MODE_LABELS: Record<OutputMode, string> = {

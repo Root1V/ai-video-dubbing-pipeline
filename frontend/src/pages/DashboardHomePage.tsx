@@ -71,8 +71,8 @@ const services = [
   },
   {
     to: '/tts/new',
-    title: 'Texto a Voz',
-    description: 'Convierte texto escrito en audio narrado.',
+    title: 'Voz y Clonación',
+    description: 'Convierte texto en audio narrado, con una voz pública o clonando la tuya.',
     icon: Volume2,
   },
 ]

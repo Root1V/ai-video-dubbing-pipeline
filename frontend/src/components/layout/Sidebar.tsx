@@ -24,7 +24,7 @@ const servicesNav: NavItem[] = [
   { to: '/dubbing/new', label: 'Doblaje de Video', icon: AudioLines },
   { to: '/subtitles/new', label: 'Subtítulos', icon: Captions },
   { to: '/transcription/new', label: 'Transcripción', icon: FileText },
-  { to: '/tts/new', label: 'Texto a Voz', icon: Volume2 },
+  { to: '/tts/new', label: 'Voz y Clonación', icon: Volume2 },
 ]
 
 const libraryNav: NavItem[] = [

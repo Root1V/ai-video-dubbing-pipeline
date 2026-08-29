@@ -90,9 +90,9 @@ export function NewTtsProjectPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Nuevo texto a voz</h1>
+        <h1 className="text-xl font-semibold">Nueva voz y clonación</h1>
         <p className="text-sm text-muted-foreground">
-          Escribe un texto y conviértelo en audio narrado.
+          Escribe un texto y genera el audio, con una voz pública o clonando la tuya.
         </p>
       </div>
 
