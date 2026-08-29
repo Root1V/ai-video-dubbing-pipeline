@@ -195,6 +195,7 @@ def build_micro_video_use_case_and_request(
         speaker_reference_wav=reference_wav,
         target_duration_seconds=float(target_duration) if target_duration else None,
         caption_bg_color=config.get("caption_bg_color", "#000000"),
+        caption_highlight_style=config.get("caption_highlight_style", "background"),
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

@@ -178,7 +178,11 @@ class GenerateMicroVideoRequest:
     # Si se fija: narracion mas larga se acelera (atempo) para encajar;
     # narracion mas corta deja el Ken Burns corriendo el tiempo restante.
     target_duration_seconds: float | None = None
-    caption_bg_color: str = "#000000"  # hex "#RRGGBB", fondo resaltado del texto
+    caption_bg_color: str = "#000000"  # hex "#RRGGBB", ver caption_highlight_style
+    # "background" = caja de fondo opaca de ese color detras del texto blanco
+    # (comportamiento previo). "text_color" = el texto queda de ese color en
+    # vez de blanco, sin caja (solo contorno para legibilidad).
+    caption_highlight_style: str = "background"
 
 
 @dataclass(slots=True)

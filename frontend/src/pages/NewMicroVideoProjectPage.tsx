@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { FileAudio, Image as ImageIcon, UploadCloud, X } from 'lucide-react'
 import { createMicroVideoProject } from '../api/projects'
-import type { TtsVoiceOption } from '../types/project'
+import type { CaptionHighlightStyle, TtsVoiceOption } from '../types/project'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -39,6 +39,11 @@ const DURATION_OPTIONS: { value: number | null; label: string }[] = [
   { value: 90, label: '90s' },
 ]
 
+const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; description: string }[] = [
+  { value: 'background', label: 'Caja de fondo', description: 'Texto blanco sobre una caja de color' },
+  { value: 'text_color', label: 'Color de texto', description: 'El texto toma el color, sin caja' },
+]
+
 export function NewMicroVideoProjectPage() {
   const navigate = useNavigate()
 
@@ -50,6 +55,7 @@ export function NewMicroVideoProjectPage() {
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [targetDuration, setTargetDuration] = useState<number | null>(null)
   const [captionBgColor, setCaptionBgColor] = useState('#000000')
+  const [highlightStyle, setHighlightStyle] = useState<CaptionHighlightStyle>('background')
 
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -107,6 +113,7 @@ export function NewMicroVideoProjectPage() {
           voiceFile: voiceFile ?? undefined,
           target_duration_seconds: targetDuration ?? undefined,
           caption_bg_color: captionBgColor,
+          caption_highlight_style: highlightStyle,
         },
         setUploadProgress,
       )
@@ -246,10 +253,26 @@ export function NewMicroVideoProjectPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="caption-bg-color" className="text-sm font-medium">
-                Color de fondo de los captions
-              </label>
-              <div className="flex items-center gap-3">
+              <span className="text-sm font-medium">Resaltado de los captions</span>
+              <div className="grid grid-cols-2 gap-2">
+                {HIGHLIGHT_STYLE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setHighlightStyle(option.value)}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors',
+                      highlightStyle === option.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-secondary/50',
+                    )}
+                  >
+                    <span className="text-sm font-medium">{option.label}</span>
+                    <span className="text-xs text-muted-foreground">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center gap-3">
                 <input
                   id="caption-bg-color"
                   type="color"
@@ -257,10 +280,11 @@ export function NewMicroVideoProjectPage() {
                   onChange={(e) => setCaptionBgColor(e.target.value)}
                   className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
                 />
-                <p className="text-xs text-muted-foreground">
-                  El texto de los captions es siempre blanco -- este color va detrás, para que se
-                  siga leyendo sobre imágenes claras.
-                </p>
+                <label htmlFor="caption-bg-color" className="text-xs text-muted-foreground">
+                  {highlightStyle === 'text_color'
+                    ? 'Color del texto de los captions.'
+                    : 'Color de la caja de fondo -- el texto es siempre blanco.'}
+                </label>
               </div>
             </div>
 

@@ -273,6 +273,34 @@ def test_execute_writes_chosen_caption_background_color(tmp_path: Path):
     content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
     # "#FF0000" (rojo) en ASS es BGR, opaco: &H000000FF.
     assert "&H000000FF" in content
+    # Estilo "background" (default): sin pasar caption_highlight_style, debe
+    # quedar el texto blanco y BorderStyle=3 (caja).
+    style_line = next(line for line in content.splitlines() if line.startswith("Style:"))
+    assert style_line.split(",")[3] == "&H00FFFFFF"  # PrimaryColour blanco
+    assert style_line.split(",")[15] == "3"  # BorderStyle
+
+
+def test_execute_writes_text_color_highlight_style_without_a_box(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        caption_bg_color="#00FF00",
+        caption_highlight_style="text_color",
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    style_line = next(line for line in content.splitlines() if line.startswith("Style:"))
+    fields = style_line.split(",")
+    # "#00FF00" (verde) en ASS es BGR, opaco: &H0000FF00 -- ahora en
+    # PrimaryColour (el texto), no en BackColour/OutlineColour.
+    assert fields[3] == "&H0000FF00"
+    assert fields[15] == "1"  # BorderStyle=1 (sin caja, solo contorno)
 
 
 def test_execute_holds_the_image_when_narration_is_shorter_than_target_duration(tmp_path: Path):

@@ -64,9 +64,10 @@ def _convert_bold_to_ass(text: str) -> str:
     return _BOLD_PATTERN.sub(r"{\\b1}\1{\\b0}", text)
 
 
-def _hex_to_ass_background(hex_color: str) -> str:
+def _hex_to_ass_color(hex_color: str) -> str:
     """Convierte "#RRGGBB" al formato de color de ASS: &HAABBGGRR (orden BGR,
-    alpha primero). Si el valor no es un hex valido, cae a negro solido."""
+    alpha primero, siempre opaco -- ver CAPTION_BG_ALPHA_HEX). Si el valor no
+    es un hex valido, cae a negro solido."""
     value = hex_color.lstrip("#")
     if len(value) != 6 or any(c not in "0123456789abcdefABCDEF" for c in value):
         value = "000000"
@@ -151,7 +152,12 @@ class GenerateMicroVideoUseCase:
         captions_path = workdir / "captions.ass"
         with timings.stage("caption_writing"):
             _write_ass_captions(
-                caption_segments, captions_path, VIDEO_WIDTH, VIDEO_HEIGHT, request.caption_bg_color
+                caption_segments,
+                captions_path,
+                VIDEO_WIDTH,
+                VIDEO_HEIGHT,
+                request.caption_bg_color,
+                request.caption_highlight_style,
             )
 
         background_path = workdir / "background.mp4"
@@ -255,8 +261,40 @@ def _split_caption_text(text: str, max_chars: int) -> list[str]:
     return pieces
 
 
+def _build_caption_style(highlight_style: str, color: str) -> str:
+    """Arma la linea "Style:" de ASS segun el estilo de resaltado elegido:
+
+    "background" (default): texto blanco sobre una caja opaca del color
+    elegido (BorderStyle=3). OutlineColour se fija IGUAL a BackColour a
+    proposito: probado en la practica, en BorderStyle=3 esta version de
+    libass rellena la caja con OutlineColour, no con BackColour como sugiere
+    la documentacion -- dejarlo en un color fijo (p.ej. negro) hacia que la
+    caja saliera siempre negra sin importar el color elegido.
+
+    "text_color": el texto queda del color elegido, sin caja -- solo un
+    contorno negro (BorderStyle=1) para que se lea sobre cualquier fondo.
+    """
+    ass_color = _hex_to_ass_color(color)
+    if highlight_style == "text_color":
+        # PrimaryColour, SecondaryColour, OutlineColour, BackColour
+        colours = f"{ass_color},&H000000FF,&H00000000,&H00000000"
+        border_style, outline, shadow = 1, 3, 1
+    else:
+        colours = f"&H00FFFFFF,&H000000FF,{ass_color},{ass_color}"
+        border_style, outline, shadow = 3, 2, 0
+    return (
+        f"Style: Default,Arial,{CAPTION_FONT_SIZE},{colours},"
+        f"0,0,0,0,100,100,0,0,{border_style},{outline},{shadow},2,60,60,{CAPTION_MARGIN_V},1"
+    )
+
+
 def _write_ass_captions(
-    segments: list[TranslatedSegment], output_path: Path, width: int, height: int, bg_color: str
+    segments: list[TranslatedSegment],
+    output_path: Path,
+    width: int,
+    height: int,
+    color: str,
+    highlight_style: str,
 ) -> Path:
     """Escribe los captions como .ass (no .srt) con un header propio que
     declara `PlayResX`/`PlayResY` igual al tamano real del video: sin esto,
@@ -265,16 +303,7 @@ def _write_ass_captions(
     vertical de alta resolucion (1080x1920) termina en un texto gigante que
     cubre la pantalla."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    back_colour = _hex_to_ass_background(bg_color)
-    # OutlineColour se fija IGUAL a BackColour a proposito: probado en la
-    # practica, en BorderStyle=3 (caja opaca) esta version de libass rellena
-    # la caja con OutlineColour, no con BackColour como sugiere la
-    # documentacion -- dejarlo en un color fijo (p.ej. negro) hacia que la
-    # caja saliera siempre negra sin importar el color elegido.
-    style = (
-        f"Style: Default,Arial,{CAPTION_FONT_SIZE},&H00FFFFFF,&H000000FF,{back_colour},{back_colour},"
-        f"0,0,0,0,100,100,0,0,3,2,0,2,60,60,{CAPTION_MARGIN_V},1"
-    )
+    style = _build_caption_style(highlight_style, color)
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",

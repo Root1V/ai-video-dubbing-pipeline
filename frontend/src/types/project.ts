@@ -174,6 +174,11 @@ export interface CreateMicroVideoProjectInput {
    * el audio se acelera para encajar (mas largo) o se mantiene la imagen el
    * tiempo restante (mas corto). */
   target_duration_seconds?: number
-  /** Color de fondo resaltado detras del texto de los captions, "#RRGGBB". */
+  /** Color del resaltado de los captions, "#RRGGBB" -- ver caption_highlight_style. */
   caption_bg_color?: string
+  /** "background" (default) = caja de fondo de ese color detras del texto
+   * blanco. "text_color" = el texto queda de ese color, sin caja. */
+  caption_highlight_style?: CaptionHighlightStyle
 }
+
+export type CaptionHighlightStyle = 'background' | 'text_color'

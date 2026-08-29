@@ -236,6 +236,7 @@ export async function createMicroVideoProject(
     formData.set('target_duration_seconds', String(input.target_duration_seconds))
   }
   formData.set('caption_bg_color', input.caption_bg_color ?? '#000000')
+  formData.set('caption_highlight_style', input.caption_highlight_style ?? 'background')
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

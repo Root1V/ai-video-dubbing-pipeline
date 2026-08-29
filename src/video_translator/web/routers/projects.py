@@ -103,6 +103,9 @@ def create_project(
     # hace falta o mantiene la imagen el tiempo restante (ver docs/roadmap.md).
     target_duration_seconds: float | None = Form(None),
     caption_bg_color: str = Form("#000000"),
+    # "background" (caja de fondo de ese color) o "text_color" (el texto
+    # queda de ese color, sin caja) -- ver GenerateMicroVideoRequest.
+    caption_highlight_style: str = Form("background"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
@@ -213,6 +216,7 @@ def create_project(
             "voice_option": voice_option,
             "target_duration_seconds": target_duration_seconds,
             "caption_bg_color": caption_bg_color,
+            "caption_highlight_style": caption_highlight_style,
         }
         if voice_option == "own" and voice_file is not None:
             voice_path = storage.save_upload(voice_file, project.id, settings)

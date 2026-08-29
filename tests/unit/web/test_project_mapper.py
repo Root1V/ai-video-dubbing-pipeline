@@ -350,3 +350,25 @@ def test_build_micro_video_use_case_and_request_maps_duration_and_bg_color(
 
     assert request.target_duration_seconds == 30.0
     assert request.caption_bg_color == "#FF0000"
+
+
+def test_build_micro_video_use_case_and_request_defaults_highlight_style_to_background(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.caption_highlight_style == "background"
+
+
+def test_build_micro_video_use_case_and_request_maps_text_color_highlight_style(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path, caption_highlight_style="text_color")
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.caption_highlight_style == "text_color"
