@@ -41,6 +41,7 @@ class ServiceType(str, Enum):
     SUBTITLES = "subtitles"
     TRANSCRIPTION = "transcription"
     TTS = "tts"
+    MICRO_VIDEO = "micro_video"
 
 
 class SourceType(str, Enum):

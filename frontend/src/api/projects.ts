@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   CreateDubbingProjectInput,
+  CreateMicroVideoProjectInput,
   CreateSubtitlesProjectInput,
   CreateTranscriptionProjectInput,
   CreateTtsProjectInput,
@@ -201,6 +202,36 @@ export async function createTranscriptionProject(
   // "detectar automaticamente" en vez de caer en el default "en" del form.
   formData.set('source_lang', input.source_lang ?? '')
   formData.set('include_summary', String(input.include_summary ?? false))
+
+  const { data } = await apiClient.post<Project>('/projects', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!onUploadProgress || !event.total) return
+      onUploadProgress(Math.round((event.loaded / event.total) * 100))
+    },
+  })
+  return data
+}
+
+export async function createMicroVideoProject(
+  input: CreateMicroVideoProjectInput,
+  onUploadProgress?: (percent: number) => void,
+): Promise<Project> {
+  const formData = new FormData()
+  formData.set('name', input.name)
+  formData.set('service_type', 'micro_video')
+  // Sin significado para micro-video (no hay traduccion/doblaje) -- solo
+  // satisface la columna NOT NULL, mismo patron que TTS/transcripcion.
+  formData.set('output_mode', 'subtitles_only')
+  // `file` es la imagen (obligatoria) -- a diferencia de TTS, aca no es una
+  // voz de referencia opcional.
+  formData.set('file', input.imageFile)
+  formData.set('text', input.text)
+  formData.set('target_lang', input.target_lang ?? 'es')
+  formData.set('voice_option', input.voice_option)
+  if (input.voice_option === 'own' && input.voiceFile) {
+    formData.set('voice_file', input.voiceFile)
+  }
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

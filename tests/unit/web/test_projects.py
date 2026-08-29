@@ -543,3 +543,145 @@ def test_download_summary_text_artifact_serves_existing_file(
 
     assert resp.status_code == 200
     assert resp.content == b"Puntos clave del video."
+
+
+def test_create_micro_video_project_requires_text(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={"name": "Mi micro-video", "service_type": "micro_video", "output_mode": "subtitles_only", "text": "   "},
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_micro_video_project_requires_image_file(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_micro_video_project_saves_image_and_narration_text(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "target_lang": "es",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["service_type"] == "micro_video"
+    assert body["input_video_path"].endswith("photo.jpg")
+    assert body["config"]["narration_text"] == "Un texto cualquiera."
+    assert body["config"]["voice_option"] == "public_female"
+    assert "speaker_reference_wav" not in body["config"]
+
+
+def test_create_micro_video_project_requires_voice_file_when_voice_option_is_own(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "voice_option": "own",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_micro_video_project_with_own_voice_saves_speaker_reference(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "voice_option": "own",
+        },
+        files={
+            "file": ("photo.jpg", b"fake-image-bytes", "image/jpeg"),
+            "voice_file": ("voice.wav", b"fake-wav-bytes", "audio/wav"),
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["input_video_path"].endswith("photo.jpg")
+    assert body["config"]["speaker_reference_wav"].endswith("voice.wav")
+
+
+def test_download_micro_video_uses_generic_video_artifact(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    created = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    ).json()
+
+    output_dir = Path(created["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "micro_video.mp4").write_bytes(b"fake-mp4-bytes")
+
+    resp = client.get(f"/api/projects/{created['id']}/download/video", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.content == b"fake-mp4-bytes"

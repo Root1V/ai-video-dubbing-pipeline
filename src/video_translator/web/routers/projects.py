@@ -36,6 +36,8 @@ _TRANSCRIPT_TEXT_FILENAME = "transcript.txt"
 _SUMMARY_TEXT_FILENAME = "summary.txt"
 # Nombre fijo que escribe `SynthesizeTextUseCase` (servicio de TTS standalone).
 _SPEECH_AUDIO_FILENAME = "speech.wav"
+# El micro-video (servicio "micro_video") se descarga con el artefacto
+# generico "video" (ver el glob mas abajo), no necesita su propio nombre fijo.
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -70,15 +72,20 @@ def create_project(
     output_mode: str = Form(...),
     # Opcional solo para el servicio "tts": ahi el archivo es una voz de
     # referencia OPCIONAL, no el contenido principal (que es `text`). Para
-    # el resto de servicios sigue siendo obligatorio (se valida abajo).
+    # "micro_video" es la imagen (obligatoria). Para el resto de servicios
+    # sigue siendo obligatorio (se valida abajo).
     file: UploadFile | None = File(None),
+    # Solo para "micro_video" cuando voice_option es "own": la voz de
+    # referencia va aparte porque `file` ya esta ocupado por la imagen.
+    voice_file: UploadFile | None = File(None),
     # URL para importar el media en vez de subirlo (ver
     # web/services/media_import.py) -- mutuamente excluyente con `file` para
-    # los servicios que no son "tts" (validado abajo).
+    # los servicios que no son "tts"/"micro_video" (validado abajo).
     source_url: str | None = Form(None),
     text: str = Form(""),
-    # Solo para "tts": "public_female" (default, voz de locutora), "public_male"
-    # (voz de locutor), o "own" (usa `file` como voz de referencia).
+    # Para "tts"/"micro_video": "public_female" (default, voz de locutora),
+    # "public_male" (voz de locutor), o "own" (usa `file`/`voice_file` como
+    # voz de referencia, segun el servicio).
     voice_option: str = Form("public_female"),
     context_prompt: str = Form(""),
     tone: str | None = Form(None),
@@ -108,6 +115,7 @@ def create_project(
         )
 
     is_tts = service_type == "tts"
+    is_micro_video = service_type == "micro_video"
     if is_tts:
         if not text.strip():
             raise HTTPException(
@@ -118,6 +126,22 @@ def create_project(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="file es requerido cuando voice_option es 'own'.",
+            )
+    elif is_micro_video:
+        if not text.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="text es requerido para el servicio de micro-video.",
+            )
+        if file is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="file (la imagen) es requerido para el servicio de micro-video.",
+            )
+        if voice_option == "own" and voice_file is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="voice_file es requerido cuando voice_option es 'own'.",
             )
     else:
         if file is None and not source_url:
@@ -154,8 +178,8 @@ def create_project(
         user_id=current_user.id,
         name=name,
         service_type=service_type,
-        source_type="url" if (not is_tts and source_url) else "upload",
-        source_url=source_url.strip() if (not is_tts and source_url) else None,
+        source_type="url" if (not is_tts and not is_micro_video and source_url) else "upload",
+        source_url=source_url.strip() if (not is_tts and not is_micro_video and source_url) else None,
         input_video_path="",  # se completa abajo (upload/texto) o en la tarea Celery (URL)
         output_dir=str(storage.output_dir_for(project_id, settings)),
         output_mode=output_mode,
@@ -171,6 +195,16 @@ def create_project(
         project.config = {**project.config, "voice_option": voice_option}
         if voice_option == "own" and file is not None:
             voice_path = storage.save_upload(file, project.id, settings)
+            project.config = {**project.config, "speaker_reference_wav": str(voice_path)}
+    elif is_micro_video and file is not None:
+        # file (validado arriba) es la imagen -- el texto de narracion no
+        # tiene un "archivo principal" propio, va en config (mismo criterio
+        # que context_prompt: texto libre, sin limite de tamano relevante
+        # para este caso de uso).
+        project.input_video_path = str(storage.save_upload(file, project.id, settings))
+        project.config = {**project.config, "narration_text": text, "voice_option": voice_option}
+        if voice_option == "own" and voice_file is not None:
+            voice_path = storage.save_upload(voice_file, project.id, settings)
             project.config = {**project.config, "speaker_reference_wav": str(voice_path)}
     elif file is not None:
         project.input_video_path = str(storage.save_upload(file, project.id, settings))

@@ -261,3 +261,68 @@ def test_build_synthesize_use_case_and_request_own_voice_overrides_voice_option(
     _, request = project_mapper.build_synthesize_use_case_and_request(project)
 
     assert request.speaker_reference_wav == voice_path
+
+
+def _make_micro_video_project(
+    tmp_path: Path, narration_text: str = "Hola mundo.", **config_overrides: object
+) -> Project:
+    image_path = tmp_path / "photo.jpg"
+    image_path.write_bytes(b"fake-image-bytes")
+    config = {"target_lang": "es", "narration_text": narration_text, **config_overrides}
+    return Project(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        name="Proyecto de micro-video",
+        service_type=ServiceType.MICRO_VIDEO,
+        source_type=SourceType.UPLOAD,
+        input_video_path=str(image_path),
+        output_dir=str(tmp_path / "output"),
+        output_mode=OutputMode.SUBTITLES_ONLY.value,
+        config=config,
+        status=ProjectStatus.QUEUED,
+    )
+
+
+def test_build_micro_video_use_case_and_request_maps_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path, narration_text="Un texto cualquiera.", target_lang="en")
+
+    fake_use_case = MagicMock()
+    build_mock = MagicMock(return_value=fake_use_case)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", build_mock)
+
+    use_case, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert use_case is fake_use_case
+    assert request.image_path == Path(project.input_video_path)
+    assert request.text == "Un texto cualquiera."
+    assert request.output_dir == Path(project.output_dir)
+    assert request.output_dir.is_dir()
+    assert request.language == "en"
+    build_mock.assert_called_once()
+
+
+def test_build_micro_video_use_case_and_request_defaults_to_public_female_voice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.speaker_reference_wav == project_mapper.PUBLIC_VOICE_FEMALE_WAV
+
+
+def test_build_micro_video_use_case_and_request_own_voice_overrides_voice_option(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    voice_path = tmp_path / "voice.wav"
+    project = _make_micro_video_project(
+        tmp_path, voice_option="own", speaker_reference_wav=str(voice_path)
+    )
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.speaker_reference_wav == voice_path

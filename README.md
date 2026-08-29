@@ -248,6 +248,10 @@ the container anyway). On Mac everything runs natively, with `uv`
 
 ```bash
 brew install ffmpeg ollama
+# The standard ffmpeg formula has no libass, so it can't burn subtitles/captions
+# into a video (dubbing/subtitles "burn" mode, the micro-video service). If you
+# need that, install `ffmpeg-full` (keg-only) instead and point FFMPEG_BINARY/
+# FFPROBE_BINARY at its path -- see .env.example.
 
 git clone https://github.com/Root1V/ai-video-dubbing-pipeline.git
 cd ai-video-dubbing-pipeline

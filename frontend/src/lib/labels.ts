@@ -5,6 +5,7 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   subtitles: 'Subtítulos',
   transcription: 'Transcripción',
   tts: 'Voz y clonación',
+  micro_video: 'Micro-video',
 }
 
 export const OUTPUT_MODE_LABELS: Record<OutputMode, string> = {
@@ -33,6 +34,9 @@ export const STAGE_LABELS: Record<string, string> = {
   rendering_dubbed: 'Renderizado del video doblado',
   rendering_soft_subtitles: 'Adjuntando subtítulos',
   rendering_burn_subtitles: 'Incrustando subtítulos',
+  caption_writing: 'Generación de captions',
+  image_to_video: 'Renderizado del video (Ken Burns)',
+  caption_burn: 'Incrustando captions',
 }
 
 /** Falls back to a humanized version of the raw stage name (e.g.

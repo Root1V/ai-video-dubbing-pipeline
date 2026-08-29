@@ -16,10 +16,10 @@ exactamente su propia duracion real como "hueco" (sin solapamiento ni recorte).
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from video_translator.application.interfaces import MediaProcessor, SpeechSynthesizer
+from video_translator.application.use_cases.text_chunking import split_into_chunks
 from video_translator.domain.exceptions import VideoTranslatorError
 from video_translator.domain.models import SynthesizeTextRequest, SynthesizeTextResult
 from video_translator.utils.logging_config import get_logger
@@ -61,7 +61,7 @@ class SynthesizeTextUseCase:
 
         speaker_wav = request.speaker_reference_wav or self._default_speaker_wav
 
-        chunks = _split_into_chunks(request.text, self._max_chunk_chars)
+        chunks = split_into_chunks(request.text, self._max_chunk_chars)
         segments: list[tuple[float, Path, float]] = []
         cursor = 0.0
         with timings.stage("text_to_speech", num_chunks=len(chunks)):
@@ -101,26 +101,3 @@ class SynthesizeTextUseCase:
     def _validate_request(request: SynthesizeTextRequest) -> None:
         if not request.text.strip():
             raise VideoTranslatorError("El texto a sintetizar esta vacio.")
-
-
-def _split_into_chunks(text: str, max_chars: int) -> list[str]:
-    """Divide el texto en fragmentos por oracion, agrupando de forma codiciosa
-    hasta `max_chars`. No es una tokenizacion linguistica precisa -- solo
-    evita mandarle al modelo un texto arbitrariamente largo en una sola
-    pasada."""
-    sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
-    if not sentences:
-        return [text.strip()]
-
-    chunks: list[str] = []
-    current = ""
-    for sentence in sentences:
-        candidate = f"{current} {sentence}".strip() if current else sentence
-        if len(candidate) > max_chars and current:
-            chunks.append(current)
-            current = sentence
-        else:
-            current = candidate
-    if current:
-        chunks.append(current)
-    return chunks

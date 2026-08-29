@@ -126,12 +126,14 @@ export function ProjectDetailPage() {
   const stages = normalizeStages(status?.stages ?? null)
   const isTranscription = project.service_type === 'transcription'
   const isTts = project.service_type === 'tts'
-  // TTS standalone recibe texto, nunca una URL -- solo dubbing/subtitles/
-  // transcription pueden haberse creado desde una URL (ver MediaSourceInput).
-  const hasSourceUrl = !isTts && Boolean(project.source_url)
-  // La transcripcion y el TTS standalone no traducen ni renderizan video --
-  // su plan de etapas es fijo (ver TranscribeMediaUseCase/SynthesizeTextUseCase),
-  // no depende de output_mode.
+  const isMicroVideo = project.service_type === 'micro_video'
+  // TTS y micro-video standalone reciben texto/imagen, nunca una URL -- solo
+  // dubbing/subtitles/transcription pueden haberse creado desde una URL (ver
+  // MediaSourceInput).
+  const hasSourceUrl = !isTts && !isMicroVideo && Boolean(project.source_url)
+  // La transcripcion, el TTS y el micro-video standalone no traducen ni
+  // dependen de output_mode -- su plan de etapas es fijo (ver
+  // TranscribeMediaUseCase/SynthesizeTextUseCase/GenerateMicroVideoUseCase).
   const includesSummary = isTranscription && Boolean(project.config.include_summary)
   const expectedStageNames = isTranscription
     ? [
@@ -142,10 +144,15 @@ export function ProjectDetailPage() {
       ]
     : isTts
       ? ['text_to_speech', 'audio_concatenation']
-      : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize), hasSourceUrl)
+      : isMicroVideo
+        ? ['text_to_speech', 'audio_concatenation', 'caption_writing', 'image_to_video', 'caption_burn']
+        : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize), hasSourceUrl)
   // Solo doblaje/subtitulos con output_mode distinto de "subtitles_only"
   // producen un video real -- subtitles_only nunca renderiza (solo .srt).
-  const hasVideoOutput = !isTranscription && !isTts && project.output_mode !== 'subtitles_only'
+  // Micro-video siempre produce un video (su propio output_mode es un valor
+  // dummy, no tiene significado para este servicio).
+  const hasVideoOutput =
+    isMicroVideo || (!isTranscription && !isTts && project.output_mode !== 'subtitles_only')
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -166,7 +173,7 @@ export function ProjectDetailPage() {
             {/* output_mode es un valor interno sin significado para los servicios
                 sin video (siempre "subtitles_only", solo para satisfacer la columna
                 NOT NULL) -- mostrarlo confundiria mas de lo que aclara. */}
-            {!isTranscription && !isTts && (
+            {!isTranscription && !isTts && !isMicroVideo && (
               <Badge variant="outline">{OUTPUT_MODE_LABELS[project.output_mode]}</Badge>
             )}
             <Badge variant={PROJECT_STATUS_BADGE_VARIANT[dbStatus]}>
@@ -274,6 +281,16 @@ export function ProjectDetailPage() {
                 >
                   <Download className="h-4 w-4" />
                   Audio (WAV)
+                </Button>
+              ) : isMicroVideo ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload('video')}
+                  disabled={downloading === 'video'}
+                >
+                  <Download className="h-4 w-4" />
+                  Video
                 </Button>
               ) : (
                 <>

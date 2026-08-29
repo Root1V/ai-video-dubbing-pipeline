@@ -144,6 +144,46 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=MuxingError)
         return output_path
 
+    def render_image_video(
+        self,
+        image_path: Path,
+        audio_path: Path,
+        output_path: Path,
+        duration_seconds: float,
+        width: int = 1080,
+        height: int = 1920,
+    ) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fps = 30
+        total_frames = max(1, round(duration_seconds * fps))
+        # 1) scale+crop a exactamente widthxheight (cubre el encuadre, recorta
+        #    el sobrante centrado) para que la imagen de entrada -- de
+        #    cualquier orientacion/aspecto -- no se deforme. 2) zoompan sobre
+        #    ese frame ya normalizado: como su propio iw:ih coincide con
+        #    width:height, el zoom/crop interno no distorsiona tampoco.
+        vf = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},"
+            f"zoompan=z='min(zoom+0.0008,1.3)':d={total_frames}:"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},"
+            f"format=yuv420p"
+        )
+        cmd = [
+            self._ffmpeg, "-y",
+            "-loop", "1",
+            "-i", str(image_path),
+            "-i", str(audio_path),
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-tune", "stillimage",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-shortest",
+            str(output_path),
+        ]
+        self._run(cmd, error_cls=MuxingError)
+        return output_path
+
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
         increment_counter("ffmpeg.calls")

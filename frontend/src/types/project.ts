@@ -1,4 +1,4 @@
-export type ServiceType = 'dubbing' | 'subtitles' | 'transcription' | 'tts'
+export type ServiceType = 'dubbing' | 'subtitles' | 'transcription' | 'tts' | 'micro_video'
 
 export type OutputMode =
   | 'subtitles_only'
@@ -153,6 +153,18 @@ export interface CreateTtsProjectInput {
   name: string
   text: string
   /** Idioma en el que se sintetiza el audio. */
+  target_lang?: string
+  /** "public_female" (voz de locutora, por defecto) / "public_male" (voz de
+   * locutor) / "own" (usa `voiceFile` como voz de referencia). */
+  voice_option: TtsVoiceOption
+  voiceFile?: File
+}
+
+export interface CreateMicroVideoProjectInput {
+  name: string
+  text: string
+  imageFile: File
+  /** Idioma en el que se narra el texto. */
   target_lang?: string
   /** "public_female" (voz de locutora, por defecto) / "public_male" (voz de
    * locutor) / "own" (usa `voiceFile` como voz de referencia). */

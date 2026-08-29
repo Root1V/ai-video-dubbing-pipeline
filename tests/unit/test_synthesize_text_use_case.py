@@ -7,10 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from video_translator.application.use_cases.synthesize_text import (
-    SynthesizeTextUseCase,
-    _split_into_chunks,
-)
+from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
+from video_translator.application.use_cases.text_chunking import split_into_chunks
 from video_translator.domain.exceptions import VideoTranslatorError
 from video_translator.domain.models import SynthesizeTextRequest
 
@@ -38,6 +36,12 @@ class FakeMediaProcessor:
 
     def replace_audio_track(
         self, video_path: Path, new_audio_path: Path, output_path: Path, keep_original_as_secondary: bool = True
+    ) -> Path:
+        raise NotImplementedError("no usado por SynthesizeTextUseCase")
+
+    def render_image_video(
+        self, image_path: Path, audio_path: Path, output_path: Path, duration_seconds: float,
+        width: int = 1080, height: int = 1920,
     ) -> Path:
         raise NotImplementedError("no usado por SynthesizeTextUseCase")
 
@@ -144,12 +148,12 @@ def test_execute_rejects_empty_text(tmp_path: Path):
 
 def test_split_into_chunks_groups_sentences_greedily():
     text = "Uno. Dos. Tres. Cuatro."
-    chunks = _split_into_chunks(text, max_chars=8)
+    chunks = split_into_chunks(text, max_chars=8)
 
     assert chunks == ["Uno.", "Dos.", "Tres.", "Cuatro."]
 
 
 def test_split_into_chunks_returns_whole_text_when_it_fits():
-    chunks = _split_into_chunks("Una sola oracion corta.", max_chars=500)
+    chunks = split_into_chunks("Una sola oracion corta.", max_chars=500)
 
     assert chunks == ["Una sola oracion corta."]

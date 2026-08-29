@@ -21,6 +21,7 @@ from video_translator.application.interfaces import (
     Transcriber,
     Translator,
 )
+from video_translator.application.use_cases.generate_micro_video import GenerateMicroVideoUseCase
 from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
 from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
@@ -269,6 +270,34 @@ def build_synthesize_text_use_case(settings: Settings) -> SynthesizeTextUseCase:
     return SynthesizeTextUseCase(
         speech_synthesizer=speech_synthesizer,
         media_processor=media_processor,
+        default_speaker_reference_wav=DEFAULT_TTS_VOICE_WAV,
+        effective_config=effective_config,
+    )
+
+
+def build_generate_micro_video_use_case(settings: Settings) -> GenerateMicroVideoUseCase:
+    """Construye el caso de uso de micro-video (imagen + texto -> video
+    vertical narrado con captions, ver RM-14). Mismo criterio de un solo
+    worker de TTS que `build_synthesize_text_use_case` -- el texto de un
+    micro-video social es corto, no amerita procesos paralelos."""
+    media_processor = FFmpegMediaProcessor(
+        ffmpeg_binary=settings.ffmpeg_binary,
+        ffprobe_binary=settings.ffprobe_binary,
+        audio_sample_rate=settings.audio_sample_rate,
+    )
+    notes: dict = {}
+    speech_synthesizer = _synthesizer_factory(settings, num_workers=1, notes=notes)()
+    subtitle_writer = SrtSubtitleWriter()
+
+    effective_config: dict = {
+        "tts_backend": settings.tts_backend,
+        "tts_device_forced_cpu": notes.get("tts_device_forced_cpu", False),
+    }
+
+    return GenerateMicroVideoUseCase(
+        speech_synthesizer=speech_synthesizer,
+        media_processor=media_processor,
+        subtitle_writer=subtitle_writer,
         default_speaker_reference_wav=DEFAULT_TTS_VOICE_WAV,
         effective_config=effective_config,
     )

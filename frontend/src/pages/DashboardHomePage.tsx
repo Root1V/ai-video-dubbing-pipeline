@@ -4,6 +4,7 @@ import {
   ArrowRight,
   AudioLines,
   Captions,
+  Clapperboard,
   Clock,
   FileText,
   Globe,
@@ -74,6 +75,12 @@ const services = [
     title: 'Voz y Clonación',
     description: 'Convierte texto en audio narrado, con una voz pública o clonando la tuya.',
     icon: Volume2,
+  },
+  {
+    to: '/micro-video/new',
+    title: 'Micro-Video',
+    description: 'Sube una imagen y un texto: genera un video vertical narrado para redes sociales.',
+    icon: Clapperboard,
   },
 ]
 

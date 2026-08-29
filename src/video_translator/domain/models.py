@@ -161,3 +161,25 @@ class SynthesizeTextResult:
     audio_path: Path
     duration_seconds: float
     timings: dict = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class GenerateMicroVideoRequest:
+    """Solicitud de generacion de un micro-video (imagen + texto -> video
+    vertical narrado con captions), entrada principal de
+    ``GenerateMicroVideoUseCase``."""
+
+    image_path: Path
+    text: str
+    output_dir: Path
+    language: str = "es"
+    speaker_reference_wav: Path | None = None  # None = usa la voz por defecto
+
+
+@dataclass(slots=True)
+class GenerateMicroVideoResult:
+    """Resultado de una generacion de micro-video."""
+
+    output_video: Path
+    duration_seconds: float
+    timings: dict = field(default_factory=dict)

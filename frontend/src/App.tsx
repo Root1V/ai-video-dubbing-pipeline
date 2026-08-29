@@ -13,6 +13,7 @@ import { NewDubbingProjectPage } from './pages/NewDubbingProjectPage'
 import { NewSubtitlesProjectPage } from './pages/NewSubtitlesProjectPage'
 import { NewTranscriptionProjectPage } from './pages/NewTranscriptionProjectPage'
 import { NewTtsProjectPage } from './pages/NewTtsProjectPage'
+import { NewMicroVideoProjectPage } from './pages/NewMicroVideoProjectPage'
 import { UsersListPage } from './pages/UsersListPage'
 
 const queryClient = new QueryClient({
@@ -83,6 +84,14 @@ export default function App() {
                 element={
                   <ProtectedPage>
                     <NewTtsProjectPage />
+                  </ProtectedPage>
+                }
+              />
+              <Route
+                path="/micro-video/new"
+                element={
+                  <ProtectedPage>
+                    <NewMicroVideoProjectPage />
                   </ProtectedPage>
                 }
               />

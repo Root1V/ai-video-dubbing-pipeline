@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+from video_translator.application.use_cases.generate_micro_video import GenerateMicroVideoUseCase
 from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
 from video_translator.application.use_cases.transcribe_media import TranscribeMediaUseCase
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
@@ -19,11 +20,13 @@ from video_translator.config import load_settings
 from video_translator.container import (
     PUBLIC_VOICE_FEMALE_WAV,
     PUBLIC_VOICE_MALE_WAV,
+    build_generate_micro_video_use_case,
     build_synthesize_text_use_case,
     build_transcribe_media_use_case,
     build_translate_video_use_case,
 )
 from video_translator.domain.models import (
+    GenerateMicroVideoRequest,
     OutputMode,
     SynthesizeTextRequest,
     TranscribeMediaRequest,
@@ -156,4 +159,39 @@ def build_synthesize_use_case_and_request(
         speaker_reference_wav=reference_wav,
     )
     use_case = build_synthesize_text_use_case(settings)
+    return use_case, request
+
+
+def build_micro_video_use_case_and_request(
+    project: Project,
+) -> tuple[GenerateMicroVideoUseCase, GenerateMicroVideoRequest]:
+    """Version delgada para el servicio de micro-video (`ServiceType.MICRO_VIDEO`):
+    a diferencia de TTS, aca `input_video_path` es la imagen subida (el
+    "archivo de entrada" del proyecto), no el texto -- el texto de narracion
+    vive en `config['narration_text']` (ver `routers/projects.py::create_project`).
+    La voz de referencia se resuelve igual que en TTS."""
+    settings = load_settings()
+
+    output_dir = Path(project.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "logs" / f"run_{datetime.now().astimezone():%Y%m%d_%H%M%S}.log"
+    configure_logging(level=settings.log_level, json_logs=settings.log_json, log_file=log_file)
+
+    config = project.config or {}
+    speaker_reference_wav = config.get("speaker_reference_wav")
+    voice_option = config.get("voice_option", "public_female")
+    reference_wav = (
+        Path(speaker_reference_wav)
+        if speaker_reference_wav
+        else _PUBLIC_VOICE_PATHS.get(voice_option, PUBLIC_VOICE_FEMALE_WAV)
+    )
+
+    request = GenerateMicroVideoRequest(
+        image_path=Path(project.input_video_path),
+        text=config.get("narration_text", ""),
+        output_dir=output_dir,
+        language=config.get("target_lang", "es"),
+        speaker_reference_wav=reference_wav,
+    )
+    use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

@@ -57,6 +57,20 @@ class MediaProcessor(Protocol):
         """Reemplaza (o agrega como segunda pista) el audio del video con el doblaje."""
         ...
 
+    def render_image_video(
+        self,
+        image_path: Path,
+        audio_path: Path,
+        output_path: Path,
+        duration_seconds: float,
+        width: int = 1080,
+        height: int = 1920,
+    ) -> Path:
+        """Renderiza un video vertical a partir de una imagen estatica (efecto
+        Ken Burns: zoom lento y continuo) con `audio_path` como pista de
+        audio, con una duracion igual a `duration_seconds`."""
+        ...
+
 
 class Transcriber(Protocol):
     """Motor de Speech-to-Text (implementado con faster-whisper)."""
