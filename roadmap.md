@@ -17,7 +17,7 @@
 | RM-11 | Documento → audio narrado | todo | Resumir un documento y narrarlo con TTS. |
 | RM-12 | API para desarrolladores | todo | Auth por API key + rate limiting para uso externo. |
 | RM-13 | Workspace multi-usuario + facturación | todo | Equipos con varios usuarios y billing. |
-| RM-14 | Imagen+texto → micro-video social | todo | Generar shorts/reels desde imágenes y texto de venta. |
+| RM-14 | Imagen+texto → micro-video social | done | Video vertical narrado (Ken Burns + captions) desde una imagen y un texto. |
 | RM-15 | Gestión de usuarios | done | Sección en el menú para administrar usuarios y su rol. |
 | RM-16 | Columnas de ejecución en la tabla de proyectos | done | Agregar ID de ejecución y duración total al listado. |
 | RM-17 | Selector de fuente de media: orden y validación de URL | done | YouTube primero; validar URL antes de habilitar el envío si falla el preview. |
@@ -25,3 +25,4 @@
 | RM-19 | Modo oscuro | done | Detecta claro/oscuro por la hora del sistema; botón para alternar a demanda. |
 | RM-20 | Auditoría de diseño responsive | todo | Revisar y corregir el diseño para tablet/celular. |
 | RM-21 | Mensajes de error legibles del pipeline | todo | Traducir el error técnico de una etapa fallida a una causa probable entendible. |
+| RM-22 | Micro-video con video generado por IA | todo | Alternativa a RM-14 con un modelo de video generativo en vez de composición ffmpeg. |

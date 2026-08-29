@@ -63,8 +63,13 @@ Commit: `5d02d64`
 **Scope:** se revisa solo si hay tracción real con un primer cliente B2B — contradice la restricción vigente de "sin facturación".
 
 ## RM-14 — Imagen+texto → micro-video social
-**Why:** idea de negocio B2C (shorts/reels desde imágenes + texto de venta) fuera de la arquitectura actual.
-**Scope:** no existe ningún puerto de generación de imagen/video hoy; requiere investigación de factibilidad propia (modelo, costo de cómputo, formatos) antes de poder planearse.
+**Why:** idea de negocio B2C (shorts/reels desde imágenes + texto de venta); se optó por composición con ffmpeg en vez de un modelo de video generativo (ver RM-22) por velocidad de entrega y cero dependencia de GPU/costo de inferencia.
+**Scope:** nuevo servicio `micro_video`: sube una imagen + escribe un texto → video vertical (9:16) con efecto Ken Burns (zoom lento) sobre la imagen, narración del texto vía TTS (reusa la voz pública o clonada de RM-02) y captions incrustados sincronizados con la narración. Sin modelo de generación de imagen/video nuevo — todo se arma con `MediaProcessor` (ffmpeg) + `SpeechSynthesizer` ya existentes. Requiere `ffmpeg-full` (libass) para incrustar captions — ver README/.env.example.
+Commit: `200594e`
+
+## RM-22 — Micro-video con video generado por IA
+**Why:** alternativa a RM-14 que anima la imagen con un modelo de video generativo real en vez de un simple zoom, para un resultado visualmente más rico.
+**Scope:** sin diseñar todavía — requiere investigación de factibilidad propia (qué modelo usar, local vs. API paga, costo de cómputo/GPU, tiempos de generación) antes de poder planearse.
 
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
