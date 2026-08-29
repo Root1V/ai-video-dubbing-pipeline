@@ -3,6 +3,8 @@ que test_synthesize_text_use_case.py)."""
 
 from __future__ import annotations
 
+import re
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -19,7 +21,7 @@ class FakeMediaProcessor:
 
     def __init__(self):
         self.render_calls: list[dict] = []
-        self.burn_calls: list[dict] = []
+        self.caption_calls: list[dict] = []
 
     def get_duration_seconds(self, media_path: Path) -> float:
         return 1.0
@@ -31,10 +33,7 @@ class FakeMediaProcessor:
         raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
 
     def burn_subtitles(self, video_path: Path, srt_path: Path, output_path: Path) -> Path:
-        self.burn_calls.append({"video_path": video_path, "srt_path": srt_path})
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(b"fake-final-video")
-        return output_path
+        raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
 
     def attach_soft_subtitles(self, video_path: Path, srt_path: Path, output_path: Path, lang_code: str = "spa") -> Path:
         raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
@@ -61,6 +60,12 @@ class FakeMediaProcessor:
         output_path.write_bytes(b"fake-background-video")
         return output_path
 
+    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
+        self.caption_calls.append({"video_path": video_path, "ass_path": ass_path})
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake-final-video")
+        return output_path
+
 
 class FakeSpeechSynthesizer:
     def __init__(self):
@@ -80,25 +85,13 @@ class FakeSpeechSynthesizer:
         return output_path
 
 
-class FakeSubtitleWriter:
-    def __init__(self):
-        self.written_segments: list = []
-
-    def write(self, segments, output_path, use_translation=True):
-        self.written_segments = list(segments)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text("fake-srt", encoding="utf-8")
-        return output_path
-
-
 DEFAULT_VOICE = Path("/fake/default_voice.wav")
 
 
-def _make_use_case(media=None, synthesizer=None, subtitles=None, max_chunk_chars=500):
+def _make_use_case(media=None, synthesizer=None, max_chunk_chars=500):
     return GenerateMicroVideoUseCase(
         speech_synthesizer=synthesizer or FakeSpeechSynthesizer(),
         media_processor=media or FakeMediaProcessor(),
-        subtitle_writer=subtitles or FakeSubtitleWriter(),
         default_speaker_reference_wav=DEFAULT_VOICE,
         max_chunk_chars=max_chunk_chars,
     )
@@ -108,6 +101,32 @@ def _make_image(tmp_path: Path) -> Path:
     image_path = tmp_path / "photo.jpg"
     image_path.write_bytes(b"fake-image-bytes")
     return image_path
+
+
+_DIALOGUE_RE = re.compile(
+    r"^Dialogue: \d+,(?P<start>[\d:.]+),(?P<end>[\d:.]+),Default,,0,0,0,,(?P<text>.*)$"
+)
+
+
+def _ass_timestamp_to_seconds(value: str) -> float:
+    hours, minutes, rest = value.split(":")
+    secs, centis = rest.split(".")
+    return int(hours) * 3600 + int(minutes) * 60 + int(secs) + int(centis) / 100
+
+
+def _read_ass_dialogues(ass_path: Path) -> list[tuple[float, float, str]]:
+    dialogues = []
+    for line in ass_path.read_text(encoding="utf-8").splitlines():
+        match = _DIALOGUE_RE.match(line)
+        if match:
+            dialogues.append(
+                (
+                    _ass_timestamp_to_seconds(match.group("start")),
+                    _ass_timestamp_to_seconds(match.group("end")),
+                    match.group("text"),
+                )
+            )
+    return dialogues
 
 
 def test_execute_produces_video_using_default_voice(tmp_path: Path):
@@ -123,8 +142,8 @@ def test_execute_produces_video_using_default_voice(tmp_path: Path):
     assert result.output_video.exists()
     assert synthesizer.calls[0]["speaker_reference_wav"] == DEFAULT_VOICE
     assert media.render_calls[0]["image_path"] == image_path
-    # burn_subtitles debe recibir el video de fondo que produjo render_image_video.
-    assert media.burn_calls[0]["video_path"].name == "background.mp4"
+    # render_ass_captions debe recibir el video de fondo que produjo render_image_video.
+    assert media.caption_calls[0]["video_path"].name == "background.mp4"
 
 
 def test_execute_uses_own_speaker_reference_when_provided(tmp_path: Path):
@@ -141,21 +160,66 @@ def test_execute_uses_own_speaker_reference_when_provided(tmp_path: Path):
     assert synthesizer.calls[0]["speaker_reference_wav"] == own_voice
 
 
+def test_execute_writes_ass_captions_with_video_resolution(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(image_path=image_path, text="Hola.", output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    ass_path = media.caption_calls[0]["ass_path"]
+    content = ass_path.read_text(encoding="utf-8")
+    # PlayResX/PlayResY deben coincidir con el video real -- sin esto libass
+    # reescala el font (bug original: el texto cubria toda la pantalla).
+    assert "PlayResX: 1080" in content
+    assert "PlayResY: 1920" in content
+
+
 def test_execute_writes_captions_matching_narration_chunks(tmp_path: Path):
-    subtitles = FakeSubtitleWriter()
-    use_case = _make_use_case(subtitles=subtitles, max_chunk_chars=20)
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media, max_chunk_chars=20)
     image_path = _make_image(tmp_path)
     long_text = "Primera oracion corta. Segunda oracion tambien corta. Tercera oracion mas."
     request = GenerateMicroVideoRequest(image_path=image_path, text=long_text, output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
-    assert len(subtitles.written_segments) > 1
+    dialogues = _read_ass_dialogues(media.caption_calls[0]["ass_path"])
+    assert len(dialogues) > 1
     # Los segmentos de captions no deben solaparse ni dejar huecos (cada uno
     # dura 1.0s segun FakeMediaProcessor).
-    for i, seg in enumerate(subtitles.written_segments):
-        assert seg.start == pytest.approx(float(i))
-        assert seg.end == pytest.approx(float(i) + 1.0)
+    for i, (start, end, _text) in enumerate(dialogues):
+        assert start == pytest.approx(float(i), abs=0.01)
+        assert end == pytest.approx(float(i) + 1.0, abs=0.01)
+
+
+def test_execute_splits_a_single_narration_chunk_into_several_short_captions(tmp_path: Path):
+    # max_chunk_chars grande -> todo el texto entra en UN solo fragmento de
+    # TTS (una sola llamada al sintetizador), pero el texto es mas largo que
+    # CAPTION_MAX_CHARS: debe verse igual dividido en varios captions cortos,
+    # no como un unico cartel con todo el texto durante los 3s enteros.
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media, max_chunk_chars=500)
+    image_path = _make_image(tmp_path)
+    long_text = (
+        "Esta es una oracion bastante larga que deberia partirse en varios "
+        "captions cortos en vez de mostrarse entera de una sola vez."
+    )
+    request = GenerateMicroVideoRequest(image_path=image_path, text=long_text, output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    dialogues = _read_ass_dialogues(media.caption_calls[0]["ass_path"])
+    assert len(dialogues) > 1
+    for _start, _end, text in dialogues:
+        assert len(text) <= 50
+    # Deben cubrir en fila la duracion total del fragmento de TTS (1.0s segun
+    # FakeMediaProcessor), sin solaparse ni dejar huecos.
+    assert dialogues[0][0] == pytest.approx(0.0, abs=0.01)
+    assert dialogues[-1][1] == pytest.approx(1.0, abs=0.01)
+    for prev, nxt in pairwise(dialogues):
+        assert prev[1] == pytest.approx(nxt[0], abs=0.01)
 
 
 def test_execute_renders_at_vertical_resolution(tmp_path: Path):

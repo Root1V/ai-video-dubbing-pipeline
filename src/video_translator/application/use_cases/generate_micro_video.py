@@ -13,11 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from video_translator.application.interfaces import (
-    MediaProcessor,
-    SpeechSynthesizer,
-    SubtitleWriter,
-)
+from video_translator.application.interfaces import MediaProcessor, SpeechSynthesizer
 from video_translator.application.use_cases.text_chunking import split_into_chunks
 from video_translator.domain.exceptions import InvalidVideoFileError, VideoTranslatorError
 from video_translator.domain.models import (
@@ -34,6 +30,18 @@ DEFAULT_MAX_CHUNK_CHARS = 500
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
+# Los fragmentos de TTS (hasta DEFAULT_MAX_CHUNK_CHARS) son del tamano
+# correcto para sintetizar, pero un caption con cientos de caracteres
+# aparece como un bloque estatico que cubre buena parte de la pantalla en
+# vez de acompañar el habla. Los captions se generan aparte, mas cortos,
+# repartiendo la duracion real de cada fragmento entre sus propios captions
+# (ver _build_caption_segments).
+CAPTION_MAX_CHARS = 50
+# Estilo de los captions (ver _write_ass_captions): Alignment=2 (centrado,
+# abajo), BorderStyle=1 (contorno, sin caja solida) para que se lea sobre
+# cualquier fondo.
+CAPTION_FONT_SIZE = 52
+CAPTION_MARGIN_V = 160
 
 
 class GenerateMicroVideoUseCase:
@@ -41,14 +49,12 @@ class GenerateMicroVideoUseCase:
         self,
         speech_synthesizer: SpeechSynthesizer,
         media_processor: MediaProcessor,
-        subtitle_writer: SubtitleWriter,
         default_speaker_reference_wav: Path,
         max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
         effective_config: dict | None = None,
     ) -> None:
         self._synthesizer = speech_synthesizer
         self._media = media_processor
-        self._subtitles = subtitle_writer
         self._default_speaker_wav = default_speaker_reference_wav
         self._max_chunk_chars = max_chunk_chars
         self._effective_config = dict(effective_config) if effective_config else {}
@@ -91,19 +97,12 @@ class GenerateMicroVideoUseCase:
         with timings.stage("audio_concatenation"):
             self._synthesizer.concatenate_segments(segments, cursor, narration_path)
 
-        caption_segments = [
-            TranslatedSegment(
-                id=i,
-                start=start,
-                end=start + duration,
-                source_text=chunk_text,
-                translated_text=chunk_text,
-            )
-            for i, (chunk_text, (start, _path, duration)) in enumerate(zip(chunks, segments))
-        ]
-        captions_path = workdir / "captions.srt"
+        caption_segments = _build_caption_segments(
+            [(chunk_text, start, duration) for chunk_text, (start, _path, duration) in zip(chunks, segments)]
+        )
+        captions_path = workdir / "captions.ass"
         with timings.stage("caption_writing"):
-            self._subtitles.write(caption_segments, captions_path, use_translation=True)
+            _write_ass_captions(caption_segments, captions_path, VIDEO_WIDTH, VIDEO_HEIGHT)
 
         background_path = workdir / "background.mp4"
         with timings.stage("image_to_video"):
@@ -118,7 +117,7 @@ class GenerateMicroVideoUseCase:
 
         output_video = request.output_dir / "micro_video.mp4"
         with timings.stage("caption_burn"):
-            self._media.burn_subtitles(background_path, captions_path, output_video)
+            self._media.render_ass_captions(background_path, captions_path, output_video)
 
         timings.set_outputs(video_bytes=output_video.stat().st_size)
         timings.write_report(report_path, final=True)
@@ -145,3 +144,112 @@ class GenerateMicroVideoUseCase:
                 f"Extension de imagen no soportada '{request.image_path.suffix}'. "
                 f"Soportadas: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
             )
+
+
+def _build_caption_segments(chunks_with_timing: list[tuple[str, float, float]]) -> list[TranslatedSegment]:
+    """Convierte los fragmentos de TTS (texto, inicio, duracion) en captions
+    mas cortos y con mas movimiento: cada fragmento se vuelve a partir en
+    piezas de hasta CAPTION_MAX_CHARS, repartiendo la duracion real del
+    fragmento entre sus piezas en proporcion a su cantidad de caracteres.
+
+    No hay timestamps por palabra del motor de TTS -- esto es una
+    aproximacion (asume ritmo de habla uniforme dentro de un mismo
+    fragmento), pero alcanza para que los captions vayan apareciendo y
+    desapareciendo con el habla en vez de mostrar todo el texto de un
+    fragmento de golpe durante toda su duracion."""
+    segments: list[TranslatedSegment] = []
+    seg_id = 0
+    for chunk_text, chunk_start, chunk_duration in chunks_with_timing:
+        pieces = _split_caption_text(chunk_text, CAPTION_MAX_CHARS)
+        total_chars = sum(len(piece) for piece in pieces) or 1
+        cursor = chunk_start
+        for piece in pieces:
+            piece_duration = chunk_duration * (len(piece) / total_chars)
+            segments.append(
+                TranslatedSegment(
+                    id=seg_id,
+                    start=cursor,
+                    end=cursor + piece_duration,
+                    source_text=piece,
+                    translated_text=piece,
+                )
+            )
+            seg_id += 1
+            cursor += piece_duration
+    return segments
+
+
+def _split_caption_text(text: str, max_chars: int) -> list[str]:
+    """Como `split_into_chunks`, pero garantiza que ninguna pieza supere
+    `max_chars`: esa funcion solo parte ENTRE oraciones, asi que una sola
+    oracion larga (sin puntos internos) queda intacta aunque exceda el
+    limite -- para un caption eso es exactamente el bug que se busca evitar
+    (todo el texto en un solo cartel). Las piezas que aun excedan el limite
+    se vuelven a partir por palabra, de forma codiciosa."""
+    pieces: list[str] = []
+    for sentence_piece in split_into_chunks(text, max_chars):
+        if len(sentence_piece) <= max_chars:
+            pieces.append(sentence_piece)
+            continue
+        words = sentence_piece.split()
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip() if current else word
+            if len(candidate) > max_chars and current:
+                pieces.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            pieces.append(current)
+    return pieces
+
+
+def _write_ass_captions(segments: list[TranslatedSegment], output_path: Path, width: int, height: int) -> Path:
+    """Escribe los captions como .ass (no .srt) con un header propio que
+    declara `PlayResX`/`PlayResY` igual al tamano real del video: sin esto,
+    libass asume una resolucion de guion vieja (384x288) al renderizar un
+    .srt "plano" y reescala el font al tamano real del video, lo que en un
+    vertical de alta resolucion (1080x1920) termina en un texto gigante que
+    cubre la pantalla."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    style = (
+        f"Style: Default,Arial,{CAPTION_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
+        f"0,0,0,0,100,100,0,0,1,3,1,2,60,60,{CAPTION_MARGIN_V},1"
+    )
+    lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        f"PlayResX: {width}",
+        f"PlayResY: {height}",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        (
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
+            "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
+            "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"
+        ),
+        style,
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+    for seg in segments:
+        text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
+        lines.append(
+            f"Dialogue: 0,{_format_ass_timestamp(seg.start)},{_format_ass_timestamp(seg.end)},"
+            f"Default,,0,0,0,,{text}"
+        )
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def _format_ass_timestamp(seconds: float) -> str:
+    if seconds < 0:
+        seconds = 0.0
+    total_centis = round(seconds * 100)
+    hours, rem = divmod(total_centis, 360_000)
+    minutes, rem = divmod(rem, 6_000)
+    secs, centis = divmod(rem, 100)
+    return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"

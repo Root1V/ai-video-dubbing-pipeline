@@ -287,7 +287,6 @@ def build_generate_micro_video_use_case(settings: Settings) -> GenerateMicroVide
     )
     notes: dict = {}
     speech_synthesizer = _synthesizer_factory(settings, num_workers=1, notes=notes)()
-    subtitle_writer = SrtSubtitleWriter()
 
     effective_config: dict = {
         "tts_backend": settings.tts_backend,
@@ -297,7 +296,6 @@ def build_generate_micro_video_use_case(settings: Settings) -> GenerateMicroVide
     return GenerateMicroVideoUseCase(
         speech_synthesizer=speech_synthesizer,
         media_processor=media_processor,
-        subtitle_writer=subtitle_writer,
         default_speaker_reference_wav=DEFAULT_TTS_VOICE_WAV,
         effective_config=effective_config,
     )

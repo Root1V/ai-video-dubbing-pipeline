@@ -41,6 +41,18 @@ class MediaProcessor(Protocol):
         """Incrusta (quema) subtitulos en el video, no seleccionables/desactivables."""
         ...
 
+    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
+        """Incrusta captions ya formateados como .ass (con su propio header
+        de resolucion y estilo, ver GenerateMicroVideoUseCase) via el filtro
+        `ass` de ffmpeg -- a diferencia de `burn_subtitles` (pensado para un
+        .srt "plano"), aca el tamano de fuente y la posicion quedan
+        explicitos en el propio archivo, sin depender del reescalado
+        implicito que libass aplica a un .srt sin resolucion declarada
+        (asume 384x288 y lo escala al tamano real del video, lo que en un
+        vertical de 1080x1920 arma un font varias veces mas grande de lo
+        pedido)."""
+        ...
+
     def attach_soft_subtitles(
         self, video_path: Path, srt_path: Path, output_path: Path, lang_code: str = "spa"
     ) -> Path:

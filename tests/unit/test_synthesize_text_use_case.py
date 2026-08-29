@@ -45,6 +45,9 @@ class FakeMediaProcessor:
     ) -> Path:
         raise NotImplementedError("no usado por SynthesizeTextUseCase")
 
+    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
+        raise NotImplementedError("no usado por SynthesizeTextUseCase")
+
 
 class FakeSpeechSynthesizer:
     def __init__(self):

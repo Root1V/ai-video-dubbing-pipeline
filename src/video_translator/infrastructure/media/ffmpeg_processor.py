@@ -87,6 +87,19 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=MuxingError)
         return output_path
 
+    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        ass_filter_path = str(ass_path).replace("\\", "/").replace(":", "\\:")
+        cmd = [
+            self._ffmpeg, "-y",
+            "-i", str(video_path),
+            "-vf", f"ass='{ass_filter_path}'",
+            "-c:a", "copy",
+            str(output_path),
+        ]
+        self._run(cmd, error_cls=MuxingError)
+        return output_path
+
     def attach_soft_subtitles(
         self, video_path: Path, srt_path: Path, output_path: Path, lang_code: str = "spa"
     ) -> Path:
