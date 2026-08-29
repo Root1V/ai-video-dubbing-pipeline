@@ -11,6 +11,7 @@ la alternativa con video generado por IA (RM-22).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from video_translator.application.interfaces import MediaProcessor, SpeechSynthesizer
@@ -38,10 +39,39 @@ VIDEO_HEIGHT = 1920
 # (ver _build_caption_segments).
 CAPTION_MAX_CHARS = 50
 # Estilo de los captions (ver _write_ass_captions): Alignment=2 (centrado,
-# abajo), BorderStyle=1 (contorno, sin caja solida) para que se lea sobre
-# cualquier fondo.
+# abajo), BorderStyle=3 (caja solida) porque texto blanco con solo contorno
+# se pierde sobre una imagen de fondo clara/blanca -- una caja resaltada
+# (color elegible por el usuario) garantiza contraste sin importar el fondo.
 CAPTION_FONT_SIZE = 52
 CAPTION_MARGIN_V = 160
+# Opacidad de la caja de fondo (00 = opaco, FF = transparente en ASS).
+# Probado en la practica: libass (via el filtro "ass" de ffmpeg) NO mezcla
+# bien un BackColour semi-transparente con el video de fondo -- el resultado
+# sale oscuro/incorrecto sin importar el color elegido, sea cual sea el
+# alpha intermedio. Opaco evita ese problema y es igual de legible.
+CAPTION_BG_ALPHA_HEX = "00"
+
+# "**palabra**" se resalta en negrita en el caption (no se lee en voz alta:
+# ver _strip_bold_markers, usado para el texto que va al sintetizador).
+_BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _strip_bold_markers(text: str) -> str:
+    return _BOLD_PATTERN.sub(r"\1", text)
+
+
+def _convert_bold_to_ass(text: str) -> str:
+    return _BOLD_PATTERN.sub(r"{\\b1}\1{\\b0}", text)
+
+
+def _hex_to_ass_background(hex_color: str) -> str:
+    """Convierte "#RRGGBB" al formato de color de ASS: &HAABBGGRR (orden BGR,
+    alpha primero). Si el valor no es un hex valido, cae a negro solido."""
+    value = hex_color.lstrip("#")
+    if len(value) != 6 or any(c not in "0123456789abcdefABCDEF" for c in value):
+        value = "000000"
+    rr, gg, bb = value[0:2], value[2:4], value[4:6]
+    return f"&H{CAPTION_BG_ALPHA_HEX}{bb}{gg}{rr}"
 
 
 class GenerateMicroVideoUseCase:
@@ -82,7 +112,7 @@ class GenerateMicroVideoUseCase:
             for i, chunk_text in enumerate(chunks):
                 chunk_path = chunk_dir / f"chunk_{i:03d}.wav"
                 self._synthesizer.synthesize_segment(
-                    text=chunk_text,
+                    text=_strip_bold_markers(chunk_text),
                     output_path=chunk_path,
                     target_duration_seconds=0.0,
                     speaker_reference_wav=speaker_wav,
@@ -97,12 +127,32 @@ class GenerateMicroVideoUseCase:
         with timings.stage("audio_concatenation"):
             self._synthesizer.concatenate_segments(segments, cursor, narration_path)
 
+        # Duracion fija elegida por el usuario (ver RM-14): si la narracion
+        # se paso, se acelera el audio entero para que encaje (nunca se
+        # recorta -- ver MediaProcessor.fit_audio_to_duration) y los
+        # timestamps de los captions ya calculados se reescalan en la misma
+        # proporcion para seguir sincronizados. Si la narracion es mas corta,
+        # el video queda con la duracion fija igual (el Ken Burns sigue
+        # corriendo en silencio el tiempo restante, ver render_image_video).
+        video_duration = cursor
+        if request.target_duration_seconds is not None:
+            target = request.target_duration_seconds
+            if cursor > target > 0:
+                with timings.stage("narration_speedup", original_seconds=round(cursor, 2), target_seconds=target):
+                    self._media.fit_audio_to_duration(narration_path, target)
+                speed_factor = cursor / target
+                segments = [(start / speed_factor, path, duration / speed_factor) for start, path, duration in segments]
+                cursor = target
+            video_duration = target
+
         caption_segments = _build_caption_segments(
             [(chunk_text, start, duration) for chunk_text, (start, _path, duration) in zip(chunks, segments)]
         )
         captions_path = workdir / "captions.ass"
         with timings.stage("caption_writing"):
-            _write_ass_captions(caption_segments, captions_path, VIDEO_WIDTH, VIDEO_HEIGHT)
+            _write_ass_captions(
+                caption_segments, captions_path, VIDEO_WIDTH, VIDEO_HEIGHT, request.caption_bg_color
+            )
 
         background_path = workdir / "background.mp4"
         with timings.stage("image_to_video"):
@@ -110,7 +160,7 @@ class GenerateMicroVideoUseCase:
                 request.image_path,
                 narration_path,
                 background_path,
-                duration_seconds=cursor,
+                duration_seconds=video_duration,
                 width=VIDEO_WIDTH,
                 height=VIDEO_HEIGHT,
             )
@@ -129,7 +179,7 @@ class GenerateMicroVideoUseCase:
 
         return GenerateMicroVideoResult(
             output_video=output_video,
-            duration_seconds=cursor,
+            duration_seconds=video_duration,
             timings=timings.as_dict(),
         )
 
@@ -205,7 +255,9 @@ def _split_caption_text(text: str, max_chars: int) -> list[str]:
     return pieces
 
 
-def _write_ass_captions(segments: list[TranslatedSegment], output_path: Path, width: int, height: int) -> Path:
+def _write_ass_captions(
+    segments: list[TranslatedSegment], output_path: Path, width: int, height: int, bg_color: str
+) -> Path:
     """Escribe los captions como .ass (no .srt) con un header propio que
     declara `PlayResX`/`PlayResY` igual al tamano real del video: sin esto,
     libass asume una resolucion de guion vieja (384x288) al renderizar un
@@ -213,9 +265,15 @@ def _write_ass_captions(segments: list[TranslatedSegment], output_path: Path, wi
     vertical de alta resolucion (1080x1920) termina en un texto gigante que
     cubre la pantalla."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    back_colour = _hex_to_ass_background(bg_color)
+    # OutlineColour se fija IGUAL a BackColour a proposito: probado en la
+    # practica, en BorderStyle=3 (caja opaca) esta version de libass rellena
+    # la caja con OutlineColour, no con BackColour como sugiere la
+    # documentacion -- dejarlo en un color fijo (p.ej. negro) hacia que la
+    # caja saliera siempre negra sin importar el color elegido.
     style = (
-        f"Style: Default,Arial,{CAPTION_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
-        f"0,0,0,0,100,100,0,0,1,3,1,2,60,60,{CAPTION_MARGIN_V},1"
+        f"Style: Default,Arial,{CAPTION_FONT_SIZE},&H00FFFFFF,&H000000FF,{back_colour},{back_colour},"
+        f"0,0,0,0,100,100,0,0,3,2,0,2,60,60,{CAPTION_MARGIN_V},1"
     )
     lines = [
         "[Script Info]",
@@ -236,7 +294,11 @@ def _write_ass_captions(segments: list[TranslatedSegment], output_path: Path, wi
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
     for seg in segments:
-        text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
+        # Se despojan llaves literales ANTES de convertir "**negrita**" a
+        # tags ASS ("{\b1}...{\b0}") -- de lo contrario un usuario que
+        # escriba "{" a proposito podria inyectar sus propios overrides ASS.
+        raw_text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
+        text = _convert_bold_to_ass(raw_text)
         lines.append(
             f"Dialogue: 0,{_format_ass_timestamp(seg.start)},{_format_ass_timestamp(seg.end)},"
             f"Default,,0,0,0,,{text}"

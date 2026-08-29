@@ -326,3 +326,27 @@ def test_build_micro_video_use_case_and_request_own_voice_overrides_voice_option
     _, request = project_mapper.build_micro_video_use_case_and_request(project)
 
     assert request.speaker_reference_wav == voice_path
+
+
+def test_build_micro_video_use_case_and_request_defaults_duration_to_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.target_duration_seconds is None
+    assert request.caption_bg_color == "#000000"
+
+
+def test_build_micro_video_use_case_and_request_maps_duration_and_bg_color(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path, target_duration_seconds=30.0, caption_bg_color="#FF0000")
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.target_duration_seconds == 30.0
+    assert request.caption_bg_color == "#FF0000"

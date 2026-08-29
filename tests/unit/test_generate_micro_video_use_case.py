@@ -22,6 +22,7 @@ class FakeMediaProcessor:
     def __init__(self):
         self.render_calls: list[dict] = []
         self.caption_calls: list[dict] = []
+        self.fit_calls: list[dict] = []
 
     def get_duration_seconds(self, media_path: Path) -> float:
         return 1.0
@@ -65,6 +66,10 @@ class FakeMediaProcessor:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-final-video")
         return output_path
+
+    def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
+        self.fit_calls.append({"audio_path": audio_path, "target_seconds": target_seconds})
+        return True
 
 
 class FakeSpeechSynthesizer:
@@ -232,6 +237,80 @@ def test_execute_renders_at_vertical_resolution(tmp_path: Path):
 
     assert media.render_calls[0]["width"] == 1080
     assert media.render_calls[0]["height"] == 1920
+
+
+def test_execute_strips_bold_markers_from_narration_but_keeps_them_for_captions(tmp_path: Path):
+    media = FakeMediaProcessor()
+    synthesizer = FakeSpeechSynthesizer()
+    use_case = _make_use_case(media=media, synthesizer=synthesizer)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text="Esto **es lo mejor** de la industria.", output_dir=tmp_path / "out"
+    )
+
+    use_case.execute(request)
+
+    # El sintetizador no debe recibir los asteriscos (no se los debe "leer").
+    assert "**" not in synthesizer.calls[0]["text"]
+    assert "es lo mejor" in synthesizer.calls[0]["text"]
+    # El caption si debe convertir el texto resaltado a negrita ASS.
+    dialogues = _read_ass_dialogues(media.caption_calls[0]["ass_path"])
+    full_caption_text = " ".join(text for _s, _e, text in dialogues)
+    assert r"{\b1}es lo mejor{\b0}" in full_caption_text
+    assert "**" not in full_caption_text
+
+
+def test_execute_writes_chosen_caption_background_color(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text="Hola.", output_dir=tmp_path / "out", caption_bg_color="#FF0000"
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    # "#FF0000" (rojo) en ASS es BGR, opaco: &H000000FF.
+    assert "&H000000FF" in content
+
+
+def test_execute_holds_the_image_when_narration_is_shorter_than_target_duration(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)  # cada fragmento dura 1.0s (FakeMediaProcessor)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text="Hola.", output_dir=tmp_path / "out", target_duration_seconds=10.0
+    )
+
+    result = use_case.execute(request)
+
+    # El video dura la duracion elegida (10s), no se acelera el audio (mas
+    # corto que su hueco -- se mantiene la imagen el resto del tiempo).
+    assert result.duration_seconds == pytest.approx(10.0)
+    assert media.render_calls[0]["duration_seconds"] == pytest.approx(10.0)
+    assert media.fit_calls == []
+
+
+def test_execute_speeds_up_narration_when_longer_than_target_duration(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media, max_chunk_chars=20)  # fuerza varios fragmentos de 1.0s c/u
+    image_path = _make_image(tmp_path)
+    long_text = "Primera oracion corta. Segunda oracion tambien corta. Tercera oracion mas."
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text=long_text, output_dir=tmp_path / "out", target_duration_seconds=1.5
+    )
+
+    result = use_case.execute(request)
+
+    assert len(media.fit_calls) == 1
+    assert media.fit_calls[0]["target_seconds"] == pytest.approx(1.5)
+    assert result.duration_seconds == pytest.approx(1.5)
+    assert media.render_calls[0]["duration_seconds"] == pytest.approx(1.5)
+    # Los captions deben quedar reescalados dentro de la duracion final, no
+    # seguir apuntando a los timestamps originales (mas largos).
+    dialogues = _read_ass_dialogues(media.caption_calls[0]["ass_path"])
+    assert dialogues[-1][1] <= 1.5 + 0.05
 
 
 def test_execute_rejects_empty_text(tmp_path: Path):

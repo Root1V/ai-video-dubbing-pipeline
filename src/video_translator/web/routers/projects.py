@@ -98,6 +98,11 @@ def create_project(
     # Solo para "transcription": ademas de la transcripcion completa, genera
     # un resumen con los highlights vía LLM (ver TranscribeMediaUseCase).
     include_summary: bool = Form(False),
+    # Solo para "micro_video": None/omitido = el video dura lo que tarda la
+    # narracion; si se fija, GenerateMicroVideoUseCase acelera el audio si
+    # hace falta o mantiene la imagen el tiempo restante (ver docs/roadmap.md).
+    target_duration_seconds: float | None = Form(None),
+    caption_bg_color: str = Form("#000000"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
@@ -202,7 +207,13 @@ def create_project(
         # que context_prompt: texto libre, sin limite de tamano relevante
         # para este caso de uso).
         project.input_video_path = str(storage.save_upload(file, project.id, settings))
-        project.config = {**project.config, "narration_text": text, "voice_option": voice_option}
+        project.config = {
+            **project.config,
+            "narration_text": text,
+            "voice_option": voice_option,
+            "target_duration_seconds": target_duration_seconds,
+            "caption_bg_color": caption_bg_color,
+        }
         if voice_option == "own" and voice_file is not None:
             voice_path = storage.save_upload(voice_file, project.id, settings)
             project.config = {**project.config, "speaker_reference_wav": str(voice_path)}

@@ -186,12 +186,15 @@ def build_micro_video_use_case_and_request(
         else _PUBLIC_VOICE_PATHS.get(voice_option, PUBLIC_VOICE_FEMALE_WAV)
     )
 
+    target_duration = config.get("target_duration_seconds")
     request = GenerateMicroVideoRequest(
         image_path=Path(project.input_video_path),
         text=config.get("narration_text", ""),
         output_dir=output_dir,
         language=config.get("target_lang", "es"),
         speaker_reference_wav=reference_wav,
+        target_duration_seconds=float(target_duration) if target_duration else None,
+        caption_bg_color=config.get("caption_bg_color", "#000000"),
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

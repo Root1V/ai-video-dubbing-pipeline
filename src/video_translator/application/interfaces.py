@@ -83,6 +83,16 @@ class MediaProcessor(Protocol):
         audio, con una duracion igual a `duration_seconds`."""
         ...
 
+    def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
+        """Ajusta (acelera, sin techo de compresion) el audio EN EL LUGAR
+        para que quepa en `target_seconds` -- se prioriza preservar todo el
+        contenido hablado sobre que no suene acelerado. Ver
+        `infrastructure.synthesis.audio_mixing.fit_to_duration`, la misma
+        logica que ya usa el doblaje para encajar cada segmento en su hueco
+        de tiempo. Devuelve False si fallo (el archivo original queda
+        intacto)."""
+        ...
+
 
 class Transcriber(Protocol):
     """Motor de Speech-to-Text (implementado con faster-whisper)."""

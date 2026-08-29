@@ -607,6 +607,36 @@ def test_create_micro_video_project_saves_image_and_narration_text(
     assert body["config"]["narration_text"] == "Un texto cualquiera."
     assert body["config"]["voice_option"] == "public_female"
     assert "speaker_reference_wav" not in body["config"]
+    # Sin duracion fija elegida (comportamiento por defecto: dura lo que
+    # tarda la narracion) y color de fondo por defecto.
+    assert body["config"]["target_duration_seconds"] is None
+    assert body["config"]["caption_bg_color"] == "#000000"
+
+
+def test_create_micro_video_project_with_fixed_duration_and_bg_color(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "target_duration_seconds": "30",
+            "caption_bg_color": "#FF0000",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["config"]["target_duration_seconds"] == 30.0
+    assert body["config"]["caption_bg_color"] == "#FF0000"
 
 
 def test_create_micro_video_project_requires_voice_file_when_voice_option_is_own(

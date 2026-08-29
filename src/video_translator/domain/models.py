@@ -174,6 +174,11 @@ class GenerateMicroVideoRequest:
     output_dir: Path
     language: str = "es"
     speaker_reference_wav: Path | None = None  # None = usa la voz por defecto
+    # None = el video dura lo que tarda la narracion (comportamiento previo).
+    # Si se fija: narracion mas larga se acelera (atempo) para encajar;
+    # narracion mas corta deja el Ken Burns corriendo el tiempo restante.
+    target_duration_seconds: float | None = None
+    caption_bg_color: str = "#000000"  # hex "#RRGGBB", fondo resaltado del texto
 
 
 @dataclass(slots=True)

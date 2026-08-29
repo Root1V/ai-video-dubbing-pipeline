@@ -48,6 +48,9 @@ class FakeMediaProcessor:
     def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
         raise NotImplementedError("no usado por SynthesizeTextUseCase")
 
+    def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
+        raise NotImplementedError("no usado por SynthesizeTextUseCase")
+
 
 class FakeSpeechSynthesizer:
     def __init__(self):

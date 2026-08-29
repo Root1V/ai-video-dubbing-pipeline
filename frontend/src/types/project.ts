@@ -170,4 +170,10 @@ export interface CreateMicroVideoProjectInput {
    * locutor) / "own" (usa `voiceFile` como voz de referencia). */
   voice_option: TtsVoiceOption
   voiceFile?: File
+  /** undefined/null = el video dura lo que tarda la narracion. Si se fija,
+   * el audio se acelera para encajar (mas largo) o se mantiene la imagen el
+   * tiempo restante (mas corto). */
+  target_duration_seconds?: number
+  /** Color de fondo resaltado detras del texto de los captions, "#RRGGBB". */
+  caption_bg_color?: string
 }

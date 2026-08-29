@@ -27,6 +27,18 @@ const VOICE_OPTIONS: { value: TtsVoiceOption; label: string; description: string
   { value: 'own', label: 'Mi voz', description: 'Sube tu propia muestra de voz' },
 ]
 
+// Duraciones estándar de video corto por plataforma: 15s (viral en Reels),
+// 30s (Reels/TikTok), 60s (TikTok/Shorts), 90s (máximo recomendado en
+// Facebook Reels). "Automático" (null) mantiene el comportamiento previo:
+// el video dura lo que tarda la narración.
+const DURATION_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Automático' },
+  { value: 15, label: '15s' },
+  { value: 30, label: '30s' },
+  { value: 60, label: '60s' },
+  { value: 90, label: '90s' },
+]
+
 export function NewMicroVideoProjectPage() {
   const navigate = useNavigate()
 
@@ -36,6 +48,8 @@ export function NewMicroVideoProjectPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [voiceOption, setVoiceOption] = useState<TtsVoiceOption>('public_female')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
+  const [targetDuration, setTargetDuration] = useState<number | null>(null)
+  const [captionBgColor, setCaptionBgColor] = useState('#000000')
 
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -91,6 +105,8 @@ export function NewMicroVideoProjectPage() {
           target_lang: targetLang,
           voice_option: voiceOption,
           voiceFile: voiceFile ?? undefined,
+          target_duration_seconds: targetDuration ?? undefined,
+          caption_bg_color: captionBgColor,
         },
         setUploadProgress,
       )
@@ -181,6 +197,10 @@ export function NewMicroVideoProjectPage() {
                 placeholder="Escribe aquí el texto que se va a narrar sobre la imagen…"
                 rows={6}
               />
+              <p className="text-xs text-muted-foreground">
+                Tip: envolvé una palabra o frase entre <code>**así**</code> para que aparezca en{' '}
+                <strong>negrita</strong> en los captions (no se narra en voz alta).
+              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -198,6 +218,50 @@ export function NewMicroVideoProjectPage() {
                   </option>
                 ))}
               </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Duración del video</span>
+              <div className="grid grid-cols-5 gap-2">
+                {DURATION_OPTIONS.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => setTargetDuration(option.value)}
+                    className={cn(
+                      'rounded-xl border p-2 text-center text-sm font-medium transition-colors',
+                      targetDuration === option.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-secondary/50',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Automático: el video dura lo que tarda la narración. Con una duración fija, la
+                narración se acelera si es más larga o se mantiene la imagen si es más corta.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="caption-bg-color" className="text-sm font-medium">
+                Color de fondo de los captions
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  id="caption-bg-color"
+                  type="color"
+                  value={captionBgColor}
+                  onChange={(e) => setCaptionBgColor(e.target.value)}
+                  className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
+                />
+                <p className="text-xs text-muted-foreground">
+                  El texto de los captions es siempre blanco -- este color va detrás, para que se
+                  siga leyendo sobre imágenes claras.
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">

@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 from video_translator.domain.exceptions import AudioExtractionError, MuxingError
+from video_translator.infrastructure.synthesis.audio_mixing import fit_to_duration
 from video_translator.utils.logging_config import get_logger
 from video_translator.utils.warning_collector import increment_counter
 
@@ -181,21 +182,34 @@ class FFmpegMediaProcessor:
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},"
             f"format=yuv420p"
         )
+        # Sin "-shortest": si el audio dura menos que `duration_seconds` (el
+        # caller puede pedir un video mas largo que la narracion a proposito
+        # -- duracion fija elegida por el usuario, Ken Burns sigue corriendo
+        # en silencio el resto del tiempo) no debe recortarse al largo del
+        # audio. PERO probado en la practica: sin un limite EXPLICITO de
+        # duracion, la imagen en loop ("-loop 1", tecnicamente infinita)
+        # combinada con zoompan puede seguir generando frames mucho mas alla
+        # de lo esperado en vez de detenerse en `d=total_frames` -- "-t"
+        # fuerza un corte duro de la salida en `duration_seconds` sin
+        # importar el comportamiento de los streams de entrada.
         cmd = [
             self._ffmpeg, "-y",
             "-loop", "1",
             "-i", str(image_path),
             "-i", str(audio_path),
             "-vf", vf,
+            "-t", str(duration_seconds),
             "-c:v", "libx264",
             "-tune", "stillimage",
             "-c:a", "aac",
             "-b:a", "192k",
-            "-shortest",
             str(output_path),
         ]
         self._run(cmd, error_cls=MuxingError)
         return output_path
+
+    def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
+        return fit_to_duration(audio_path, target_seconds, ffmpeg_binary=self._ffmpeg)
 
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
