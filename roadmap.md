@@ -22,6 +22,6 @@
 | RM-16 | Columnas de ejecución en la tabla de proyectos | done | Agregar ID de ejecución y duración total al listado. |
 | RM-17 | Selector de fuente de media: orden y validación de URL | done | YouTube primero; validar URL antes de habilitar el envío si falla el preview. |
 | RM-18 | Resumen con highlights en Transcripción | done | Toggle opcional: además de la transcripción completa, un resumen de puntos clave. |
-| RM-19 | Modo oscuro | todo | Botón para alternar entre tema claro y oscuro. |
+| RM-19 | Modo oscuro | done | Detecta claro/oscuro por la hora del sistema; botón para alternar a demanda. |
 | RM-20 | Auditoría de diseño responsive | todo | Revisar y corregir el diseño para tablet/celular. |
 | RM-21 | Mensajes de error legibles del pipeline | todo | Traducir el error técnico de una etapa fallida a una causa probable entendible. |

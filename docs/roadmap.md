@@ -86,8 +86,9 @@ Commit: `f1b101e`
 Commit: `e840cb4`
 
 ## RM-19 — Modo oscuro
-**Why:** pedido explícito del usuario; usuarios distintos tienen preferencias distintas de tema.
-**Scope:** Tailwind ya tiene `darkMode: 'class'` configurado, pero no existe paleta oscura en `index.css` ni ningún toggle. Falta: definir la paleta oscura, agregar el toggle (persistido en `localStorage`), y revisar que los canvas (waveform) que ya leen variables CSS de tema se vean bien en ambos modos.
+**Why:** pedido explícito del usuario; usuarios distintos tienen preferencias distintas de tema, y el tema por defecto debe adaptarse sin acción manual.
+**Scope:** paleta oscura en `index.css` (`.dark`, Tailwind ya traía `darkMode: 'class'`). Sin preferencia guardada, el tema inicial se elige por la hora del sistema (`lib/theme.ts::getSystemHourTheme` — 6:00 a 17:59 claro, resto oscuro; no es `prefers-color-scheme`, que refleja el tema del SO, no la hora). Botón toggle en `Topbar` (icono sol/luna sincronizado con el tema activo), que al usarse guarda una preferencia explícita en `localStorage` y ya no se recalcula por hora. Script inline en `index.html` aplica la clase `dark` antes de montar React para evitar flash del tema equivocado.
+Commit: `7356015`
 
 ## RM-20 — Auditoría de diseño responsive
 **Why:** se esperan usuarios conectándose desde iPad y celulares; el diseño no se ha validado fuera de desktop.
