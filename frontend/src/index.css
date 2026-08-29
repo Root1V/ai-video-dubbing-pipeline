@@ -78,12 +78,13 @@
     --input: 240 8% 20%;
     --ring: 243 75% 66%;
 
-    /* Mas oscuro y saturado que --background para que el menu siga
-       distinguiendose del contenido tambien en modo oscuro. */
-    --sidebar: 240 25% 5%;
-    --sidebar-foreground: 240 10% 92%;
-    --sidebar-border: 240 15% 14%;
-    --sidebar-accent: 240 15% 12%;
+    /* Mas claro y con un tinte violeta mas saturado que --background (240
+       10% 8%, casi neutro) para que el menu se lea como un panel distinto,
+       no una variacion casi imperceptible del mismo gris. */
+    --sidebar: 245 35% 16%;
+    --sidebar-foreground: 240 15% 94%;
+    --sidebar-border: 245 25% 24%;
+    --sidebar-accent: 245 25% 22%;
   }
 }
 
