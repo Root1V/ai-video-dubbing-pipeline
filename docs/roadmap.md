@@ -73,7 +73,8 @@ Commit: `200594e`
 
 ## RM-23 — Estilo de resaltado de captions: caja o color de texto
 **Why:** hoy el resaltado de los captions del micro-video (RM-14) es siempre una caja de fondo opaca detrás del texto blanco; algunos usuarios van a preferir un estilo sin caja, solo cambiando el color de la palabra.
-**Scope:** selector en la UI ("Caja de fondo" / "Color de texto") junto al color picker ya existente. Para "color de texto", el color elegido reemplaza `PrimaryColour` (blanco) en el estilo ASS en vez de `BackColour`/`OutlineColour`.
+**Scope:** selector en la UI ("Caja de fondo" / "Color de texto") junto al color picker ya existente. Para "color de texto", el color elegido reemplaza `PrimaryColour` (blanco) en el estilo ASS en vez de `BackColour`/`OutlineColour`; sin caja, solo contorno negro para legibilidad.
+Commit: `2512508`
 
 ## RM-24 — Música de fondo en micro-video
 **Why:** un micro-video sin música de fondo se siente incompleto para redes sociales; pedido explícito del usuario.
