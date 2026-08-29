@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { LogOut, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useTheme } from '../../hooks/useTheme'
 import { Button } from '../ui/Button'
 
 export function Topbar() {
   const { user, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
   function handleLogout() {
@@ -30,6 +32,15 @@ export function Topbar() {
           <p className="text-sm font-medium leading-tight">{user?.name}</p>
           <p className="text-xs text-muted-foreground">{user?.email}</p>
         </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        >
+          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
         <Button variant="outline" size="sm" onClick={handleLogout}>
           <LogOut className="h-4 w-4" />
           Salir
