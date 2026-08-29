@@ -36,6 +36,14 @@
     --ring: 243 75% 59%;
 
     --radius: 0.75rem;
+
+    /* El menu lateral es siempre oscuro (a diferencia del resto de la app,
+       que sigue el tema claro/oscuro) -- da contraste visual constante entre
+       navegacion y contenido, y una identidad de marca reconocible. */
+    --sidebar: 240 30% 10%;
+    --sidebar-foreground: 240 20% 94%;
+    --sidebar-border: 240 20% 18%;
+    --sidebar-accent: 240 20% 16%;
   }
 
   .dark {
@@ -69,6 +77,13 @@
     --border: 240 8% 20%;
     --input: 240 8% 20%;
     --ring: 243 75% 66%;
+
+    /* Mas oscuro y saturado que --background para que el menu siga
+       distinguiendose del contenido tambien en modo oscuro. */
+    --sidebar: 240 25% 5%;
+    --sidebar-foreground: 240 10% 92%;
+    --sidebar-border: 240 15% 14%;
+    --sidebar-accent: 240 15% 12%;
   }
 }
 

@@ -39,7 +39,7 @@ function NavSection({ title, items }: { title?: string; items: NavItem[] }) {
   return (
     <div className="flex flex-col gap-1">
       {title && (
-        <span className="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/50">
           {title}
         </span>
       )}
@@ -52,8 +52,8 @@ function NavSection({ title, items }: { title?: string; items: NavItem[] }) {
             cn(
               'flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
               isActive
-                ? 'bg-primary/10 text-primary'
-                : 'text-foreground/70 hover:bg-secondary hover:text-foreground',
+                ? 'bg-primary text-primary-foreground'
+                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground',
             )
           }
         >
@@ -69,7 +69,7 @@ export function Sidebar() {
   const { user } = useAuth()
 
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-card px-4 py-6">
+    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 text-sidebar-foreground">
       <div className="mb-6 flex items-center gap-2 px-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <Sparkles className="h-4 w-4" />
