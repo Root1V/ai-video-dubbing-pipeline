@@ -1,0 +1,60 @@
+"""Tests de /api/samples: preview de voces publicas y musica de fondo
+empaquetadas con la app (sirve el archivo real, no hace falta mockear nada)."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from fastapi.testclient import TestClient
+
+from video_translator.web.db.models import User
+
+
+def _auth_headers(client: TestClient, email: str, password: str) -> dict[str, str]:
+    resp = client.post("/api/auth/login", data={"username": email, "password": password})
+    assert resp.status_code == 200
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_get_voice_sample_requires_auth(client: TestClient) -> None:
+    resp = client.get("/api/samples/voices/public_female")
+    assert resp.status_code == 401
+
+
+def test_get_voice_sample_serves_public_female(client: TestClient, make_user: Callable[..., User]) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.get("/api/samples/voices/public_female", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] in ("audio/wav", "audio/x-wav")
+
+
+def test_get_voice_sample_unknown_id_returns_404(client: TestClient, make_user: Callable[..., User]) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.get("/api/samples/voices/does-not-exist", headers=headers)
+
+    assert resp.status_code == 404
+
+
+def test_get_music_sample_serves_known_track(client: TestClient, make_user: Callable[..., User]) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.get("/api/samples/music/backbeat", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/mpeg"
+
+
+def test_get_music_sample_unknown_id_returns_404(client: TestClient, make_user: Callable[..., User]) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.get("/api/samples/music/does-not-exist", headers=headers)
+
+    assert resp.status_code == 404

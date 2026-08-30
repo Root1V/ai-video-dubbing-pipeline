@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { FileAudio, Image as ImageIcon, UploadCloud, X } from 'lucide-react'
 import { createMicroVideoProject } from '../api/projects'
+import { fetchMusicSampleUrl, fetchVoiceSampleUrl } from '../api/samples'
+import { SamplePreviewButton } from '../components/media/SamplePreviewButton'
+import { SelectableCard } from '../components/ui/SelectableCard'
 import type { CaptionHighlightStyle, TtsVoiceOption } from '../types/project'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -305,20 +308,22 @@ export function NewMicroVideoProjectPage() {
               <span className="text-sm font-medium">Música de fondo</span>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {MUSIC_OPTIONS.map((option) => (
-                  <button
+                  <SelectableCard
                     key={option.label}
-                    type="button"
-                    onClick={() => setBackgroundMusic(option.value)}
-                    className={cn(
-                      'flex flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors',
-                      backgroundMusic === option.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-secondary/50',
-                    )}
+                    selected={backgroundMusic === option.value}
+                    onSelect={() => setBackgroundMusic(option.value)}
                   >
-                    <span className="text-sm font-medium">{option.label}</span>
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{option.label}</span>
+                      {option.value && (
+                        <SamplePreviewButton
+                          sampleKey={`music-${option.value}`}
+                          fetchUrl={() => fetchMusicSampleUrl(option.value as string)}
+                        />
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground">{option.description}</span>
-                  </button>
+                  </SelectableCard>
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -330,20 +335,22 @@ export function NewMicroVideoProjectPage() {
               <span className="text-sm font-medium">Voz</span>
               <div className="grid grid-cols-3 gap-2">
                 {VOICE_OPTIONS.map((option) => (
-                  <button
+                  <SelectableCard
                     key={option.value}
-                    type="button"
-                    onClick={() => setVoiceOption(option.value)}
-                    className={cn(
-                      'flex flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors',
-                      voiceOption === option.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-secondary/50',
-                    )}
+                    selected={voiceOption === option.value}
+                    onSelect={() => setVoiceOption(option.value)}
                   >
-                    <span className="text-sm font-medium">{option.label}</span>
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{option.label}</span>
+                      {option.value !== 'own' && (
+                        <SamplePreviewButton
+                          sampleKey={`voice-${option.value}`}
+                          fetchUrl={() => fetchVoiceSampleUrl(option.value)}
+                        />
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground">{option.description}</span>
-                  </button>
+                  </SelectableCard>
                 ))}
               </div>
 
@@ -371,6 +378,11 @@ export function NewMicroVideoProjectPage() {
                       <p className="truncate font-medium">{voiceFile.name}</p>
                       <p className="text-sm text-muted-foreground">{formatBytes(voiceFile.size)}</p>
                     </div>
+                    <SamplePreviewButton
+                      key={`${voiceFile.name}-${voiceFile.size}`}
+                      sampleKey="voice-own"
+                      fetchUrl={() => Promise.resolve(URL.createObjectURL(voiceFile))}
+                    />
                     {!isSubmitting && (
                       <Button
                         type="button"
