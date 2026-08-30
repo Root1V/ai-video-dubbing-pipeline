@@ -179,6 +179,9 @@ export interface CreateMicroVideoProjectInput {
   /** "background" (default) = caja de fondo de ese color detras del texto
    * blanco. "text_color" = el texto queda de ese color, sin caja. */
   caption_highlight_style?: CaptionHighlightStyle
+  /** Id de una pista de música (ver MUSIC_OPTIONS en NewMicroVideoProjectPage),
+   * o undefined = sin música de fondo. */
+  background_music?: string
 }
 
 export type CaptionHighlightStyle = 'background' | 'text_color'

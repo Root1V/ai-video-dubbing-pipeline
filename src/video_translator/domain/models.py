@@ -183,6 +183,10 @@ class GenerateMicroVideoRequest:
     # (comportamiento previo). "text_color" = el texto queda de ese color en
     # vez de blanco, sin caja (solo contorno para legibilidad).
     caption_highlight_style: str = "background"
+    # None = sin musica de fondo (comportamiento previo). Si se fija, se
+    # mezcla en volumen bajo debajo de la narracion (nunca debe taparla) y
+    # se ajusta (loop/recorte) a la duracion final del video.
+    background_music_path: Path | None = None
 
 
 @dataclass(slots=True)

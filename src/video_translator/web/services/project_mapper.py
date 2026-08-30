@@ -18,6 +18,7 @@ from video_translator.application.use_cases.transcribe_media import TranscribeMe
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import load_settings
 from video_translator.container import (
+    BACKGROUND_MUSIC_TRACKS,
     PUBLIC_VOICE_FEMALE_WAV,
     PUBLIC_VOICE_MALE_WAV,
     build_generate_micro_video_use_case,
@@ -187,6 +188,7 @@ def build_micro_video_use_case_and_request(
     )
 
     target_duration = config.get("target_duration_seconds")
+    background_music_track = config.get("background_music")
     request = GenerateMicroVideoRequest(
         image_path=Path(project.input_video_path),
         text=config.get("narration_text", ""),
@@ -196,6 +198,7 @@ def build_micro_video_use_case_and_request(
         target_duration_seconds=float(target_duration) if target_duration else None,
         caption_bg_color=config.get("caption_bg_color", "#000000"),
         caption_highlight_style=config.get("caption_highlight_style", "background"),
+        background_music_path=BACKGROUND_MUSIC_TRACKS.get(background_music_track) if background_music_track else None,
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

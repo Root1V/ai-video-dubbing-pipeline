@@ -93,6 +93,19 @@ class MediaProcessor(Protocol):
         intacto)."""
         ...
 
+    def mix_background_music(
+        self,
+        narration_path: Path,
+        music_path: Path,
+        output_path: Path,
+        duration_seconds: float,
+        music_volume: float = 0.12,
+    ) -> Path:
+        """Mezcla `music_path` (en loop si hace falta) debajo de
+        `narration_path`, en volumen bajo (`music_volume`, lineal, no dB)
+        para que nunca tape la voz, recortado a `duration_seconds`."""
+        ...
+
 
 class Transcriber(Protocol):
     """Motor de Speech-to-Text (implementado con faster-whisper)."""

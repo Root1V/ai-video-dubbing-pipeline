@@ -51,6 +51,12 @@ class FakeMediaProcessor:
     def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
         raise NotImplementedError("no usado por SynthesizeTextUseCase")
 
+    def mix_background_music(
+        self, narration_path: Path, music_path: Path, output_path: Path,
+        duration_seconds: float, music_volume: float = 0.12,
+    ) -> Path:
+        raise NotImplementedError("no usado por SynthesizeTextUseCase")
+
 
 class FakeSpeechSynthesizer:
     def __init__(self):

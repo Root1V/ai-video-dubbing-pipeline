@@ -211,6 +211,41 @@ class FFmpegMediaProcessor:
     def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
         return fit_to_duration(audio_path, target_seconds, ffmpeg_binary=self._ffmpeg)
 
+    def mix_background_music(
+        self,
+        narration_path: Path,
+        music_path: Path,
+        output_path: Path,
+        duration_seconds: float,
+        music_volume: float = 0.12,
+    ) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # "-stream_loop -1" repite la musica indefinidamente -- sin esto una
+        # pista mas corta que el video se cortaria a mitad de la reproduccion
+        # en vez de acompañar todo el video. "-t" (como en render_image_video)
+        # pone un tope duro: sin el, un input en loop infinito puede dejar a
+        # ffmpeg generando audio mucho mas alla de lo esperado. Ambas pistas
+        # se normalizan a la misma tasa/canales antes de mezclar para evitar
+        # artefactos cuando difieren (narracion mono 22050Hz, musica stereo
+        # 44100Hz tipicamente).
+        filter_complex = (
+            f"[0:a]volume={music_volume},aformat=sample_rates=44100:channel_layouts=stereo[music];"
+            "[1:a]aformat=sample_rates=44100:channel_layouts=stereo[narr];"
+            "[narr][music]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
+        )
+        cmd = [
+            self._ffmpeg, "-y",
+            "-stream_loop", "-1",
+            "-i", str(music_path),
+            "-i", str(narration_path),
+            "-filter_complex", filter_complex,
+            "-map", "[aout]",
+            "-t", str(duration_seconds),
+            str(output_path),
+        ]
+        self._run(cmd, error_cls=MuxingError)
+        return output_path
+
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
         increment_counter("ffmpeg.calls")

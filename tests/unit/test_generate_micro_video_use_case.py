@@ -23,6 +23,7 @@ class FakeMediaProcessor:
         self.render_calls: list[dict] = []
         self.caption_calls: list[dict] = []
         self.fit_calls: list[dict] = []
+        self.music_calls: list[dict] = []
 
     def get_duration_seconds(self, media_path: Path) -> float:
         return 1.0
@@ -70,6 +71,22 @@ class FakeMediaProcessor:
     def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
         self.fit_calls.append({"audio_path": audio_path, "target_seconds": target_seconds})
         return True
+
+    def mix_background_music(
+        self, narration_path: Path, music_path: Path, output_path: Path,
+        duration_seconds: float, music_volume: float = 0.12,
+    ) -> Path:
+        self.music_calls.append(
+            {
+                "narration_path": narration_path,
+                "music_path": music_path,
+                "duration_seconds": duration_seconds,
+                "music_volume": music_volume,
+            }
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake-mixed-audio")
+        return output_path
 
 
 class FakeSpeechSynthesizer:
@@ -225,6 +242,45 @@ def test_execute_splits_a_single_narration_chunk_into_several_short_captions(tmp
     assert dialogues[-1][1] == pytest.approx(1.0, abs=0.01)
     for prev, nxt in pairwise(dialogues):
         assert prev[1] == pytest.approx(nxt[0], abs=0.01)
+
+
+def test_execute_does_not_mix_music_by_default(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(image_path=image_path, text="Hola.", output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    assert media.music_calls == []
+    # Sin musica, el audio narrado se pasa directo a render_image_video.
+    assert media.render_calls[0]["audio_path"].name == "narration.wav"
+
+
+def test_execute_mixes_background_music_when_requested(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    music_path = tmp_path / "track.mp3"
+    music_path.write_bytes(b"fake-music-bytes")
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=5.0,
+        background_music_path=music_path,
+    )
+
+    use_case.execute(request)
+
+    assert len(media.music_calls) == 1
+    assert media.music_calls[0]["music_path"] == music_path
+    assert media.music_calls[0]["narration_path"].name == "narration.wav"
+    # Se mezcla usando la duracion FINAL del video (la fija elegida), no la
+    # duracion cruda de la narracion.
+    assert media.music_calls[0]["duration_seconds"] == pytest.approx(5.0)
+    # render_image_video debe recibir el audio YA MEZCLADO, no la narracion sola.
+    assert media.render_calls[0]["audio_path"].name == "narration_with_music.wav"
 
 
 def test_execute_renders_at_vertical_resolution(tmp_path: Path):

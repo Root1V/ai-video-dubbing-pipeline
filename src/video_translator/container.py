@@ -246,6 +246,17 @@ PUBLIC_VOICE_MALE_WAV = _DEFAULT_VOICES_DIR / "locutor.wav"
 PUBLIC_VOICE_FEMALE_WAV = _DEFAULT_VOICES_DIR / "locutora.wav"
 DEFAULT_TTS_VOICE_WAV = PUBLIC_VOICE_FEMALE_WAV
 
+# Pistas de musica de fondo ofrecidas para el micro-video (ver RM-24 en
+# docs/roadmap.md). CC0 (dominio publico) -- ver
+# assets/background_music/SOURCES.md para el origen de cada archivo.
+_BACKGROUND_MUSIC_DIR = Path(__file__).resolve().parent / "assets" / "background_music"
+BACKGROUND_MUSIC_TRACKS: dict[str, Path] = {
+    "backbeat": _BACKGROUND_MUSIC_DIR / "backbeat.mp3",
+    "elevate_inspirate": _BACKGROUND_MUSIC_DIR / "elevate_inspirate.mp3",
+    "forest_frolic_loop": _BACKGROUND_MUSIC_DIR / "forest_frolic_loop.mp3",
+    "think_about_it": _BACKGROUND_MUSIC_DIR / "think_about_it.mp3",
+}
+
 
 def build_synthesize_text_use_case(settings: Settings) -> SynthesizeTextUseCase:
     """Construye el caso de uso de TTS standalone (texto -> audio). A

@@ -372,3 +372,36 @@ def test_build_micro_video_use_case_and_request_maps_text_color_highlight_style(
     _, request = project_mapper.build_micro_video_use_case_and_request(project)
 
     assert request.caption_highlight_style == "text_color"
+
+
+def test_build_micro_video_use_case_and_request_defaults_to_no_music(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.background_music_path is None
+
+
+def test_build_micro_video_use_case_and_request_resolves_background_music_track(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path, background_music="backbeat")
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.background_music_path == project_mapper.BACKGROUND_MUSIC_TRACKS["backbeat"]
+
+
+def test_build_micro_video_use_case_and_request_ignores_unknown_music_track(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _make_micro_video_project(tmp_path, background_music="does-not-exist")
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+
+    assert request.background_music_path is None

@@ -44,6 +44,17 @@ const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; de
   { value: 'text_color', label: 'Color de texto', description: 'El texto toma el color, sin caja' },
 ]
 
+// Ids deben coincidir con container.BACKGROUND_MUSIC_TRACKS en el backend.
+// Todas las pistas son CC0 (dominio publico) -- ver
+// src/video_translator/assets/background_music/SOURCES.md.
+const MUSIC_OPTIONS: { value: string | null; label: string; description: string }[] = [
+  { value: null, label: 'Sin música', description: 'Solo la narración' },
+  { value: 'backbeat', label: 'Backbeat', description: 'Rítmica, con energía' },
+  { value: 'elevate_inspirate', label: 'Elevate Inspirate', description: 'Inspiracional, corporativa' },
+  { value: 'forest_frolic_loop', label: 'Forest Frolic', description: 'Suave y alegre' },
+  { value: 'think_about_it', label: 'Think About It', description: 'Calma, poco intrusiva' },
+]
+
 export function NewMicroVideoProjectPage() {
   const navigate = useNavigate()
 
@@ -56,6 +67,7 @@ export function NewMicroVideoProjectPage() {
   const [targetDuration, setTargetDuration] = useState<number | null>(null)
   const [captionBgColor, setCaptionBgColor] = useState('#000000')
   const [highlightStyle, setHighlightStyle] = useState<CaptionHighlightStyle>('background')
+  const [backgroundMusic, setBackgroundMusic] = useState<string | null>(null)
 
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -114,6 +126,7 @@ export function NewMicroVideoProjectPage() {
           target_duration_seconds: targetDuration ?? undefined,
           caption_bg_color: captionBgColor,
           caption_highlight_style: highlightStyle,
+          background_music: backgroundMusic ?? undefined,
         },
         setUploadProgress,
       )
@@ -286,6 +299,31 @@ export function NewMicroVideoProjectPage() {
                     : 'Color de la caja de fondo -- el texto es siempre blanco.'}
                 </label>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Música de fondo</span>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {MUSIC_OPTIONS.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => setBackgroundMusic(option.value)}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors',
+                      backgroundMusic === option.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-secondary/50',
+                    )}
+                  >
+                    <span className="text-sm font-medium">{option.label}</span>
+                    <span className="text-xs text-muted-foreground">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se mezcla en volumen bajo, sin tapar la narración. Pistas de dominio público (CC0).
+              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">

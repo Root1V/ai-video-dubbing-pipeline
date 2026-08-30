@@ -146,6 +146,18 @@ class GenerateMicroVideoUseCase:
                 cursor = target
             video_duration = target
 
+        final_audio_path = narration_path
+        if request.background_music_path is not None:
+            mixed_audio_path = workdir / "narration_with_music.wav"
+            with timings.stage("background_music"):
+                self._media.mix_background_music(
+                    narration_path,
+                    request.background_music_path,
+                    mixed_audio_path,
+                    duration_seconds=video_duration,
+                )
+            final_audio_path = mixed_audio_path
+
         caption_segments = _build_caption_segments(
             [(chunk_text, start, duration) for chunk_text, (start, _path, duration) in zip(chunks, segments)]
         )
@@ -164,7 +176,7 @@ class GenerateMicroVideoUseCase:
         with timings.stage("image_to_video"):
             self._media.render_image_video(
                 request.image_path,
-                narration_path,
+                final_audio_path,
                 background_path,
                 duration_seconds=video_duration,
                 width=VIDEO_WIDTH,

@@ -684,6 +684,51 @@ def test_create_micro_video_project_with_text_color_highlight_style(
     assert resp.json()["config"]["caption_highlight_style"] == "text_color"
 
 
+def test_create_micro_video_project_defaults_to_no_background_music(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["background_music"] is None
+
+
+def test_create_micro_video_project_with_background_music_track(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "background_music": "backbeat",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["background_music"] == "backbeat"
+
+
 def test_create_micro_video_project_requires_voice_file_when_voice_option_is_own(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
