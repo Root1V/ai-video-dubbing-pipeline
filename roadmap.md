@@ -27,5 +27,5 @@
 | RM-21 | Mensajes de error legibles del pipeline | todo | Traducir el error técnico de una etapa fallida a una causa probable entendible. |
 | RM-22 | Micro-video con video generado por IA | todo | Alternativa a RM-14 con un modelo de video generativo en vez de composición ffmpeg. |
 | RM-23 | Estilo de resaltado de captions: caja o color de texto | done | Elegir entre caja de fondo (actual) o cambiar el color de la palabra. |
-| RM-24 | Música de fondo en micro-video | todo | Biblioteca de pistas para elegir, o sin música. |
+| RM-24 | Música de fondo en micro-video | done | Biblioteca de pistas para elegir, o sin música. |
 | RM-25 | Resaltado por palabra en captions (karaoke) | todo | Elegir entre pintar toda la frase o solo la palabra que se está hablando. |

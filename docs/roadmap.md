@@ -78,7 +78,8 @@ Commit: `2512508`
 
 ## RM-24 — Música de fondo en micro-video
 **Why:** un micro-video sin música de fondo se siente incompleto para redes sociales; pedido explícito del usuario.
-**Scope:** opción "Sin música" (default, comportamiento actual) o elegir una pista de una biblioteca de música libre de derechos ofrecida por la app (no upload propio en esta primera versión). La pista se mezcla con la narración a un volumen bajo (no debe tapar la voz) y se ajusta a la duración final del video (loop o corte, según corresponda).
+**Scope:** opción "Sin música" (default) o 4 pistas CC0 (dominio público, ver `assets/background_music/SOURCES.md`) empaquetadas con la app — no upload propio en esta primera versión. La pista se mezcla en loop debajo de la narración a volumen fijo bajo (nunca tapa la voz) y se recorta a la duración final del video.
+Commit: `358aab8`
 
 ## RM-25 — Resaltado por palabra en captions (karaoke)
 **Why:** hoy el resaltado (RM-14/RM-23) pinta el caption completo durante toda su ventana de tiempo; un estilo "karaoke" que solo resalta la palabra que se está diciendo en ese instante es más dinámico y común en redes sociales.
