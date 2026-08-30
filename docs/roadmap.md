@@ -87,7 +87,8 @@ Commit: `358aab8`, `96ef4bf`
 
 ## RM-26 — Categorías de música + panel de mantenimiento
 **Why:** la biblioteca de música de fondo (RM-24) hoy es un catálogo fijo de 4 pistas sin organización; a medida que se agreguen más pistas hace falta agruparlas y una forma de subir nuevas sin tocar código.
-**Scope:** 5 categorías fijas (Calm & Meditation, Commercials & Professional, Energy & Pop, Happy & Romantic, Social Network); pantalla de mantenimiento (solo admin, mismo patrón de sección protegida que RM-15) para subir una pista nueva y asignarla a una categoría. Antes de agregarla al catálogo: analizar el audio, recortar silencio inicial, y convertir a WAV — pipeline de limpieza automática, no manual.
+**Scope:** 5 categorías fijas (Calm & Meditation, Commercials & Professional, Energy & Pop, Happy & Romantic, Social Network); pantalla de mantenimiento (solo admin, mismo patrón de sección protegida que RM-15) para subir una pista nueva y asignarla a una categoría. Antes de agregarla al catálogo: analizar el audio, recortar silencio inicial, y convertir a WAV — pipeline de limpieza automática, no manual. Catálogo movido de un dict fijo (container.py) a una tabla `music_tracks`; las 4 pistas CC0 de RM-24 se migraron como filas.
+Commit: `3bb071f`
 
 ## RM-27 — Texto editable sobre el video
 **Why:** hoy el único texto que aparece en el micro-video son los captions de la narración (RM-14/RM-23/RM-25); no hay forma de agregar texto propio (p.ej. un título o llamado a la acción) en un punto fijo del video.
