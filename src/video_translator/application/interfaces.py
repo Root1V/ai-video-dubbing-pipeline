@@ -106,6 +106,12 @@ class MediaProcessor(Protocol):
         para que nunca tape la voz, recortado a `duration_seconds`."""
         ...
 
+    def clean_music_track(self, input_path: Path, output_wav: Path) -> Path:
+        """Prepara un archivo de musica recien subido para el catalogo (ver
+        RM-26): detecta y recorta el silencio inicial, y convierte a WAV.
+        Se corre una sola vez al agregar la pista, no en cada uso."""
+        ...
+
 
 class Transcriber(Protocol):
     """Motor de Speech-to-Text (implementado con faster-whisper)."""

@@ -6,6 +6,7 @@ import {
   FileText,
   FolderOpen,
   LayoutGrid,
+  Music,
   Sparkles,
   Users,
   Volume2,
@@ -35,6 +36,7 @@ const libraryNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { to: '/users', label: 'Usuarios', icon: Users },
+  { to: '/music-tracks', label: 'Música de fondo', icon: Music },
 ]
 
 function NavSection({ title, items }: { title?: string; items: NavItem[] }) {

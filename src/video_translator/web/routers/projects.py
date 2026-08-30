@@ -106,8 +106,8 @@ def create_project(
     # "background" (caja de fondo de ese color) o "text_color" (el texto
     # queda de ese color, sin caja) -- ver GenerateMicroVideoRequest.
     caption_highlight_style: str = Form("background"),
-    # id de una pista en container.BACKGROUND_MUSIC_TRACKS, o None/omitido =
-    # sin musica de fondo.
+    # id (UUID) de una fila de MusicTrack (ver RM-26), o None/omitido = sin
+    # musica de fondo.
     background_music: str | None = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),

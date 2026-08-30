@@ -4,16 +4,16 @@ pueda dejar escuchar un preview antes de elegir, sin depender de un proyecto."""
 
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
 
-from video_translator.container import (
-    BACKGROUND_MUSIC_TRACKS,
-    PUBLIC_VOICE_FEMALE_WAV,
-    PUBLIC_VOICE_MALE_WAV,
-)
-from video_translator.web.db.models import User
-from video_translator.web.deps import get_current_user
+from video_translator.container import PUBLIC_VOICE_FEMALE_WAV, PUBLIC_VOICE_MALE_WAV
+from video_translator.web.db.models import MusicTrack, User
+from video_translator.web.deps import get_current_user, get_db_session
 
 router = APIRouter(prefix="/samples", tags=["samples"])
 
@@ -38,8 +38,15 @@ def get_voice_sample(
 def get_music_sample(
     track_id: str,
     _current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ) -> FileResponse:
-    file_path = BACKGROUND_MUSIC_TRACKS.get(track_id)
-    if file_path is None or not file_path.is_file():
+    try:
+        track = db.get(MusicTrack, uuid.UUID(track_id))
+    except ValueError:
+        track = None
+    if track is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pista no encontrada.")
+    file_path = Path(track.file_path)
+    if not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pista no encontrada.")
     return FileResponse(path=file_path, filename=file_path.name)

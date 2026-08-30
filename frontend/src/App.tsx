@@ -15,6 +15,7 @@ import { NewTranscriptionProjectPage } from './pages/NewTranscriptionProjectPage
 import { NewTtsProjectPage } from './pages/NewTtsProjectPage'
 import { NewMicroVideoProjectPage } from './pages/NewMicroVideoProjectPage'
 import { UsersListPage } from './pages/UsersListPage'
+import { MusicTracksPage } from './pages/MusicTracksPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -116,6 +117,14 @@ export default function App() {
                 element={
                   <ProtectedPage adminOnly>
                     <UsersListPage />
+                  </ProtectedPage>
+                }
+              />
+              <Route
+                path="/music-tracks"
+                element={
+                  <ProtectedPage adminOnly>
+                    <MusicTracksPage />
                   </ProtectedPage>
                 }
               />

@@ -1,4 +1,13 @@
 import type { OutputMode, ProjectStage, ServiceType } from '../types/project'
+import type { MusicCategory } from '../types/musicTracks'
+
+export const MUSIC_CATEGORY_LABELS: Record<MusicCategory, string> = {
+  calm_meditation: 'Calma y meditación',
+  commercials_professional: 'Comerciales y profesional',
+  energy_pop: 'Energía y pop',
+  happy_romantic: 'Felicidad y romance',
+  social_network: 'Redes sociales',
+}
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   dubbing: 'Doblaje',

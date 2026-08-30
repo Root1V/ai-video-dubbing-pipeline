@@ -142,3 +142,25 @@ class ProjectMetrics(Base):
     outputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     warnings_count: Mapped[int] = mapped_column(nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=_utcnow)
+
+
+class MusicCategory(str, Enum):
+    CALM_MEDITATION = "calm_meditation"
+    COMMERCIALS_PROFESSIONAL = "commercials_professional"
+    ENERGY_POP = "energy_pop"
+    HAPPY_ROMANTIC = "happy_romantic"
+    SOCIAL_NETWORK = "social_network"
+
+
+class MusicTrack(Base):
+    """Catalogo de musica de fondo para micro-video (ver RM-26), organizado
+    por categoria. `file_path` ya apunta al WAV limpio (silencio inicial
+    recortado) -- ver `web/services/music_tracks.py::add_music_track`."""
+
+    __tablename__ = "music_tracks"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(nullable=False)
+    category: Mapped[MusicCategory] = mapped_column(_str_enum(MusicCategory), nullable=False)
+    file_path: Mapped[str] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=_utcnow)

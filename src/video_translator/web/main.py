@@ -6,7 +6,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from video_translator.web.config import load_web_settings
-from video_translator.web.routers import auth, dashboard, media, projects, samples, users
+from video_translator.web.routers import (
+    auth,
+    dashboard,
+    media,
+    music_tracks,
+    projects,
+    samples,
+    users,
+)
 
 settings = load_web_settings()
 
@@ -26,6 +34,7 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(media.router, prefix="/api")
 app.include_router(samples.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
+app.include_router(music_tracks.router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from video_translator.web.config import WebSettings
 from video_translator.web.db.base import Base
-from video_translator.web.db.models import User, UserRole
+from video_translator.web.db.models import MusicCategory, MusicTrack, User, UserRole
 from video_translator.web.deps import get_db_session
 from video_translator.web.main import app
 from video_translator.web.routers.projects import get_web_settings
@@ -73,3 +73,20 @@ def make_user(db_session: Session) -> Callable[..., User]:
         return user
 
     return _make_user
+
+
+@pytest.fixture()
+def make_music_track(db_session: Session) -> Callable[..., MusicTrack]:
+    def _make_music_track(
+        title: str = "Test Track",
+        category: MusicCategory = MusicCategory.ENERGY_POP,
+        file_path: str = "",
+        **kwargs: object,
+    ) -> MusicTrack:
+        track = MusicTrack(title=title, category=category, file_path=file_path, **kwargs)
+        db_session.add(track)
+        db_session.commit()
+        db_session.refresh(track)
+        return track
+
+    return _make_music_track

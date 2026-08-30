@@ -12,9 +12,16 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy.orm import Session
 
 from video_translator.domain.models import OutputMode
-from video_translator.web.db.models import Project, ProjectStatus, ServiceType, SourceType
+from video_translator.web.db.models import (
+    MusicTrack,
+    Project,
+    ProjectStatus,
+    ServiceType,
+    SourceType,
+)
 from video_translator.web.services import project_mapper
 
 
@@ -284,7 +291,7 @@ def _make_micro_video_project(
 
 
 def test_build_micro_video_use_case_and_request_maps_fields(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path, narration_text="Un texto cualquiera.", target_lang="en")
 
@@ -292,7 +299,7 @@ def test_build_micro_video_use_case_and_request_maps_fields(
     build_mock = MagicMock(return_value=fake_use_case)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", build_mock)
 
-    use_case, request = project_mapper.build_micro_video_use_case_and_request(project)
+    use_case, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert use_case is fake_use_case
     assert request.image_path == Path(project.input_video_path)
@@ -304,18 +311,18 @@ def test_build_micro_video_use_case_and_request_maps_fields(
 
 
 def test_build_micro_video_use_case_and_request_defaults_to_public_female_voice(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.speaker_reference_wav == project_mapper.PUBLIC_VOICE_FEMALE_WAV
 
 
 def test_build_micro_video_use_case_and_request_own_voice_overrides_voice_option(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     voice_path = tmp_path / "voice.wav"
     project = _make_micro_video_project(
@@ -323,85 +330,88 @@ def test_build_micro_video_use_case_and_request_own_voice_overrides_voice_option
     )
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.speaker_reference_wav == voice_path
 
 
 def test_build_micro_video_use_case_and_request_defaults_duration_to_none(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.target_duration_seconds is None
     assert request.caption_bg_color == "#000000"
 
 
 def test_build_micro_video_use_case_and_request_maps_duration_and_bg_color(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path, target_duration_seconds=30.0, caption_bg_color="#FF0000")
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.target_duration_seconds == 30.0
     assert request.caption_bg_color == "#FF0000"
 
 
 def test_build_micro_video_use_case_and_request_defaults_highlight_style_to_background(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.caption_highlight_style == "background"
 
 
 def test_build_micro_video_use_case_and_request_maps_text_color_highlight_style(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path, caption_highlight_style="text_color")
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.caption_highlight_style == "text_color"
 
 
 def test_build_micro_video_use_case_and_request_defaults_to_no_music(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.background_music_path is None
 
 
 def test_build_micro_video_use_case_and_request_resolves_background_music_track(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
-    project = _make_micro_video_project(tmp_path, background_music="backbeat")
+    track = MusicTrack(title="Backbeat", category="energy_pop", file_path=str(tmp_path / "backbeat.mp3"))
+    db_session.add(track)
+    db_session.commit()
+    project = _make_micro_video_project(tmp_path, background_music=str(track.id))
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert request.background_music_path == project_mapper.BACKGROUND_MUSIC_TRACKS["backbeat"]
+    assert request.background_music_path == Path(track.file_path)
 
 
 def test_build_micro_video_use_case_and_request_ignores_unknown_music_track(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     project = _make_micro_video_project(tmp_path, background_music="does-not-exist")
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
-    _, request = project_mapper.build_micro_video_use_case_and_request(project)
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.background_music_path is None

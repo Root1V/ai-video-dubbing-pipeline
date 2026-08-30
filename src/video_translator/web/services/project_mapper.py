@@ -9,8 +9,11 @@ igual que `cli.py` es "otro driver" del mismo caso de uso.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from pathlib import Path
+
+from sqlalchemy.orm import Session
 
 from video_translator.application.use_cases.generate_micro_video import GenerateMicroVideoUseCase
 from video_translator.application.use_cases.synthesize_text import SynthesizeTextUseCase
@@ -18,7 +21,6 @@ from video_translator.application.use_cases.transcribe_media import TranscribeMe
 from video_translator.application.use_cases.translate_video import TranslateVideoUseCase
 from video_translator.config import load_settings
 from video_translator.container import (
-    BACKGROUND_MUSIC_TRACKS,
     PUBLIC_VOICE_FEMALE_WAV,
     PUBLIC_VOICE_MALE_WAV,
     build_generate_micro_video_use_case,
@@ -35,7 +37,21 @@ from video_translator.domain.models import (
     TranslationContext,
 )
 from video_translator.utils.logging_config import configure_logging
-from video_translator.web.db.models import Project
+from video_translator.web.db.models import MusicTrack, Project
+
+
+def _resolve_background_music_path(background_music_track: str | None, db: Session) -> Path | None:
+    """Resuelve el id de `MusicTrack` guardado en `config['background_music']`
+    a su archivo real -- None si no se eligio pista o si el id ya no existe
+    (p.ej. fue borrada desde el panel de mantenimiento, ver RM-26)."""
+    if not background_music_track:
+        return None
+    try:
+        track_id = uuid.UUID(background_music_track)
+    except ValueError:
+        return None
+    track = db.get(MusicTrack, track_id)
+    return Path(track.file_path) if track is not None else None
 
 
 def build_use_case_and_request(
@@ -165,12 +181,14 @@ def build_synthesize_use_case_and_request(
 
 def build_micro_video_use_case_and_request(
     project: Project,
+    db: Session,
 ) -> tuple[GenerateMicroVideoUseCase, GenerateMicroVideoRequest]:
     """Version delgada para el servicio de micro-video (`ServiceType.MICRO_VIDEO`):
     a diferencia de TTS, aca `input_video_path` es la imagen subida (el
     "archivo de entrada" del proyecto), no el texto -- el texto de narracion
     vive en `config['narration_text']` (ver `routers/projects.py::create_project`).
-    La voz de referencia se resuelve igual que en TTS."""
+    La voz de referencia se resuelve igual que en TTS. `db` es necesaria para
+    resolver la pista de musica elegida (RM-26, catalogo en BD)."""
     settings = load_settings()
 
     output_dir = Path(project.output_dir)
@@ -198,7 +216,7 @@ def build_micro_video_use_case_and_request(
         target_duration_seconds=float(target_duration) if target_duration else None,
         caption_bg_color=config.get("caption_bg_color", "#000000"),
         caption_highlight_style=config.get("caption_highlight_style", "background"),
-        background_music_path=BACKGROUND_MUSIC_TRACKS.get(background_music_track) if background_music_track else None,
+        background_music_path=_resolve_background_music_path(background_music_track, db),
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

@@ -1,13 +1,14 @@
-"""Tests de /api/samples: preview de voces publicas y musica de fondo
-empaquetadas con la app (sirve el archivo real, no hace falta mockear nada)."""
+"""Tests de /api/samples: preview de voces publicas (empaquetadas con la app)
+y de musica de fondo (catalogo en BD, ver RM-26)."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from video_translator.web.db.models import User
+from video_translator.web.db.models import MusicTrack, User
 
 
 def _auth_headers(client: TestClient, email: str, password: str) -> dict[str, str]:
@@ -41,11 +42,24 @@ def test_get_voice_sample_unknown_id_returns_404(client: TestClient, make_user: 
     assert resp.status_code == 404
 
 
-def test_get_music_sample_serves_known_track(client: TestClient, make_user: Callable[..., User]) -> None:
+_BACKBEAT_MP3 = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "video_translator"
+    / "assets"
+    / "background_music"
+    / "backbeat.mp3"
+)
+
+
+def test_get_music_sample_serves_known_track(
+    client: TestClient, make_user: Callable[..., User], make_music_track: Callable[..., MusicTrack]
+) -> None:
     make_user(email="alice@example.com", password="hunter2")
     headers = _auth_headers(client, "alice@example.com", "hunter2")
+    track = make_music_track(title="Backbeat", file_path=str(_BACKBEAT_MP3))
 
-    resp = client.get("/api/samples/music/backbeat", headers=headers)
+    resp = client.get(f"/api/samples/music/{track.id}", headers=headers)
 
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "audio/mpeg"

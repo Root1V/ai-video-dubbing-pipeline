@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import { FileAudio, Image as ImageIcon, UploadCloud, X } from 'lucide-react'
 import { createMicroVideoProject } from '../api/projects'
+import { fetchMusicTracks } from '../api/musicTracks'
 import { fetchMusicSampleUrl, fetchVoiceSampleUrl } from '../api/samples'
 import { SamplePreviewButton } from '../components/media/SamplePreviewButton'
 import { SelectableCard } from '../components/ui/SelectableCard'
 import type { CaptionHighlightStyle, TtsVoiceOption } from '../types/project'
+import type { MusicCategory } from '../types/musicTracks'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -17,7 +20,9 @@ import { Alert } from '../components/ui/Alert'
 import { cn } from '../lib/cn'
 import { getErrorMessage } from '../lib/errors'
 import { formatBytes } from '../lib/format'
-import { LANGUAGE_NAMES } from '../lib/labels'
+import { LANGUAGE_NAMES, MUSIC_CATEGORY_LABELS } from '../lib/labels'
+
+const MUSIC_CATEGORIES = Object.keys(MUSIC_CATEGORY_LABELS) as MusicCategory[]
 
 const LANGUAGE_OPTIONS = Object.entries(LANGUAGE_NAMES).map(([code, name]) => ({
   value: code,
@@ -47,17 +52,6 @@ const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; de
   { value: 'text_color', label: 'Color de texto', description: 'El texto toma el color, sin caja' },
 ]
 
-// Ids deben coincidir con container.BACKGROUND_MUSIC_TRACKS en el backend.
-// Todas las pistas son CC0 (dominio publico) -- ver
-// src/video_translator/assets/background_music/SOURCES.md.
-const MUSIC_OPTIONS: { value: string | null; label: string; description: string }[] = [
-  { value: null, label: 'Sin música', description: 'Solo la narración' },
-  { value: 'backbeat', label: 'Backbeat', description: 'Rítmica, con energía' },
-  { value: 'elevate_inspirate', label: 'Elevate Inspirate', description: 'Inspiracional, corporativa' },
-  { value: 'forest_frolic_loop', label: 'Forest Frolic', description: 'Suave y alegre' },
-  { value: 'think_about_it', label: 'Think About It', description: 'Calma, poco intrusiva' },
-]
-
 export function NewMicroVideoProjectPage() {
   const navigate = useNavigate()
 
@@ -71,6 +65,11 @@ export function NewMicroVideoProjectPage() {
   const [captionBgColor, setCaptionBgColor] = useState('#000000')
   const [highlightStyle, setHighlightStyle] = useState<CaptionHighlightStyle>('background')
   const [backgroundMusic, setBackgroundMusic] = useState<string | null>(null)
+
+  const { data: musicTracks = [] } = useQuery({
+    queryKey: ['music-tracks'],
+    queryFn: () => fetchMusicTracks(),
+  })
 
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -307,27 +306,41 @@ export function NewMicroVideoProjectPage() {
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">Música de fondo</span>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {MUSIC_OPTIONS.map((option) => (
-                  <SelectableCard
-                    key={option.label}
-                    selected={backgroundMusic === option.value}
-                    onSelect={() => setBackgroundMusic(option.value)}
-                  >
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{option.label}</span>
-                      {option.value && (
-                        <SamplePreviewButton
-                          sampleKey={`music-${option.value}`}
-                          fetchUrl={() => fetchMusicSampleUrl(option.value as string)}
-                        />
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground">{option.description}</span>
-                  </SelectableCard>
-                ))}
+                <SelectableCard selected={backgroundMusic === null} onSelect={() => setBackgroundMusic(null)}>
+                  <span className="text-sm font-medium">Sin música</span>
+                  <span className="text-xs text-muted-foreground">Solo la narración</span>
+                </SelectableCard>
               </div>
+              {MUSIC_CATEGORIES.map((cat) => {
+                const categoryTracks = musicTracks.filter((t) => t.category === cat)
+                if (categoryTracks.length === 0) return null
+                return (
+                  <div key={cat} className="mt-2 flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {MUSIC_CATEGORY_LABELS[cat]}
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {categoryTracks.map((track) => (
+                        <SelectableCard
+                          key={track.id}
+                          selected={backgroundMusic === track.id}
+                          onSelect={() => setBackgroundMusic(track.id)}
+                        >
+                          <div className="flex w-full items-center justify-between gap-2">
+                            <span className="text-sm font-medium">{track.title}</span>
+                            <SamplePreviewButton
+                              sampleKey={`music-${track.id}`}
+                              fetchUrl={() => fetchMusicSampleUrl(track.id)}
+                            />
+                          </div>
+                        </SelectableCard>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
               <p className="text-xs text-muted-foreground">
-                Se mezcla en volumen bajo, sin tapar la narración. Pistas de dominio público (CC0).
+                Se mezcla en volumen bajo, sin tapar la narración.
               </p>
             </div>
 

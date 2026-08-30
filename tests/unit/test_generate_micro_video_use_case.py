@@ -40,6 +40,9 @@ class FakeMediaProcessor:
     def attach_soft_subtitles(self, video_path: Path, srt_path: Path, output_path: Path, lang_code: str = "spa") -> Path:
         raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
 
+    def clean_music_track(self, input_path: Path, output_wav: Path) -> Path:
+        raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
+
     def replace_audio_track(
         self, video_path: Path, new_audio_path: Path, output_path: Path, keep_original_as_secondary: bool = True
     ) -> Path:

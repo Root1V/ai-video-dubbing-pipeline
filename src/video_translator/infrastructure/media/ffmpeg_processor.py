@@ -246,6 +246,26 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=MuxingError)
         return output_path
 
+    def clean_music_track(self, input_path: Path, output_wav: Path) -> Path:
+        output_wav.parent.mkdir(parents=True, exist_ok=True)
+        # silenceremove analiza el nivel de audio y recorta el silencio inicial
+        # (start_periods=1, un solo recorte al comienzo) por debajo de -50dB
+        # sostenido 0.1s -- suficiente para sacar el aire muerto al inicio de
+        # una pista sin comerse el ataque real de la musica. 44.1kHz estereo
+        # (no self._sample_rate, pensado para voz/STT) para no degradar la
+        # calidad de una pista musical -- misma tasa a la que ya se normaliza
+        # en mix_background_music.
+        cmd = [
+            self._ffmpeg, "-y",
+            "-i", str(input_path),
+            "-af", "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.1",
+            "-ar", "44100",
+            "-ac", "2",
+            str(output_wav),
+        ]
+        self._run(cmd, error_cls=AudioExtractionError)
+        return output_wav
+
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
         increment_counter("ffmpeg.calls")
