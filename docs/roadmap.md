@@ -85,6 +85,18 @@ Commit: `358aab8`, `96ef4bf`
 **Why:** hoy el resaltado (RM-14/RM-23) pinta el caption completo durante toda su ventana de tiempo; un estilo "karaoke" que solo resalta la palabra que se está diciendo en ese instante es más dinámico y común en redes sociales.
 **Scope:** selector en la UI para elegir entre "Resaltar toda la frase" (actual) o "Resaltar solo la palabra actual" (se muestra el caption completo, pero el resaltado avanza palabra por palabra). Requiere estimar el timing de cada palabra dentro de un caption (no hay timestamps por palabra del motor de TTS — se aproxima por duración proporcional a la cantidad de caracteres, mismo criterio que ya usa `_build_caption_segments` a nivel de caption).
 
+## RM-26 — Categorías de música + panel de mantenimiento
+**Why:** la biblioteca de música de fondo (RM-24) hoy es un catálogo fijo de 4 pistas sin organización; a medida que se agreguen más pistas hace falta agruparlas y una forma de subir nuevas sin tocar código.
+**Scope:** 5 categorías fijas (Calm & Meditation, Commercials & Professional, Energy & Pop, Happy & Romantic, Social Network); pantalla de mantenimiento (solo admin, mismo patrón de sección protegida que RM-15) para subir una pista nueva y asignarla a una categoría. Antes de agregarla al catálogo: analizar el audio, recortar silencio inicial, y convertir a WAV — pipeline de limpieza automática, no manual.
+
+## RM-27 — Texto editable sobre el video
+**Why:** hoy el único texto que aparece en el micro-video son los captions de la narración (RM-14/RM-23/RM-25); no hay forma de agregar texto propio (p.ej. un título o llamado a la acción) en un punto fijo del video.
+**Scope:** agregar texto con negrita, tipografía y tamaño configurables, y elegir su ubicación en el video.
+
+## RM-28 — Editor de video completo
+**Why:** con tantas opciones acumulándose (texto, música de fondo, subtítulos, voz en off) un formulario lineal deja de alcanzar; un editor tipo lienzo es más manejable y es además la evolución natural de RM-27 (texto movible en vez de solo posicionable).
+**Scope:** editor con: texto arrastrable (drag & drop) sobre el video; audio de fondo con selección/recorte del fragmento a usar; subtítulos con las opciones ya definidas (RM-23/RM-25); pista de voz en off (narración) para los subtítulos.
+
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
 **Scope:** sección "Administración" en el menú (solo admin): listado, botón "Agregar usuario" (nombre/email/password/rol), cambio de rol y activar/desactivar inline. `GET/POST/PATCH /api/users`, todos protegidos con `require_admin`. Un admin no puede quitarse su propio rol ni desactivarse a sí mismo (bloqueado en backend y reflejado en la UI). Sigue sin auto-registro ni invitaciones por email — crear una cuenta requiere acceso admin, por diseño.
