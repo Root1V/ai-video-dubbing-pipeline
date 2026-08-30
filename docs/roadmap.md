@@ -64,8 +64,8 @@ Commit: `5d02d64`
 
 ## RM-14 — Imagen+texto → micro-video social
 **Why:** idea de negocio B2C (shorts/reels desde imágenes + texto de venta); se optó por composición con ffmpeg en vez de un modelo de video generativo (ver RM-22) por velocidad de entrega y cero dependencia de GPU/costo de inferencia.
-**Scope:** nuevo servicio `micro_video`: sube una imagen + escribe un texto → video vertical (9:16) con efecto Ken Burns (zoom lento) sobre la imagen, narración del texto vía TTS (reusa la voz pública o clonada de RM-02) y captions incrustados sincronizados con la narración. Sin modelo de generación de imagen/video nuevo — todo se arma con `MediaProcessor` (ffmpeg) + `SpeechSynthesizer` ya existentes. Requiere `ffmpeg-full` (libass) para incrustar captions — ver README/.env.example.
-Commit: `200594e`
+**Scope:** nuevo servicio `micro_video`: sube una imagen + escribe un texto → video vertical (9:16) con efecto Ken Burns (zoom lento) sobre la imagen, narración del texto vía TTS (reusa la voz pública o clonada de RM-02) y captions incrustados sincronizados con la narración. Sin modelo de generación de imagen/video nuevo — todo se arma con `MediaProcessor` (ffmpeg) + `SpeechSynthesizer` ya existentes. Requiere `ffmpeg-full` (libass) para incrustar captions — ver README/.env.example. Follow-up: botón de preview (play/pausa) en cada opción de voz para escucharla antes de elegir (`/api/samples/voices/{id}`).
+Commit: `200594e`, `96ef4bf`
 
 ## RM-22 — Micro-video con video generado por IA
 **Why:** alternativa a RM-14 que anima la imagen con un modelo de video generativo real en vez de un simple zoom, para un resultado visualmente más rico.
@@ -78,8 +78,8 @@ Commit: `2512508`
 
 ## RM-24 — Música de fondo en micro-video
 **Why:** un micro-video sin música de fondo se siente incompleto para redes sociales; pedido explícito del usuario.
-**Scope:** opción "Sin música" (default) o 4 pistas CC0 (dominio público, ver `assets/background_music/SOURCES.md`) empaquetadas con la app — no upload propio en esta primera versión. La pista se mezcla en loop debajo de la narración a volumen fijo bajo (nunca tapa la voz) y se recorta a la duración final del video.
-Commit: `358aab8`
+**Scope:** opción "Sin música" (default) o 4 pistas CC0 (dominio público, ver `assets/background_music/SOURCES.md`) empaquetadas con la app — no upload propio en esta primera versión. La pista se mezcla en loop debajo de la narración a volumen fijo bajo (nunca tapa la voz) y se recorta a la duración final del video. Follow-up: botón de preview (play/pausa) en cada pista para escucharla antes de elegir (`/api/samples/music/{id}`).
+Commit: `358aab8`, `96ef4bf`
 
 ## RM-25 — Resaltado por palabra en captions (karaoke)
 **Why:** hoy el resaltado (RM-14/RM-23) pinta el caption completo durante toda su ventana de tiempo; un estilo "karaoke" que solo resalta la palabra que se está diciendo en ese instante es más dinámico y común en redes sociales.
