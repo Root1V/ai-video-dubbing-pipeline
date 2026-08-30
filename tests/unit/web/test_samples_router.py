@@ -42,22 +42,17 @@ def test_get_voice_sample_unknown_id_returns_404(client: TestClient, make_user: 
     assert resp.status_code == 404
 
 
-_BACKBEAT_MP3 = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "video_translator"
-    / "assets"
-    / "background_music"
-    / "backbeat.mp3"
-)
-
-
 def test_get_music_sample_serves_known_track(
-    client: TestClient, make_user: Callable[..., User], make_music_track: Callable[..., MusicTrack]
+    client: TestClient,
+    make_user: Callable[..., User],
+    make_music_track: Callable[..., MusicTrack],
+    tmp_path: Path,
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
     headers = _auth_headers(client, "alice@example.com", "hunter2")
-    track = make_music_track(title="Backbeat", file_path=str(_BACKBEAT_MP3))
+    file_path = tmp_path / "track.mp3"
+    file_path.write_bytes(b"fake-mp3-bytes")
+    track = make_music_track(title="Backbeat", file_path=str(file_path))
 
     resp = client.get(f"/api/samples/music/{track.id}", headers=headers)
 
