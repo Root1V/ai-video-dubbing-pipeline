@@ -96,7 +96,28 @@ Commit: `3bb071f`
 ## RM-28 — Editor de video completo
 **Why:** con tantas opciones acumulándose (texto, música de fondo, subtítulos, voz en off) un formulario lineal deja de alcanzar; un editor tipo lienzo es más manejable. Subtítulos (RM-23) y voz en off (narración, RM-14) ya existían -- lo nuevo es el texto arrastrable y el recorte de música.
 **Scope:** overlays de texto arrastrables (negrita, tipografía, tamaño, color, fade in/out) implementados extendiendo el mismo `.ass` de los captions vía `\pos`/`\fad` (el ffmpeg de este sistema no tiene `drawtext`, ver hallazgo en el plan) -- sin nuevo filtro de ffmpeg. Recorte [start, end] de la pista de música elegida (`MediaProcessor.extract_music_range`) antes de mezclarla. Reutiliza tal cual el resaltado de captions (RM-23) y la narración/voz (RM-14) -- no incluye el resaltado por palabra (RM-25, sigue pendiente aparte). Follow-up de UI: rediseño del layout como editor profesional (lienzo central, barra de herramientas izquierda, panel de propiedades derecho, pistas de audio abajo) -- refactor presentacional puro, sin cambios de backend/estado (ver `frontend/src/components/microVideoEditor/`). Segundo follow-up: control de volumen por pista (narración/música, `MediaProcessor.apply_volume`) y preview arrastrable del subtítulo sobre el lienzo (mismo mecanismo `\pos` que los overlays, captions pasan de posición fija a `caption_x`/`caption_y` configurables).
-Commits: `4ac0f29`, `96648fe`, `caa27e3`
+Tercer follow-up: el volumen ahora se escucha en el preview real (no solo al generar), slider vertical, y los dos paneles de audio (narración/música) quedan siempre visibles con la misma estructura aunque no haya pista elegida.
+Commits: `4ac0f29`, `96648fe`, `caa27e3`, `f5ad31d`
+
+## RM-29 — Múltiples imágenes en el micro-video
+**Why:** hoy el servicio solo admite una imagen; el usuario final pidió poder armar el video con varias.
+**Scope:** subir una lista de imágenes en vez de una sola; el video las recorre en orden (cada una con su propio efecto Ken Burns), repartiendo la duración total entre ellas. Cambia el contrato del caso de uso de `image_path: Path` a una lista -- es la base arquitectónica que también habilita RM-30/RM-31 por-imagen.
+
+## RM-30 — Ajustar tamaño/posición de la imagen
+**Why:** una imagen subida tal cual puede no encuadrar bien en el video vertical 9:16 (recortada mal, mal centrada).
+**Scope:** en el lienzo del editor, permitir recortar/reposicionar/escalar cada imagen (RM-29) dentro del marco 9:16 antes de generar, con el mismo criterio de arrastre ya usado para texto/subtítulos.
+
+## RM-31 — Filtros de imagen (brillo, contraste, sepia, etc.)
+**Why:** pedido explícito del usuario final; investigué estilos de filtro más usados en 2026 (VSCO/Lightroom/CapCut, ver fuentes) -- filtros como vintage/sepia, cool, warm, B&N y dramático son los presets estándar en la mayoría de editores.
+**Scope:** un selector de presets aplicados vía filtros de ffmpeg ya disponibles en este binario (confirmado con `ffmpeg -filters`): `curves=preset=sepia` (vintage/sepia), `eq` (brillo/contraste/saturación, también da B&N con `saturation=0`), `colorbalance`/`hue` (cool/warm), `vignette` (dramático). Sin nuevo binario ni dependencia.
+
+## RM-32 — Emoticones sobre el video
+**Why:** pedido explícito del usuario final, además del texto ya arrastrable (RM-28).
+**Scope:** agregar emojis como un tipo de overlay arrastrable, mismo mecanismo de posición/fade que TextOverlay -- un emoji es en sí mismo un carácter Unicode, así que puede reusar el mismo pipeline de texto (ASS ya renderiza emoji como parte de una fuente con cobertura Unicode) en vez de necesitar una librería de íconos aparte.
+
+## RM-33 — Estilos de texto más profesionales
+**Why:** pedido explícito del usuario final; investigué tendencias de texto en video de 2026 (CapCut/tipografía cinética, ver fuentes) -- sombra dura, contorno grueso, y texto con degradado son los estilos más comunes en contenido corto viral, más allá de negrita/color plano (ya soportado desde RM-28).
+**Scope:** variantes de estilo adicionales para TextOverlay (y opcionalmente los captions): sombra dura offset, contorno más grueso configurable, relleno con degradado de 2 colores -- todo vía tags ASS estándar (`\shad`, `\bord`, y un degradado aproximado con `\1c`/`\2c` en múltiples líneas o un gradiente pre-renderizado). No incluye animación tipo "tipografía cinética" (palabra por palabra) -- eso es una iniciativa más grande, separada.
 
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.

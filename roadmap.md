@@ -32,3 +32,8 @@
 | RM-26 | Categorías de música + panel de mantenimiento | done | 5 categorías de música de fondo y una pantalla admin para subir pistas nuevas (con limpieza automática de audio). |
 | RM-27 | Texto editable sobre el video | done | Superado por RM-28 (texto movible incluye elegir la posición). |
 | RM-28 | Editor de video completo | done | Editor con texto movible, audio de fondo recortable, subtítulos y voz en off, todo en un mismo lienzo. |
+| RM-29 | Múltiples imágenes en el micro-video | todo | Crear el video a partir de varias imágenes en vez de una sola. |
+| RM-30 | Ajustar tamaño/posición de la imagen | todo | Recortar/reposicionar cada imagen dentro del lienzo antes de generar. |
+| RM-31 | Filtros de imagen (brillo, contraste, sepia, etc.) | todo | Estilos preestablecidos de color sobre la(s) imagen(es). |
+| RM-32 | Emoticones sobre el video | todo | Agregar emojis arrastrables igual que el texto. |
+| RM-33 | Estilos de texto más profesionales | todo | Sombra, degradado, contorno y otras variantes visuales para el texto/captions. |
