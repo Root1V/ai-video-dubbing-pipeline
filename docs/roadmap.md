@@ -101,7 +101,8 @@ Commits: `4ac0f29`, `96648fe`, `caa27e3`, `f5ad31d`
 
 ## RM-29 — Múltiples imágenes en el micro-video
 **Why:** hoy el servicio solo admite una imagen; el usuario final pidió poder armar el video con varias.
-**Scope:** subir una lista de imágenes en vez de una sola; el video las recorre en orden (cada una con su propio efecto Ken Burns), repartiendo la duración total entre ellas. Cambia el contrato del caso de uso de `image_path: Path` a una lista -- es la base arquitectónica que también habilita RM-30/RM-31 por-imagen.
+**Scope:** subir una lista de imágenes en vez de una sola; el video las recorre en orden (cada una con su propio efecto Ken Burns), repartiendo la duración total entre ellas. Cambia el contrato del caso de uso de `image_path: Path` a una lista -- es la base arquitectónica que también habilita RM-30/RM-31 por-imagen. Cada imagen se renderiza muda por separado y se concatenan (`MediaProcessor.concatenate_videos`), el audio se mezcla una sola vez al final sobre el video ya concatenado (`replace_audio_track`, ya existía). Overlays/captions siguen siendo globales, no por-imagen.
+Commit: `68f78cf`
 
 ## RM-30 — Ajustar tamaño/posición de la imagen
 **Why:** una imagen subida tal cual puede no encuadrar bien en el video vertical 9:16 (recortada mal, mal centrada).
