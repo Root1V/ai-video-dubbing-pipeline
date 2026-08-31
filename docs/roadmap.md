@@ -91,12 +91,12 @@ Commit: `358aab8`, `96ef4bf`
 Commit: `3bb071f`
 
 ## RM-27 — Texto editable sobre el video
-**Why:** hoy el único texto que aparece en el micro-video son los captions de la narración (RM-14/RM-23/RM-25); no hay forma de agregar texto propio (p.ej. un título o llamado a la acción) en un punto fijo del video.
-**Scope:** agregar texto con negrita, tipografía y tamaño configurables, y elegir su ubicación en el video.
+**Ya cubierto por RM-28** (texto movible es un superconjunto de "elegir la posición") -- se decidió saltar la implementación fija e ir directo al editor completo.
 
 ## RM-28 — Editor de video completo
-**Why:** con tantas opciones acumulándose (texto, música de fondo, subtítulos, voz en off) un formulario lineal deja de alcanzar; un editor tipo lienzo es más manejable y es además la evolución natural de RM-27 (texto movible en vez de solo posicionable).
-**Scope:** editor con: texto arrastrable (drag & drop) sobre el video; audio de fondo con selección/recorte del fragmento a usar; subtítulos con las opciones ya definidas (RM-23/RM-25); pista de voz en off (narración) para los subtítulos.
+**Why:** con tantas opciones acumulándose (texto, música de fondo, subtítulos, voz en off) un formulario lineal deja de alcanzar; un editor tipo lienzo es más manejable. Subtítulos (RM-23) y voz en off (narración, RM-14) ya existían -- lo nuevo es el texto arrastrable y el recorte de música.
+**Scope:** overlays de texto arrastrables (negrita, tipografía, tamaño, color, fade in/out) implementados extendiendo el mismo `.ass` de los captions vía `\pos`/`\fad` (el ffmpeg de este sistema no tiene `drawtext`, ver hallazgo en el plan) -- sin nuevo filtro de ffmpeg. Recorte [start, end] de la pista de música elegida (`MediaProcessor.extract_music_range`) antes de mezclarla. Reutiliza tal cual el resaltado de captions (RM-23) y la narración/voz (RM-14) -- no incluye el resaltado por palabra (RM-25, sigue pendiente aparte).
+Commit: `4ac0f29`
 
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.

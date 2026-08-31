@@ -30,5 +30,5 @@
 | RM-24 | Música de fondo en micro-video | done | Biblioteca de pistas para elegir, o sin música. |
 | RM-25 | Resaltado por palabra en captions (karaoke) | todo | Elegir entre pintar toda la frase o solo la palabra que se está hablando. |
 | RM-26 | Categorías de música + panel de mantenimiento | done | 5 categorías de música de fondo y una pantalla admin para subir pistas nuevas (con limpieza automática de audio). |
-| RM-27 | Texto editable sobre el video | todo | Agregar texto con negrita/tipografía/tamaño y elegir su posición en el video. |
-| RM-28 | Editor de video completo | todo | Editor con texto movible, audio de fondo recortable, subtítulos y voz en off, todo en un mismo lienzo. |
+| RM-27 | Texto editable sobre el video | done | Superado por RM-28 (texto movible incluye elegir la posición). |
+| RM-28 | Editor de video completo | done | Editor con texto movible, audio de fondo recortable, subtítulos y voz en off, todo en un mismo lienzo. |
