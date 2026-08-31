@@ -415,3 +415,58 @@ def test_build_micro_video_use_case_and_request_ignores_unknown_music_track(
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert request.background_music_path is None
+
+
+def test_build_micro_video_use_case_and_request_defaults_to_full_music_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.background_music_start == 0.0
+    assert request.background_music_end is None
+
+
+def test_build_micro_video_use_case_and_request_maps_music_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(tmp_path, background_music_start=10.0, background_music_end=25.0)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.background_music_start == pytest.approx(10.0)
+    assert request.background_music_end == pytest.approx(25.0)
+
+
+def test_build_micro_video_use_case_and_request_defaults_to_no_overlays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.text_overlays == []
+
+
+def test_build_micro_video_use_case_and_request_maps_text_overlays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    overlays = [
+        {"text": "Hola", "x": 0.5, "y": 0.2, "bold": True, "color": "#FF0000"},
+        {"text": "Chau", "x": 0.5, "y": 0.8},
+    ]
+    project = _make_micro_video_project(tmp_path, text_overlays=overlays)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert len(request.text_overlays) == 2
+    assert request.text_overlays[0].text == "Hola"
+    assert request.text_overlays[0].bold is True
+    assert request.text_overlays[0].color == "#FF0000"
+    assert request.text_overlays[1].text == "Chau"
+    assert request.text_overlays[1].bold is False  # default del dataclass

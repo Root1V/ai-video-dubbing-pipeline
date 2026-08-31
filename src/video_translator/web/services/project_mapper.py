@@ -32,6 +32,7 @@ from video_translator.domain.models import (
     GenerateMicroVideoRequest,
     OutputMode,
     SynthesizeTextRequest,
+    TextOverlay,
     TranscribeMediaRequest,
     TranslateVideoRequest,
     TranslationContext,
@@ -52,6 +53,26 @@ def _resolve_background_music_path(background_music_track: str | None, db: Sessi
         return None
     track = db.get(MusicTrack, track_id)
     return Path(track.file_path) if track is not None else None
+
+
+def _parse_text_overlays(raw_overlays: object) -> list[TextOverlay]:
+    """Convierte la lista de dicts guardada en `config['text_overlays']`
+    (ver RM-28, `routers/projects.py::create_project` ya valido que cada
+    item tiene 'text'/'x'/'y') en `TextOverlay`s -- las claves opcionales
+    ausentes toman el default del dataclass."""
+    if not isinstance(raw_overlays, list):
+        return []
+    overlays = []
+    for item in raw_overlays:
+        if not isinstance(item, dict):
+            continue
+        kwargs = {
+            key: item[key]
+            for key in ("text", "x", "y", "bold", "font_family", "font_size", "color", "fade")
+            if key in item
+        }
+        overlays.append(TextOverlay(**kwargs))
+    return overlays
 
 
 def build_use_case_and_request(
@@ -207,6 +228,7 @@ def build_micro_video_use_case_and_request(
 
     target_duration = config.get("target_duration_seconds")
     background_music_track = config.get("background_music")
+    background_music_end = config.get("background_music_end")
     request = GenerateMicroVideoRequest(
         image_path=Path(project.input_video_path),
         text=config.get("narration_text", ""),
@@ -217,6 +239,9 @@ def build_micro_video_use_case_and_request(
         caption_bg_color=config.get("caption_bg_color", "#000000"),
         caption_highlight_style=config.get("caption_highlight_style", "background"),
         background_music_path=_resolve_background_music_path(background_music_track, db),
+        background_music_start=float(config.get("background_music_start") or 0.0),
+        background_music_end=float(background_music_end) if background_music_end else None,
+        text_overlays=_parse_text_overlays(config.get("text_overlays")),
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

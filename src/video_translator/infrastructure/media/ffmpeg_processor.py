@@ -266,6 +266,21 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=AudioExtractionError)
         return output_wav
 
+    def extract_music_range(self, track_path: Path, start: float, end: float, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        duration = max(0.1, end - start)
+        cmd = [
+            self._ffmpeg, "-y",
+            "-i", str(track_path),
+            "-ss", str(max(0.0, start)),
+            "-t", str(duration),
+            "-ar", "44100",
+            "-ac", "2",
+            str(output_path),
+        ]
+        self._run(cmd, error_cls=AudioExtractionError)
+        return output_path
+
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
         increment_counter("ffmpeg.calls")

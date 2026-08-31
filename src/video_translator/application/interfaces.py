@@ -112,6 +112,14 @@ class MediaProcessor(Protocol):
         Se corre una sola vez al agregar la pista, no en cada uso."""
         ...
 
+    def extract_music_range(self, track_path: Path, start: float, end: float, output_path: Path) -> Path:
+        """Recorta [start, end] de una pista de musica para usar solo ese
+        fragmento como fuente del loop de fondo (ver RM-28). A diferencia de
+        `extract_audio_clip` (pensado para voz/STT, fuerza mono 16kHz), esto
+        preserva calidad de musica: 44.1kHz estereo, igual que
+        `clean_music_track`."""
+        ...
+
 
 class Transcriber(Protocol):
     """Motor de Speech-to-Text (implementado con faster-whisper)."""

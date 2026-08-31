@@ -182,6 +182,27 @@ export interface CreateMicroVideoProjectInput {
   /** Id de una pista de música (ver MUSIC_OPTIONS en NewMicroVideoProjectPage),
    * o undefined = sin música de fondo. */
   background_music?: string
+  /** Rango [start, end) dentro de la pista a usar como fuente del loop de
+   * fondo (ver RM-28) -- undefined = la pista completa. */
+  background_music_start?: number
+  background_music_end?: number
+  /** Textos superpuestos posicionables en el editor (ver RM-28). */
+  text_overlays?: TextOverlay[]
 }
 
 export type CaptionHighlightStyle = 'background' | 'text_color'
+
+/** Un texto libre superpuesto al micro-video, posicionado a mano por el
+ * usuario (ver RM-28). `x`/`y` son fracciones 0-1 del ancho/alto del video
+ * -- el CENTRO del texto, no la esquina. */
+export interface TextOverlay {
+  id: string
+  text: string
+  x: number
+  y: number
+  bold: boolean
+  font_family: string
+  font_size: number
+  color: string
+  fade: boolean
+}

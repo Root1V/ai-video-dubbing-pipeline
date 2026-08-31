@@ -1,15 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
-import { FileAudio, Image as ImageIcon, UploadCloud, X } from 'lucide-react'
+import { FileAudio, Image as ImageIcon, Plus, UploadCloud, X } from 'lucide-react'
 import { createMicroVideoProject } from '../api/projects'
 import { fetchMusicTracks } from '../api/musicTracks'
 import { fetchMusicSampleUrl, fetchVoiceSampleUrl } from '../api/samples'
+import { AudioTrimPlayer } from '../components/media/AudioTrimPlayer'
 import { SamplePreviewButton } from '../components/media/SamplePreviewButton'
+import { TextOverlayCanvas } from '../components/media/TextOverlayCanvas'
+import { TextOverlayPanel } from '../components/media/TextOverlayPanel'
 import { SelectableCard } from '../components/ui/SelectableCard'
-import type { CaptionHighlightStyle, TtsVoiceOption } from '../types/project'
+import type { CaptionHighlightStyle, TextOverlay, TtsVoiceOption } from '../types/project'
 import type { MusicCategory } from '../types/musicTracks'
 import { Card, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -21,6 +24,20 @@ import { cn } from '../lib/cn'
 import { getErrorMessage } from '../lib/errors'
 import { formatBytes } from '../lib/format'
 import { LANGUAGE_NAMES, MUSIC_CATEGORY_LABELS } from '../lib/labels'
+
+function makeOverlay(): TextOverlay {
+  return {
+    id: crypto.randomUUID(),
+    text: '',
+    x: 0.5,
+    y: 0.5,
+    bold: false,
+    font_family: 'Arial',
+    font_size: 64,
+    color: '#FFFFFF',
+    fade: false,
+  }
+}
 
 const MUSIC_CATEGORIES = Object.keys(MUSIC_CATEGORY_LABELS) as MusicCategory[]
 
@@ -65,6 +82,12 @@ export function NewMicroVideoProjectPage() {
   const [captionBgColor, setCaptionBgColor] = useState('#000000')
   const [highlightStyle, setHighlightStyle] = useState<CaptionHighlightStyle>('background')
   const [backgroundMusic, setBackgroundMusic] = useState<string | null>(null)
+  const [musicStart, setMusicStart] = useState(0)
+  const [musicEnd, setMusicEnd] = useState<number | undefined>(undefined)
+  const [musicPreviewUrl, setMusicPreviewUrl] = useState<string | null>(null)
+  const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([])
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   const { data: musicTracks = [] } = useQuery({
     queryKey: ['music-tracks'],
@@ -74,6 +97,39 @@ export function NewMicroVideoProjectPage() {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!imageFile) {
+      setImageUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(imageFile)
+    setImageUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [imageFile])
+
+  useEffect(() => {
+    setMusicStart(0)
+    setMusicEnd(undefined)
+    if (!backgroundMusic) {
+      setMusicPreviewUrl(null)
+      return
+    }
+    let cancelled = false
+    let objectUrl: string | null = null
+    fetchMusicSampleUrl(backgroundMusic).then((url) => {
+      if (cancelled) {
+        URL.revokeObjectURL(url)
+        return
+      }
+      objectUrl = url
+      setMusicPreviewUrl(url)
+    })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [backgroundMusic])
 
   const imageDropzone = useDropzone({
     accept: { 'image/*': [] },
@@ -129,6 +185,9 @@ export function NewMicroVideoProjectPage() {
           caption_bg_color: captionBgColor,
           caption_highlight_style: highlightStyle,
           background_music: backgroundMusic ?? undefined,
+          background_music_start: backgroundMusic ? musicStart : undefined,
+          background_music_end: backgroundMusic ? musicEnd : undefined,
+          text_overlays: textOverlays,
         },
         setUploadProgress,
       )
@@ -207,6 +266,51 @@ export function NewMicroVideoProjectPage() {
                 </div>
               )}
             </div>
+
+            {imageUrl && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Texto sobre la imagen</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const overlay = makeOverlay()
+                      setTextOverlays((prev) => [...prev, overlay])
+                      setSelectedOverlayId(overlay.id)
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Agregar texto
+                  </Button>
+                </div>
+                <TextOverlayCanvas
+                  imageUrl={imageUrl}
+                  overlays={textOverlays}
+                  selectedId={selectedOverlayId}
+                  onSelect={setSelectedOverlayId}
+                  onMove={(id, x, y) =>
+                    setTextOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, x, y } : o)))
+                  }
+                />
+                {textOverlays
+                  .filter((o) => o.id === selectedOverlayId)
+                  .map((overlay) => (
+                    <TextOverlayPanel
+                      key={overlay.id}
+                      overlay={overlay}
+                      onChange={(updated) =>
+                        setTextOverlays((prev) => prev.map((o) => (o.id === updated.id ? updated : o)))
+                      }
+                      onRemove={() => {
+                        setTextOverlays((prev) => prev.filter((o) => o.id !== overlay.id))
+                        setSelectedOverlayId(null)
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="text" className="text-sm font-medium">
@@ -342,6 +446,16 @@ export function NewMicroVideoProjectPage() {
               <p className="text-xs text-muted-foreground">
                 Se mezcla en volumen bajo, sin tapar la narración.
               </p>
+              {backgroundMusic && musicPreviewUrl && (
+                <AudioTrimPlayer
+                  key={backgroundMusic}
+                  src={musicPreviewUrl}
+                  onRangeChange={(start, end) => {
+                    setMusicStart(start)
+                    setMusicEnd(end)
+                  }}
+                />
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

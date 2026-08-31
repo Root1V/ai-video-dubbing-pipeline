@@ -20,6 +20,7 @@ from video_translator.domain.exceptions import InvalidVideoFileError, VideoTrans
 from video_translator.domain.models import (
     GenerateMicroVideoRequest,
     GenerateMicroVideoResult,
+    TextOverlay,
     TranslatedSegment,
 )
 from video_translator.utils.logging_config import get_logger
@@ -50,6 +51,9 @@ CAPTION_MARGIN_V = 160
 # sale oscuro/incorrecto sin importar el color elegido, sea cual sea el
 # alpha intermedio. Opaco evita ese problema y es igual de legible.
 CAPTION_BG_ALPHA_HEX = "00"
+# Duracion del fade in/out de un overlay con TextOverlay.fade=True (ver
+# _build_overlay_style_and_dialogue), clampeada para videos muy cortos.
+OVERLAY_FADE_MS = 500
 
 # "**palabra**" se resalta en negrita en el caption (no se lee en voz alta:
 # ver _strip_bold_markers, usado para el texto que va al sintetizador).
@@ -148,11 +152,26 @@ class GenerateMicroVideoUseCase:
 
         final_audio_path = narration_path
         if request.background_music_path is not None:
+            music_path = request.background_music_path
+            # Rango elegido por el usuario dentro de la pista (ver RM-28): se
+            # recorta una vez a un archivo aparte, que es lo que despues se
+            # loopea/mezcla -- mix_background_music no cambia, solo recibe
+            # ya el fragmento correcto en vez de la pista completa.
+            if request.background_music_start > 0 or request.background_music_end is not None:
+                music_range_path = workdir / "background_music_range.wav"
+                with timings.stage("background_music_trim"):
+                    self._media.extract_music_range(
+                        music_path,
+                        request.background_music_start,
+                        request.background_music_end or self._media.get_duration_seconds(music_path),
+                        music_range_path,
+                    )
+                music_path = music_range_path
             mixed_audio_path = workdir / "narration_with_music.wav"
             with timings.stage("background_music"):
                 self._media.mix_background_music(
                     narration_path,
-                    request.background_music_path,
+                    music_path,
                     mixed_audio_path,
                     duration_seconds=video_duration,
                 )
@@ -170,6 +189,8 @@ class GenerateMicroVideoUseCase:
                 VIDEO_HEIGHT,
                 request.caption_bg_color,
                 request.caption_highlight_style,
+                overlays=request.text_overlays,
+                duration=video_duration,
             )
 
         background_path = workdir / "background.mp4"
@@ -307,15 +328,30 @@ def _write_ass_captions(
     height: int,
     color: str,
     highlight_style: str,
+    overlays: list[TextOverlay] | None = None,
+    duration: float = 0.0,
 ) -> Path:
     """Escribe los captions como .ass (no .srt) con un header propio que
     declara `PlayResX`/`PlayResY` igual al tamano real del video: sin esto,
     libass asume una resolucion de guion vieja (384x288) al renderizar un
     .srt "plano" y reescala el font al tamano real del video, lo que en un
     vertical de alta resolucion (1080x1920) termina en un texto gigante que
-    cubre la pantalla."""
+    cubre la pantalla.
+
+    `overlays` (ver RM-28, textos libres posicionados a mano) se agregan al
+    MISMO script: cada uno con su propio `Style:` (fuente/tamano/color/
+    negrita propios) y una unica `Dialogue:` que dura todo el video, usando
+    `\\pos(x,y)` para la posicion absoluta -- no hace falta ningun filtro de
+    ffmpeg nuevo, `render_ass_captions` ya sabe renderizar esto tal cual."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     style = _build_caption_style(highlight_style, color)
+    overlay_styles: list[str] = []
+    overlay_dialogues: list[str] = []
+    for i, overlay in enumerate(overlays or []):
+        overlay_style, overlay_dialogue = _build_overlay_style_and_dialogue(overlay, i, width, height, duration)
+        overlay_styles.append(overlay_style)
+        overlay_dialogues.append(overlay_dialogue)
+
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -330,9 +366,15 @@ def _write_ass_captions(
             "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"
         ),
         style,
+        *overlay_styles,
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        # Los overlays van ANTES que los captions en la lista de eventos: en
+        # el mismo Layer, libass dibuja en el orden declarado, asi que esto
+        # deja los captions (la narracion) siempre por encima de un overlay
+        # que pudiera superponerse en la misma zona de la pantalla.
+        *overlay_dialogues,
     ]
     for seg in segments:
         # Se despojan llaves literales ANTES de convertir "**negrita**" a
@@ -346,6 +388,48 @@ def _write_ass_captions(
         )
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
+
+
+def _escape_overlay_text(text: str) -> str:
+    """Escapa el texto libre de un TextOverlay para el campo Text de un
+    Dialogue ASS: quita llaves literales (evita que el usuario inyecte sus
+    propios override tags) y convierte saltos de linea reales en el salto
+    de linea nativo de ASS (\\N) -- a diferencia de los captions (generados
+    automaticamente, nunca traen un salto de linea real), un overlay es
+    texto libre donde preservar el salto que el usuario escribio importa."""
+    return text.replace("{", "").replace("}", "").replace("\r\n", "\n").replace("\n", "\\N")
+
+
+def _build_overlay_style_and_dialogue(
+    overlay: TextOverlay, index: int, width: int, height: int, duration: float
+) -> tuple[str, str]:
+    """Arma el `Style:`/`Dialogue:` de un TextOverlay: Alignment=5 (centro)
+    para que `\\pos(x,y)` posicione el CENTRO del texto en (x,y) -- coincide
+    con "donde se soltó el texto al arrastrarlo" en el editor. BorderStyle=1
+    con contorno negro (mismo criterio que el estilo "text_color" de los
+    captions) para que se lea sobre cualquier fondo sin importar el color
+    elegido."""
+    style_name = f"Overlay{index}"
+    ass_color = _hex_to_ass_color(overlay.color)
+    bold_flag = -1 if overlay.bold else 0
+    style = (
+        f"Style: {style_name},{overlay.font_family},{overlay.font_size},"
+        f"{ass_color},&H000000FF,&H00000000,&H00000000,"
+        f"{bold_flag},0,0,0,100,100,0,0,1,3,1,5,0,0,0,1"
+    )
+    x_px = round(overlay.x * width)
+    y_px = round(overlay.y * height)
+    override = f"{{\\pos({x_px},{y_px})"
+    if overlay.fade:
+        fade_ms = max(1, min(OVERLAY_FADE_MS, int(duration * 1000 / 4)))
+        override += f"\\fad({fade_ms},{fade_ms})"
+    override += "}"
+    text = override + _escape_overlay_text(overlay.text)
+    dialogue = (
+        f"Dialogue: 0,{_format_ass_timestamp(0)},{_format_ass_timestamp(duration)},"
+        f"{style_name},,0,0,0,,{text}"
+    )
+    return style, dialogue
 
 
 def _format_ass_timestamp(seconds: float) -> str:

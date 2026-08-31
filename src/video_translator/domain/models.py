@@ -164,6 +164,23 @@ class SynthesizeTextResult:
 
 
 @dataclass(slots=True)
+class TextOverlay:
+    """Un texto libre superpuesto al micro-video (ver RM-28), posicionado a
+    mano por el usuario en un editor drag & drop. `x`/`y` son fracciones
+    0-1 del ancho/alto del video -- el CENTRO del texto, no la esquina
+    (coincide con "donde soltaste el texto al arrastrarlo")."""
+
+    text: str
+    x: float
+    y: float
+    bold: bool = False
+    font_family: str = "Arial"
+    font_size: int = 48
+    color: str = "#FFFFFF"  # hex "#RRGGBB"
+    fade: bool = False  # aparece/desaparece gradual en vez de un corte seco
+
+
+@dataclass(slots=True)
 class GenerateMicroVideoRequest:
     """Solicitud de generacion de un micro-video (imagen + texto -> video
     vertical narrado con captions), entrada principal de
@@ -187,6 +204,14 @@ class GenerateMicroVideoRequest:
     # mezcla en volumen bajo debajo de la narracion (nunca debe taparla) y
     # se ajusta (loop/recorte) a la duracion final del video.
     background_music_path: Path | None = None
+    # Rango [start, end) DENTRO de background_music_path a usar como fuente
+    # del loop (ver RM-28) -- None en end = hasta el final de la pista.
+    # Ignorado si background_music_path es None.
+    background_music_start: float = 0.0
+    background_music_end: float | None = None
+    # Textos superpuestos posicionables (ver RM-28) -- lista vacia = sin
+    # overlays, comportamiento previo (solo captions de la narracion).
+    text_overlays: list[TextOverlay] = field(default_factory=list)
 
 
 @dataclass(slots=True)

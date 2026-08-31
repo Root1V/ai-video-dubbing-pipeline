@@ -109,6 +109,13 @@ def create_project(
     # id (UUID) de una fila de MusicTrack (ver RM-26), o None/omitido = sin
     # musica de fondo.
     background_music: str | None = Form(None),
+    # Rango [start, end) dentro de la pista elegida a usar como fuente del
+    # loop de fondo (ver RM-28). end=None = hasta el final de la pista.
+    background_music_start: float = Form(0.0),
+    background_music_end: float | None = Form(None),
+    # Lista JSON de overlays de texto posicionables (ver RM-28,
+    # domain.models.TextOverlay) -- mismo patron que `glossary`.
+    text_overlays: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
@@ -123,6 +130,20 @@ def create_project(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="glossary debe ser un objeto JSON.",
+        )
+
+    try:
+        text_overlays_list = json.loads(text_overlays)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="text_overlays no es JSON valido."
+        ) from exc
+    if not isinstance(text_overlays_list, list) or not all(
+        isinstance(item, dict) and "text" in item and "x" in item and "y" in item for item in text_overlays_list
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="text_overlays debe ser una lista de objetos con 'text', 'x' e 'y'.",
         )
 
     is_tts = service_type == "tts"
@@ -221,6 +242,9 @@ def create_project(
             "caption_bg_color": caption_bg_color,
             "caption_highlight_style": caption_highlight_style,
             "background_music": background_music,
+            "background_music_start": background_music_start,
+            "background_music_end": background_music_end,
+            "text_overlays": text_overlays_list,
         }
         if voice_option == "own" and voice_file is not None:
             voice_path = storage.save_upload(voice_file, project.id, settings)

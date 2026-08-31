@@ -11,7 +11,7 @@ import pytest
 
 from video_translator.application.use_cases.generate_micro_video import GenerateMicroVideoUseCase
 from video_translator.domain.exceptions import InvalidVideoFileError, VideoTranslatorError
-from video_translator.domain.models import GenerateMicroVideoRequest
+from video_translator.domain.models import GenerateMicroVideoRequest, TextOverlay
 
 
 class FakeMediaProcessor:
@@ -24,6 +24,7 @@ class FakeMediaProcessor:
         self.caption_calls: list[dict] = []
         self.fit_calls: list[dict] = []
         self.music_calls: list[dict] = []
+        self.music_range_calls: list[dict] = []
 
     def get_duration_seconds(self, media_path: Path) -> float:
         return 1.0
@@ -42,6 +43,12 @@ class FakeMediaProcessor:
 
     def clean_music_track(self, input_path: Path, output_wav: Path) -> Path:
         raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
+
+    def extract_music_range(self, track_path: Path, start: float, end: float, output_path: Path) -> Path:
+        self.music_range_calls.append({"track_path": track_path, "start": start, "end": end})
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake-music-range")
+        return output_path
 
     def replace_audio_track(
         self, video_path: Path, new_audio_path: Path, output_path: Path, keep_original_as_secondary: bool = True
@@ -427,3 +434,158 @@ def test_execute_rejects_unsupported_image_extension(tmp_path: Path):
 
     with pytest.raises(InvalidVideoFileError):
         use_case.execute(request)
+
+
+def test_execute_without_overlays_adds_no_overlay_style_or_dialogue(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(image_path=image_path, text="Hola.", output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    assert "Overlay0" not in content
+
+
+def test_execute_writes_overlay_position_bold_color_and_font(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(
+        text="Hola mundo",
+        x=0.25,
+        y=0.5,
+        bold=True,
+        font_family="Impact",
+        font_size=64,
+        color="#00FF00",
+    )
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        text_overlays=[overlay],
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    # Style: negrita (-1), tipografia y tamano elegidos.
+    style_line = next(line for line in content.splitlines() if line.startswith("Style: Overlay0"))
+    fields = style_line.split(",")
+    assert fields[1] == "Impact"
+    assert fields[2] == "64"
+    assert fields[7] == "-1"  # Bold
+    # x=0.25*1080=270, y=0.5*1920=960 (ver VIDEO_WIDTH/VIDEO_HEIGHT en _make_use_case).
+    dialogue_line = next(line for line in content.splitlines() if line.startswith("Dialogue: 0,0:00:00.00"))
+    assert "\\pos(270,960)" in dialogue_line
+    assert "Hola mundo" in dialogue_line
+    assert "\\fad(" not in dialogue_line
+
+
+def test_execute_writes_overlay_fade_when_requested(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(text="Con fade", x=0.5, y=0.1, fade=True)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=5.0,  # suficientemente largo para no clampear el fade de 500ms
+        text_overlays=[overlay],
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    dialogue_line = next(line for line in content.splitlines() if "Con fade" in line)
+    assert "\\fad(500,500)" in dialogue_line
+
+
+def test_execute_clamps_overlay_fade_duration_for_short_videos(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    # FakeMediaProcessor.get_duration_seconds -> 1.0s de narracion (un solo
+    # chunk): sin clamp, un fade de 500ms in + 500ms out excederia el video.
+    overlay = TextOverlay(text="Corto", x=0.5, y=0.1, fade=True)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        text_overlays=[overlay],
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    dialogue_line = next(line for line in content.splitlines() if "Corto" in line)
+    assert "\\fad(250,250)" in dialogue_line
+
+
+def test_execute_escapes_overlay_braces_and_preserves_line_breaks(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(text="Linea 1\nLinea {2}", x=0.5, y=0.5)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        text_overlays=[overlay],
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    assert "Linea 1\\NLinea 2" in content
+    assert "{2}" not in content
+
+
+def test_execute_does_not_extract_music_range_when_using_full_track(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    music_path = tmp_path / "track.mp3"
+    music_path.write_bytes(b"fake-music-bytes")
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=5.0,
+        background_music_path=music_path,
+    )
+
+    use_case.execute(request)
+
+    assert media.music_range_calls == []
+    assert media.music_calls[0]["music_path"] == music_path
+
+
+def test_execute_extracts_music_range_before_mixing_when_requested(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    music_path = tmp_path / "track.mp3"
+    music_path.write_bytes(b"fake-music-bytes")
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=5.0,
+        background_music_path=music_path,
+        background_music_start=10.0,
+        background_music_end=20.0,
+    )
+
+    use_case.execute(request)
+
+    assert len(media.music_range_calls) == 1
+    assert media.music_range_calls[0]["track_path"] == music_path
+    assert media.music_range_calls[0]["start"] == pytest.approx(10.0)
+    assert media.music_range_calls[0]["end"] == pytest.approx(20.0)
+    # mix_background_music debe recibir el RECORTE, no la pista original.
+    assert media.music_calls[0]["music_path"] != music_path
+    assert media.music_calls[0]["music_path"].name == "background_music_range.wav"

@@ -729,6 +729,105 @@ def test_create_micro_video_project_with_background_music_track(
     assert resp.json()["config"]["background_music"] == "backbeat"
 
 
+def test_create_micro_video_project_defaults_music_range_and_overlays(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    config = resp.json()["config"]
+    assert config["background_music_start"] == 0.0
+    assert config["background_music_end"] is None
+    assert config["text_overlays"] == []
+
+
+def test_create_micro_video_project_with_music_range_and_text_overlays(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    overlays = [{"text": "Hola", "x": 0.5, "y": 0.2, "bold": True}]
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "background_music": "backbeat",
+            "background_music_start": "10.0",
+            "background_music_end": "20.0",
+            "text_overlays": json.dumps(overlays),
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    config = resp.json()["config"]
+    assert config["background_music_start"] == 10.0
+    assert config["background_music_end"] == 20.0
+    assert config["text_overlays"] == overlays
+
+
+def test_create_micro_video_project_rejects_invalid_text_overlays_json(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "text_overlays": "not-json",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_micro_video_project_rejects_text_overlays_missing_required_keys(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "text_overlays": json.dumps([{"text": "Hola"}]),  # falta x/y
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
 def test_create_micro_video_project_requires_voice_file_when_voice_option_is_own(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:

@@ -239,6 +239,29 @@ export async function createMicroVideoProject(
   formData.set('caption_highlight_style', input.caption_highlight_style ?? 'background')
   if (input.background_music) {
     formData.set('background_music', input.background_music)
+    if (input.background_music_start != null) {
+      formData.set('background_music_start', String(input.background_music_start))
+    }
+    if (input.background_music_end != null) {
+      formData.set('background_music_end', String(input.background_music_end))
+    }
+  }
+  if (input.text_overlays && input.text_overlays.length > 0) {
+    formData.set(
+      'text_overlays',
+      JSON.stringify(
+        input.text_overlays.map((overlay) => ({
+          text: overlay.text,
+          x: overlay.x,
+          y: overlay.y,
+          bold: overlay.bold,
+          font_family: overlay.font_family,
+          font_size: overlay.font_size,
+          color: overlay.color,
+          fade: overlay.fade,
+        })),
+      ),
+    )
   }
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
