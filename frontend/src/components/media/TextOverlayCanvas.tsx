@@ -48,7 +48,7 @@ export function TextOverlayCanvas({ imageUrl, overlays, selectedId, onSelect, on
   return (
     <div
       ref={containerRef}
-      className="relative mx-auto w-full max-w-xs select-none overflow-hidden rounded-2xl border border-border bg-secondary/30"
+      className="relative mx-auto h-full max-h-full max-w-full select-none overflow-hidden rounded-2xl border border-border bg-secondary/30 shadow-lg"
       style={{ aspectRatio: '9 / 16', containerType: 'inline-size' }}
     >
       <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />

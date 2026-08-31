@@ -29,13 +29,15 @@ const queryClient = new QueryClient({
 function ProtectedPage({
   children,
   adminOnly,
+  fullBleed,
 }: {
   children: ReactNode
   adminOnly?: boolean
+  fullBleed?: boolean
 }) {
   return (
     <ProtectedRoute adminOnly={adminOnly}>
-      <AppShell>{children}</AppShell>
+      <AppShell fullBleed={fullBleed}>{children}</AppShell>
     </ProtectedRoute>
   )
 }
@@ -91,7 +93,7 @@ export default function App() {
               <Route
                 path="/micro-video/new"
                 element={
-                  <ProtectedPage>
+                  <ProtectedPage fullBleed>
                     <NewMicroVideoProjectPage />
                   </ProtectedPage>
                 }
