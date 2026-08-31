@@ -95,8 +95,8 @@ Commit: `3bb071f`
 
 ## RM-28 — Editor de video completo
 **Why:** con tantas opciones acumulándose (texto, música de fondo, subtítulos, voz en off) un formulario lineal deja de alcanzar; un editor tipo lienzo es más manejable. Subtítulos (RM-23) y voz en off (narración, RM-14) ya existían -- lo nuevo es el texto arrastrable y el recorte de música.
-**Scope:** overlays de texto arrastrables (negrita, tipografía, tamaño, color, fade in/out) implementados extendiendo el mismo `.ass` de los captions vía `\pos`/`\fad` (el ffmpeg de este sistema no tiene `drawtext`, ver hallazgo en el plan) -- sin nuevo filtro de ffmpeg. Recorte [start, end] de la pista de música elegida (`MediaProcessor.extract_music_range`) antes de mezclarla. Reutiliza tal cual el resaltado de captions (RM-23) y la narración/voz (RM-14) -- no incluye el resaltado por palabra (RM-25, sigue pendiente aparte).
-Commit: `4ac0f29`
+**Scope:** overlays de texto arrastrables (negrita, tipografía, tamaño, color, fade in/out) implementados extendiendo el mismo `.ass` de los captions vía `\pos`/`\fad` (el ffmpeg de este sistema no tiene `drawtext`, ver hallazgo en el plan) -- sin nuevo filtro de ffmpeg. Recorte [start, end] de la pista de música elegida (`MediaProcessor.extract_music_range`) antes de mezclarla. Reutiliza tal cual el resaltado de captions (RM-23) y la narración/voz (RM-14) -- no incluye el resaltado por palabra (RM-25, sigue pendiente aparte). Follow-up de UI: rediseño del layout como editor profesional (lienzo central, barra de herramientas izquierda, panel de propiedades derecho, pistas de audio abajo) -- refactor presentacional puro, sin cambios de backend/estado (ver `frontend/src/components/microVideoEditor/`).
+Commits: `4ac0f29`, `96648fe`
 
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
