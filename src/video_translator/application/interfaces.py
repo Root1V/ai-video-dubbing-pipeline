@@ -72,7 +72,7 @@ class MediaProcessor(Protocol):
     def render_image_video(
         self,
         image_path: Path,
-        audio_path: Path,
+        audio_path: Path | None,
         output_path: Path,
         duration_seconds: float,
         width: int = 1080,
@@ -80,7 +80,16 @@ class MediaProcessor(Protocol):
     ) -> Path:
         """Renderiza un video vertical a partir de una imagen estatica (efecto
         Ken Burns: zoom lento y continuo) con `audio_path` como pista de
-        audio, con una duracion igual a `duration_seconds`."""
+        audio, con una duracion igual a `duration_seconds`. `audio_path=None`
+        renderiza el clip MUDO (ver RM-29: con varias imagenes, cada una se
+        renderiza por separado y el audio se mezcla despues sobre el video ya
+        concatenado, via `concatenate_videos` + `replace_audio_track`)."""
+        ...
+
+    def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:
+        """Concatena videos con el MISMO codec (p.ej. varios clips mudos de
+        `render_image_video`, ver RM-29) via el demuxer concat de ffmpeg --
+        stream copy, sin recodificar."""
         ...
 
     def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:

@@ -302,7 +302,7 @@ def test_build_micro_video_use_case_and_request_maps_fields(
     use_case, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert use_case is fake_use_case
-    assert request.image_path == Path(project.input_video_path)
+    assert request.image_paths == [Path(project.input_video_path)]
     assert request.text == "Un texto cualquiera."
     assert request.output_dir == Path(project.output_dir)
     assert request.output_dir.is_dir()
@@ -504,3 +504,27 @@ def test_build_micro_video_use_case_and_request_maps_volume_and_caption_position
     assert request.narration_volume == pytest.approx(0.0)  # 0.0 es un valor real (silenciado), no "ausente"
     assert request.caption_x == pytest.approx(0.1)
     assert request.caption_y == pytest.approx(0.0)
+
+
+def test_build_micro_video_use_case_and_request_defaults_to_only_primary_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.image_paths == [Path(project.input_video_path)]
+
+
+def test_build_micro_video_use_case_and_request_maps_additional_images(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    extra1 = str(tmp_path / "extra1.jpg")
+    extra2 = str(tmp_path / "extra2.jpg")
+    project = _make_micro_video_project(tmp_path, additional_image_paths=[extra1, extra2])
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.image_paths == [Path(project.input_video_path), Path(extra1), Path(extra2)]

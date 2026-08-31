@@ -200,15 +200,38 @@ class GenerateMicroVideoUseCase:
                 caption_y=request.caption_y,
             )
 
+        # Cada imagen se renderiza MUDA (audio_path=None) por su propia
+        # porcion de la duracion total, en partes iguales -- ver RM-29. Con
+        # una sola imagen esto se reduce al comportamiento previo (un unico
+        # segmento de toda la duracion). El audio se mezcla DESPUES, sobre el
+        # video ya concatenado, para no depender de donde caen los cortes
+        # entre imagenes.
+        segment_duration = video_duration / len(request.image_paths)
+        segment_paths: list[Path] = []
+        with timings.stage("image_to_video", num_images=len(request.image_paths)):
+            for i, image_path in enumerate(request.image_paths):
+                segment_path = workdir / f"segment_{i:03d}.mp4"
+                self._media.render_image_video(
+                    image_path,
+                    None,
+                    segment_path,
+                    duration_seconds=segment_duration,
+                    width=VIDEO_WIDTH,
+                    height=VIDEO_HEIGHT,
+                )
+                segment_paths.append(segment_path)
+
+        if len(segment_paths) > 1:
+            silent_path = workdir / "background_silent.mp4"
+            with timings.stage("image_concat"):
+                self._media.concatenate_videos(segment_paths, silent_path)
+        else:
+            silent_path = segment_paths[0]
+
         background_path = workdir / "background.mp4"
-        with timings.stage("image_to_video"):
-            self._media.render_image_video(
-                request.image_path,
-                final_audio_path,
-                background_path,
-                duration_seconds=video_duration,
-                width=VIDEO_WIDTH,
-                height=VIDEO_HEIGHT,
+        with timings.stage("audio_mux"):
+            self._media.replace_audio_track(
+                silent_path, final_audio_path, background_path, keep_original_as_secondary=False
             )
 
         output_video = request.output_dir / "micro_video.mp4"
@@ -233,13 +256,16 @@ class GenerateMicroVideoUseCase:
     def _validate_request(request: GenerateMicroVideoRequest) -> None:
         if not request.text.strip():
             raise VideoTranslatorError("El texto a narrar esta vacio.")
-        if not request.image_path.exists():
-            raise InvalidVideoFileError(f"No existe el archivo: {request.image_path}")
-        if request.image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
-            raise InvalidVideoFileError(
-                f"Extension de imagen no soportada '{request.image_path.suffix}'. "
-                f"Soportadas: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
-            )
+        if not request.image_paths:
+            raise InvalidVideoFileError("Se necesita al menos una imagen.")
+        for image_path in request.image_paths:
+            if not image_path.exists():
+                raise InvalidVideoFileError(f"No existe el archivo: {image_path}")
+            if image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+                raise InvalidVideoFileError(
+                    f"Extension de imagen no soportada '{image_path.suffix}'. "
+                    f"Soportadas: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
+                )
 
 
 def _build_caption_segments(chunks_with_timing: list[tuple[str, float, float]]) -> list[TranslatedSegment]:

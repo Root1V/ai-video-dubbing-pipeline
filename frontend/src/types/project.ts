@@ -163,7 +163,9 @@ export interface CreateTtsProjectInput {
 export interface CreateMicroVideoProjectInput {
   name: string
   text: string
-  imageFile: File
+  /** Al menos una imagen -- si hay varias, el video las recorre en orden,
+   * cada una con su propio efecto Ken Burns (ver RM-29). */
+  imageFiles: File[]
   /** Idioma en el que se narra el texto. */
   target_lang?: string
   /** "public_female" (voz de locutora, por defecto) / "public_male" (voz de

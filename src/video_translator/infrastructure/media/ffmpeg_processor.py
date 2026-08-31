@@ -161,7 +161,7 @@ class FFmpegMediaProcessor:
     def render_image_video(
         self,
         image_path: Path,
-        audio_path: Path,
+        audio_path: Path | None,
         output_path: Path,
         duration_seconds: float,
         width: int = 1080,
@@ -196,13 +196,34 @@ class FFmpegMediaProcessor:
             self._ffmpeg, "-y",
             "-loop", "1",
             "-i", str(image_path),
-            "-i", str(audio_path),
-            "-vf", vf,
-            "-t", str(duration_seconds),
-            "-c:v", "libx264",
-            "-tune", "stillimage",
-            "-c:a", "aac",
-            "-b:a", "192k",
+        ]
+        if audio_path is not None:
+            cmd += ["-i", str(audio_path)]
+        cmd += ["-vf", vf, "-t", str(duration_seconds), "-c:v", "libx264", "-tune", "stillimage"]
+        if audio_path is not None:
+            cmd += ["-c:a", "aac", "-b:a", "192k"]
+        else:
+            cmd += ["-an"]
+        cmd.append(str(output_path))
+        self._run(cmd, error_cls=MuxingError)
+        return output_path
+
+    def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # El demuxer concat necesita una lista de archivos -- se escribe junto
+        # al output para evitar ambiguedad de paths relativos. Todos los
+        # videos vienen del MISMO render_image_video (mismo codec/resolucion),
+        # asi que "-c copy" (sin recodificar) es seguro y rapido.
+        list_path = output_path.with_suffix(".txt")
+        list_path.write_text(
+            "\n".join(f"file '{p.resolve()}'" for p in video_paths), encoding="utf-8"
+        )
+        cmd = [
+            self._ffmpeg, "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(list_path),
+            "-c", "copy",
             str(output_path),
         ]
         self._run(cmd, error_cls=MuxingError)

@@ -818,6 +818,57 @@ def test_create_micro_video_project_with_music_range_and_text_overlays(
     assert config["text_overlays"] == overlays
 
 
+def test_create_micro_video_project_with_additional_images(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files=[
+            ("file", ("photo.jpg", b"fake-image-bytes", "image/jpeg")),
+            ("additional_images", ("photo2.jpg", b"fake-image-bytes-2", "image/jpeg")),
+            ("additional_images", ("photo3.jpg", b"fake-image-bytes-3", "image/jpeg")),
+        ],
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    config = resp.json()["config"]
+    assert len(config["additional_image_paths"]) == 2
+    assert config["additional_image_paths"][0].endswith("photo2.jpg")
+    assert config["additional_image_paths"][1].endswith("photo3.jpg")
+
+
+def test_create_micro_video_project_defaults_additional_images_to_empty(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["additional_image_paths"] == []
+
+
 def test_create_micro_video_project_rejects_invalid_text_overlays_json(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:

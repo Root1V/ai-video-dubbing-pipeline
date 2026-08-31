@@ -22,6 +22,19 @@ def save_upload(file: UploadFile, project_id: UUID, settings: WebSettings) -> Pa
     return destination
 
 
+def save_indexed_upload(file: UploadFile, index: int, project_id: UUID, settings: WebSettings) -> Path:
+    """Igual que `save_upload`, pero para cuando se suben VARIOS archivos al
+    mismo proyecto (ver RM-29, imagenes adicionales del micro-video) -- el
+    indice va de prefijo en el nombre para que dos archivos con el mismo
+    nombre original no se pisen entre si."""
+    upload_dir = Path(settings.storage_root) / "uploads" / str(project_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    destination = upload_dir / f"image_{index}_{file.filename}"
+    with destination.open("wb") as out_file:
+        shutil.copyfileobj(file.file, out_file)
+    return destination
+
+
 def output_dir_for(project_id: UUID, settings: WebSettings) -> Path:
     """Ruta del directorio de salida del proyecto (no se crea aca; el paso M2
     que llame al pipeline real la creara, igual que hace cli.py)."""

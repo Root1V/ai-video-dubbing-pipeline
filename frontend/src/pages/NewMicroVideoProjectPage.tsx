@@ -36,7 +36,7 @@ export function NewMicroVideoProjectPage() {
   const [name, setName] = useState('')
   const [text, setText] = useState('')
   const [targetLang, setTargetLang] = useState('es')
-  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
   const [voiceOption, setVoiceOption] = useState<TtsVoiceOption>('public_female')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [targetDuration, setTargetDuration] = useState<number | null>(null)
@@ -65,14 +65,17 @@ export function NewMicroVideoProjectPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!imageFile) {
+    const firstImage = imageFiles[0]
+    if (!firstImage) {
       setImageUrl(null)
       return
     }
-    const url = URL.createObjectURL(imageFile)
+    // El lienzo muestra la PRIMERA imagen como referencia para posicionar
+    // overlays/subtitulos (que son globales, no por-imagen -- ver RM-29).
+    const url = URL.createObjectURL(firstImage)
     setImageUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [imageFile])
+  }, [imageFiles])
 
   useEffect(() => {
     setMusicStart(0)
@@ -103,8 +106,8 @@ export function NewMicroVideoProjectPage() {
       setError('Ingresa un nombre para el proyecto.')
       return
     }
-    if (!imageFile) {
-      setError('Sube la imagen que quieres animar.')
+    if (imageFiles.length === 0) {
+      setError('Sube al menos una imagen para animar.')
       return
     }
     if (!text.trim()) {
@@ -125,7 +128,7 @@ export function NewMicroVideoProjectPage() {
         {
           name: name.trim(),
           text: text.trim(),
-          imageFile,
+          imageFiles,
           target_lang: targetLang,
           voice_option: voiceOption,
           voiceFile: voiceFile ?? undefined,
@@ -211,9 +214,9 @@ export function NewMicroVideoProjectPage() {
         <EditorRightPanel
           activeTool={activeTool}
           isSubmitting={isSubmitting}
-          imageFile={imageFile}
-          onImageFileSelected={setImageFile}
-          onImageRemove={() => setImageFile(null)}
+          imageFiles={imageFiles}
+          onImageFilesAdded={(files) => setImageFiles((prev) => [...prev, ...files])}
+          onImageRemoveAt={(index) => setImageFiles((prev) => prev.filter((_, i) => i !== index))}
           hasImage={Boolean(imageUrl)}
           overlays={textOverlays}
           selectedOverlayId={selectedOverlayId}

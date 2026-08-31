@@ -237,8 +237,10 @@ def build_micro_video_use_case_and_request(
     target_duration = config.get("target_duration_seconds")
     background_music_track = config.get("background_music")
     background_music_end = config.get("background_music_end")
+    additional_image_paths = config.get("additional_image_paths") or []
+    image_paths = [Path(project.input_video_path), *[Path(p) for p in additional_image_paths]]
     request = GenerateMicroVideoRequest(
-        image_path=Path(project.input_video_path),
+        image_paths=image_paths,
         text=config.get("narration_text", ""),
         output_dir=output_dir,
         language=config.get("target_lang", "es"),

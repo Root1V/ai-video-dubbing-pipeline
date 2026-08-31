@@ -225,7 +225,8 @@ export async function createMicroVideoProject(
   formData.set('output_mode', 'subtitles_only')
   // `file` es la imagen (obligatoria) -- a diferencia de TTS, aca no es una
   // voz de referencia opcional.
-  formData.set('file', input.imageFile)
+  formData.set('file', input.imageFiles[0])
+  input.imageFiles.slice(1).forEach((f) => formData.append('additional_images', f))
   formData.set('text', input.text)
   formData.set('target_lang', input.target_lang ?? 'es')
   formData.set('voice_option', input.voice_option)

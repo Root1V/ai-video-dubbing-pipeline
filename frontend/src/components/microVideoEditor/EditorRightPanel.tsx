@@ -12,9 +12,9 @@ interface EditorRightPanelProps {
   activeTool: EditorTool
   isSubmitting: boolean
 
-  imageFile: File | null
-  onImageFileSelected: (file: File) => void
-  onImageRemove: () => void
+  imageFiles: File[]
+  onImageFilesAdded: (files: File[]) => void
+  onImageRemoveAt: (index: number) => void
 
   hasImage: boolean
   overlays: TextOverlay[]
@@ -66,9 +66,9 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
 
       {props.activeTool === 'image' && (
         <ImagePanel
-          imageFile={props.imageFile}
-          onFileSelected={props.onImageFileSelected}
-          onRemove={props.onImageRemove}
+          imageFiles={props.imageFiles}
+          onFilesAdded={props.onImageFilesAdded}
+          onRemoveAt={props.onImageRemoveAt}
           isSubmitting={props.isSubmitting}
         />
       )}

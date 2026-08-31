@@ -75,6 +75,9 @@ def create_project(
     # "micro_video" es la imagen (obligatoria). Para el resto de servicios
     # sigue siendo obligatorio (se valida abajo).
     file: UploadFile | None = File(None),
+    # Solo para "micro_video": imagenes adicionales, mas alla de la primera
+    # (`file`) -- ver RM-29. El video las recorre en orden.
+    additional_images: list[UploadFile] = File([]),
     # Solo para "micro_video" cuando voice_option es "own": la voz de
     # referencia va aparte porque `file` ya esta ocupado por la imagen.
     voice_file: UploadFile | None = File(None),
@@ -242,6 +245,11 @@ def create_project(
         # que context_prompt: texto libre, sin limite de tamano relevante
         # para este caso de uso).
         project.input_video_path = str(storage.save_upload(file, project.id, settings))
+        additional_image_paths = [
+            str(storage.save_indexed_upload(img, i + 1, project.id, settings))
+            for i, img in enumerate(additional_images)
+            if img.filename
+        ]
         project.config = {
             **project.config,
             "narration_text": text,
@@ -257,6 +265,7 @@ def create_project(
             "caption_x": caption_x,
             "caption_y": caption_y,
             "text_overlays": text_overlays_list,
+            "additional_image_paths": additional_image_paths,
         }
         if voice_option == "own" and voice_file is not None:
             voice_path = storage.save_upload(voice_file, project.id, settings)

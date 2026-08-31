@@ -182,11 +182,15 @@ class TextOverlay:
 
 @dataclass(slots=True)
 class GenerateMicroVideoRequest:
-    """Solicitud de generacion de un micro-video (imagen + texto -> video
+    """Solicitud de generacion de un micro-video (imagen(es) + texto -> video
     vertical narrado con captions), entrada principal de
     ``GenerateMicroVideoUseCase``."""
 
-    image_path: Path
+    # Al menos una imagen (validado en _validate_request). Si hay mas de una
+    # (ver RM-29), el video las recorre en orden, cada una con su propio
+    # efecto Ken Burns, repartiendo la duracion final del video en partes
+    # iguales entre todas.
+    image_paths: list[Path]
     text: str
     output_dir: Path
     language: str = "es"
