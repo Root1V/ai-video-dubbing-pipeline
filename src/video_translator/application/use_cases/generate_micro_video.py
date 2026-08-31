@@ -150,6 +150,10 @@ class GenerateMicroVideoUseCase:
                 cursor = target
             video_duration = target
 
+        if request.narration_volume != 1.0:
+            with timings.stage("narration_volume"):
+                self._media.apply_volume(narration_path, request.narration_volume)
+
         final_audio_path = narration_path
         if request.background_music_path is not None:
             music_path = request.background_music_path
@@ -174,6 +178,7 @@ class GenerateMicroVideoUseCase:
                     music_path,
                     mixed_audio_path,
                     duration_seconds=video_duration,
+                    music_volume=request.background_music_volume,
                 )
             final_audio_path = mixed_audio_path
 
@@ -191,6 +196,8 @@ class GenerateMicroVideoUseCase:
                 request.caption_highlight_style,
                 overlays=request.text_overlays,
                 duration=video_duration,
+                caption_x=request.caption_x,
+                caption_y=request.caption_y,
             )
 
         background_path = workdir / "background.mp4"
@@ -317,7 +324,10 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
         border_style, outline, shadow = 3, 2, 0
     return (
         f"Style: Default,Arial,{CAPTION_FONT_SIZE},{colours},"
-        f"0,0,0,0,100,100,0,0,{border_style},{outline},{shadow},2,60,60,{CAPTION_MARGIN_V},1"
+        # Alignment=5 (centro): el \pos(x,y) de cada Dialogue (ver
+        # _write_ass_captions) posiciona el CENTRO del caption, igual
+        # criterio que los overlays de texto -- arrastrable en el editor.
+        f"0,0,0,0,100,100,0,0,{border_style},{outline},{shadow},5,60,60,{CAPTION_MARGIN_V},1"
     )
 
 
@@ -330,6 +340,8 @@ def _write_ass_captions(
     highlight_style: str,
     overlays: list[TextOverlay] | None = None,
     duration: float = 0.0,
+    caption_x: float = 0.5,
+    caption_y: float = 0.85,
 ) -> Path:
     """Escribe los captions como .ass (no .srt) con un header propio que
     declara `PlayResX`/`PlayResY` igual al tamano real del video: sin esto,
@@ -376,12 +388,13 @@ def _write_ass_captions(
         # que pudiera superponerse en la misma zona de la pantalla.
         *overlay_dialogues,
     ]
+    pos_tag = "{" + _ass_pos_tag(caption_x, caption_y, width, height) + "}"
     for seg in segments:
         # Se despojan llaves literales ANTES de convertir "**negrita**" a
         # tags ASS ("{\b1}...{\b0}") -- de lo contrario un usuario que
         # escriba "{" a proposito podria inyectar sus propios overrides ASS.
         raw_text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
-        text = _convert_bold_to_ass(raw_text)
+        text = pos_tag + _convert_bold_to_ass(raw_text)
         lines.append(
             f"Dialogue: 0,{_format_ass_timestamp(seg.start)},{_format_ass_timestamp(seg.end)},"
             f"Default,,0,0,0,,{text}"
@@ -398,6 +411,14 @@ def _escape_overlay_text(text: str) -> str:
     automaticamente, nunca traen un salto de linea real), un overlay es
     texto libre donde preservar el salto que el usuario escribio importa."""
     return text.replace("{", "").replace("}", "").replace("\r\n", "\n").replace("\n", "\\N")
+
+
+def _ass_pos_tag(x: float, y: float, width: int, height: int) -> str:
+    """Fragmento de override tag `\\pos(x,y)` en pixeles absolutos, a partir
+    de fracciones 0-1 del ancho/alto del video -- reusado por los overlays
+    de texto y por los captions de la narracion (ambos "arrastrables" en el
+    editor con el mismo criterio: el punto es el CENTRO del texto)."""
+    return f"\\pos({round(x * width)},{round(y * height)})"
 
 
 def _build_overlay_style_and_dialogue(
@@ -417,9 +438,7 @@ def _build_overlay_style_and_dialogue(
         f"{ass_color},&H000000FF,&H00000000,&H00000000,"
         f"{bold_flag},0,0,0,100,100,0,0,1,3,1,5,0,0,0,1"
     )
-    x_px = round(overlay.x * width)
-    y_px = round(overlay.y * height)
-    override = f"{{\\pos({x_px},{y_px})"
+    override = "{" + _ass_pos_tag(overlay.x, overlay.y, width, height)
     if overlay.fade:
         fade_ms = max(1, min(OVERLAY_FADE_MS, int(duration * 1000 / 4)))
         override += f"\\fad({fade_ms},{fade_ms})"

@@ -186,8 +186,16 @@ export interface CreateMicroVideoProjectInput {
    * fondo (ver RM-28) -- undefined = la pista completa. */
   background_music_start?: number
   background_music_end?: number
+  /** Volumen lineal (no dB) de la música de fondo al mezclarla, 0-1. */
+  background_music_volume?: number
+  /** Volumen lineal (no dB) de la narración, 1.0 = sin cambios. */
+  narration_volume?: number
   /** Textos superpuestos posicionables en el editor (ver RM-28). */
   text_overlays?: TextOverlay[]
+  /** Posición del caption (fracción 0-1, centro), arrastrable en el editor
+   * igual que un overlay de texto. */
+  caption_x?: number
+  caption_y?: number
 }
 
 export type CaptionHighlightStyle = 'background' | 'text_color'

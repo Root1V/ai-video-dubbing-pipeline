@@ -209,9 +209,21 @@ class GenerateMicroVideoRequest:
     # Ignorado si background_music_path es None.
     background_music_start: float = 0.0
     background_music_end: float | None = None
+    # Volumen lineal (no dB) de la musica de fondo al mezclarla -- mismo
+    # default que el que ya tenia mix_background_music. Ignorado si
+    # background_music_path es None.
+    background_music_volume: float = 0.12
+    # Volumen lineal (no dB) de la narracion, 1.0 = sin cambios. Se aplica
+    # SIEMPRE (haya o no musica de fondo) -- ver GenerateMicroVideoUseCase.
+    narration_volume: float = 1.0
     # Textos superpuestos posicionables (ver RM-28) -- lista vacia = sin
     # overlays, comportamiento previo (solo captions de la narracion).
     text_overlays: list[TextOverlay] = field(default_factory=list)
+    # Posicion de los captions de la narracion (fraccion 0-1 del ancho/alto
+    # del video, CENTRO del caption -- mismo criterio que TextOverlay.x/y,
+    # arrastrable en el editor igual que un overlay de texto).
+    caption_x: float = 0.5
+    caption_y: float = 0.85
 
 
 @dataclass(slots=True)

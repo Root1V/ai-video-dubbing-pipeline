@@ -25,6 +25,7 @@ class FakeMediaProcessor:
         self.fit_calls: list[dict] = []
         self.music_calls: list[dict] = []
         self.music_range_calls: list[dict] = []
+        self.volume_calls: list[dict] = []
 
     def get_duration_seconds(self, media_path: Path) -> float:
         return 1.0
@@ -49,6 +50,9 @@ class FakeMediaProcessor:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-music-range")
         return output_path
+
+    def apply_volume(self, audio_path: Path, volume: float) -> None:
+        self.volume_calls.append({"audio_path": audio_path, "volume": volume})
 
     def replace_audio_track(
         self, video_path: Path, new_audio_path: Path, output_path: Path, keep_original_as_secondary: bool = True
@@ -146,16 +150,23 @@ def _ass_timestamp_to_seconds(value: str) -> float:
     return int(hours) * 3600 + int(minutes) * 60 + int(secs) + int(centis) / 100
 
 
+_LEADING_OVERRIDE_TAG_RE = re.compile(r"^\{[^}]*\}")
+
+
 def _read_ass_dialogues(ass_path: Path) -> list[tuple[float, float, str]]:
     dialogues = []
     for line in ass_path.read_text(encoding="utf-8").splitlines():
         match = _DIALOGUE_RE.match(line)
         if match:
+            # Todo caption ahora arranca con un override tag "{\pos(x,y)}"
+            # (ver _ass_pos_tag) -- se descarta para estos tests, que
+            # verifican el TEXTO/timing de los captions, no su posicion.
+            text = _LEADING_OVERRIDE_TAG_RE.sub("", match.group("text"))
             dialogues.append(
                 (
                     _ass_timestamp_to_seconds(match.group("start")),
                     _ass_timestamp_to_seconds(match.group("end")),
-                    match.group("text"),
+                    text,
                 )
             )
     return dialogues
@@ -589,3 +600,90 @@ def test_execute_extracts_music_range_before_mixing_when_requested(tmp_path: Pat
     # mix_background_music debe recibir el RECORTE, no la pista original.
     assert media.music_calls[0]["music_path"] != music_path
     assert media.music_calls[0]["music_path"].name == "background_music_range.wav"
+
+
+def test_execute_does_not_apply_narration_volume_by_default(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(image_path=image_path, text="Hola.", output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    assert media.volume_calls == []
+
+
+def test_execute_applies_narration_volume_when_requested(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text="Hola.", output_dir=tmp_path / "out", narration_volume=0.5
+    )
+
+    use_case.execute(request)
+
+    assert len(media.volume_calls) == 1
+    assert media.volume_calls[0]["audio_path"].name == "narration.wav"
+    assert media.volume_calls[0]["volume"] == pytest.approx(0.5)
+
+
+def test_execute_applies_narration_volume_even_without_background_music(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text="Hola.", output_dir=tmp_path / "out", narration_volume=1.5
+    )
+
+    use_case.execute(request)
+
+    assert media.music_calls == []
+    assert len(media.volume_calls) == 1
+    assert media.volume_calls[0]["volume"] == pytest.approx(1.5)
+
+
+def test_execute_passes_background_music_volume_to_mix(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    music_path = tmp_path / "track.mp3"
+    music_path.write_bytes(b"fake-music-bytes")
+    request = GenerateMicroVideoRequest(
+        image_path=image_path,
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        background_music_path=music_path,
+        background_music_volume=0.3,
+    )
+
+    use_case.execute(request)
+
+    assert media.music_calls[0]["music_volume"] == pytest.approx(0.3)
+
+
+def test_execute_writes_captions_at_default_position(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(image_path=image_path, text="Hola.", output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    # default caption_x=0.5, caption_y=0.85 sobre 1080x1920.
+    assert "\\pos(540,1632)" in content
+
+
+def test_execute_writes_captions_at_custom_position(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        image_path=image_path, text="Hola.", output_dir=tmp_path / "out", caption_x=0.25, caption_y=0.5
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    assert "\\pos(270,960)" in content

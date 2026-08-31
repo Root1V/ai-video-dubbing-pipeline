@@ -752,6 +752,40 @@ def test_create_micro_video_project_defaults_music_range_and_overlays(
     assert config["background_music_start"] == 0.0
     assert config["background_music_end"] is None
     assert config["text_overlays"] == []
+    assert config["background_music_volume"] == 0.12
+    assert config["narration_volume"] == 1.0
+    assert config["caption_x"] == 0.5
+    assert config["caption_y"] == 0.85
+
+
+def test_create_micro_video_project_with_volume_and_caption_position(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "background_music_volume": "0.4",
+            "narration_volume": "0.0",
+            "caption_x": "0.2",
+            "caption_y": "0.1",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    config = resp.json()["config"]
+    assert config["background_music_volume"] == 0.4
+    assert config["narration_volume"] == 0.0
+    assert config["caption_x"] == 0.2
+    assert config["caption_y"] == 0.1
 
 
 def test_create_micro_video_project_with_music_range_and_text_overlays(

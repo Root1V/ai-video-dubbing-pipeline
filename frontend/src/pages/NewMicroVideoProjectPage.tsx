@@ -6,6 +6,7 @@ import { createMicroVideoProject } from '../api/projects'
 import { fetchMusicTracks } from '../api/musicTracks'
 import { fetchMusicSampleUrl } from '../api/samples'
 import { TextOverlayCanvas } from '../components/media/TextOverlayCanvas'
+import type { CaptionPreview } from '../components/media/TextOverlayCanvas'
 import { EditorBottomTracks } from '../components/microVideoEditor/EditorBottomTracks'
 import { EditorLeftToolbar } from '../components/microVideoEditor/EditorLeftToolbar'
 import { EditorRightPanel } from '../components/microVideoEditor/EditorRightPanel'
@@ -49,6 +50,10 @@ export function NewMicroVideoProjectPage() {
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [activeTool, setActiveTool] = useState<EditorTool>('image')
+  const [narrationVolume, setNarrationVolume] = useState(1.0)
+  const [musicVolume, setMusicVolume] = useState(0.12)
+  const [captionX, setCaptionX] = useState(0.5)
+  const [captionY, setCaptionY] = useState(0.85)
 
   const { data: musicTracks = [] } = useQuery({
     queryKey: ['music-tracks'],
@@ -130,7 +135,11 @@ export function NewMicroVideoProjectPage() {
           background_music: backgroundMusic ?? undefined,
           background_music_start: backgroundMusic ? musicStart : undefined,
           background_music_end: backgroundMusic ? musicEnd : undefined,
+          background_music_volume: backgroundMusic ? musicVolume : undefined,
+          narration_volume: narrationVolume,
           text_overlays: textOverlays,
+          caption_x: captionX,
+          caption_y: captionY,
         },
         setUploadProgress,
       )
@@ -141,6 +150,16 @@ export function NewMicroVideoProjectPage() {
       setUploadProgress(null)
     }
   }
+
+  const captionPreview: CaptionPreview | undefined = imageUrl
+    ? {
+        x: captionX,
+        y: captionY,
+        text: text.trim() ? text.trim().slice(0, 40) : 'Así se ven tus subtítulos',
+        bgColor: captionBgColor,
+        highlightStyle,
+      }
+    : undefined
 
   return (
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
@@ -176,6 +195,11 @@ export function NewMicroVideoProjectPage() {
               onMove={(id, x, y) =>
                 setTextOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, x, y } : o)))
               }
+              captionPreview={captionPreview}
+              onCaptionMove={(x, y) => {
+                setCaptionX(x)
+                setCaptionY(y)
+              }}
             />
           ) : (
             <p className="max-w-xs text-center text-sm text-muted-foreground">
@@ -229,6 +253,8 @@ export function NewMicroVideoProjectPage() {
       <EditorBottomTracks
         narrationText={text}
         onNarrationClick={() => setActiveTool('narration')}
+        narrationVolume={narrationVolume}
+        onNarrationVolumeChange={setNarrationVolume}
         hasMusic={backgroundMusic !== null}
         musicPreviewUrl={musicPreviewUrl}
         musicKey={backgroundMusic}
@@ -237,6 +263,8 @@ export function NewMicroVideoProjectPage() {
           setMusicStart(start)
           setMusicEnd(end)
         }}
+        musicVolume={musicVolume}
+        onMusicVolumeChange={setMusicVolume}
       />
     </form>
   )

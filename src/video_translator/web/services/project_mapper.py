@@ -55,6 +55,14 @@ def _resolve_background_music_path(background_music_track: str | None, db: Sessi
     return Path(track.file_path) if track is not None else None
 
 
+def _config_float(config: dict, key: str, default: float) -> float:
+    """Lee un float de `config` con fallback -- a diferencia de `value or
+    default`, distingue None (ausente, usar default) de 0.0 (valor real
+    valido, p.ej. un volumen silenciado)."""
+    value = config.get(key)
+    return float(value) if value is not None else default
+
+
 def _parse_text_overlays(raw_overlays: object) -> list[TextOverlay]:
     """Convierte la lista de dicts guardada en `config['text_overlays']`
     (ver RM-28, `routers/projects.py::create_project` ya valido que cada
@@ -241,7 +249,11 @@ def build_micro_video_use_case_and_request(
         background_music_path=_resolve_background_music_path(background_music_track, db),
         background_music_start=float(config.get("background_music_start") or 0.0),
         background_music_end=float(background_music_end) if background_music_end else None,
+        background_music_volume=_config_float(config, "background_music_volume", 0.12),
+        narration_volume=_config_float(config, "narration_volume", 1.0),
         text_overlays=_parse_text_overlays(config.get("text_overlays")),
+        caption_x=_config_float(config, "caption_x", 0.5),
+        caption_y=_config_float(config, "caption_y", 0.85),
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

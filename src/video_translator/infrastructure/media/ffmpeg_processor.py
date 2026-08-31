@@ -281,6 +281,22 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=AudioExtractionError)
         return output_path
 
+    def apply_volume(self, audio_path: Path, volume: float) -> None:
+        if volume == 1.0:
+            return
+        # Mismo patron in-place que fit_to_duration (audio_mixing.py): ffmpeg
+        # no puede escribir sobre el archivo que esta leyendo, asi que se
+        # escribe a un temporal y se reemplaza al terminar.
+        tmp_path = audio_path.with_suffix(".tmp.wav")
+        cmd = [
+            self._ffmpeg, "-y",
+            "-i", str(audio_path),
+            "-af", f"volume={volume}",
+            str(tmp_path),
+        ]
+        self._run(cmd, error_cls=AudioExtractionError)
+        tmp_path.replace(audio_path)
+
     def _run(self, cmd: list[str], error_cls: type[Exception]) -> subprocess.CompletedProcess:
         logger.debug("ffmpeg.exec", cmd=" ".join(cmd))
         increment_counter("ffmpeg.calls")

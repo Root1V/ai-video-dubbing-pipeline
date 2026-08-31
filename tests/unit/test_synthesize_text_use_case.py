@@ -40,6 +40,9 @@ class FakeMediaProcessor:
     def extract_music_range(self, track_path: Path, start: float, end: float, output_path: Path) -> Path:
         raise NotImplementedError("no usado por SynthesizeTextUseCase")
 
+    def apply_volume(self, audio_path: Path, volume: float) -> None:
+        raise NotImplementedError("no usado por SynthesizeTextUseCase")
+
     def replace_audio_track(
         self, video_path: Path, new_audio_path: Path, output_path: Path, keep_original_as_secondary: bool = True
     ) -> Path:

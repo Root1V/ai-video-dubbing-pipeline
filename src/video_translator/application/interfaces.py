@@ -120,6 +120,13 @@ class MediaProcessor(Protocol):
         `clean_music_track`."""
         ...
 
+    def apply_volume(self, audio_path: Path, volume: float) -> None:
+        """Ajusta el volumen de `audio_path` EN EL LUGAR (in-place), lineal
+        (no dB, 1.0 = sin cambios) -- mismo patron in-place que
+        `fit_audio_to_duration`. No-op si `volume == 1.0` (evita un pase de
+        ffmpeg innecesario)."""
+        ...
+
 
 class Transcriber(Protocol):
     """Motor de Speech-to-Text (implementado con faster-whisper)."""

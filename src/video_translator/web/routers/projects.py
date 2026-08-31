@@ -113,6 +113,14 @@ def create_project(
     # loop de fondo (ver RM-28). end=None = hasta el final de la pista.
     background_music_start: float = Form(0.0),
     background_music_end: float | None = Form(None),
+    # Volumen lineal (no dB) de cada pista al mezclar -- ver
+    # GenerateMicroVideoRequest.background_music_volume/narration_volume.
+    background_music_volume: float = Form(0.12),
+    narration_volume: float = Form(1.0),
+    # Posicion de los captions (fraccion 0-1, centro del caption) --
+    # arrastrable en el editor igual que un overlay de texto.
+    caption_x: float = Form(0.5),
+    caption_y: float = Form(0.85),
     # Lista JSON de overlays de texto posicionables (ver RM-28,
     # domain.models.TextOverlay) -- mismo patron que `glossary`.
     text_overlays: str = Form("[]"),
@@ -244,6 +252,10 @@ def create_project(
             "background_music": background_music,
             "background_music_start": background_music_start,
             "background_music_end": background_music_end,
+            "background_music_volume": background_music_volume,
+            "narration_volume": narration_volume,
+            "caption_x": caption_x,
+            "caption_y": caption_y,
             "text_overlays": text_overlays_list,
         }
         if voice_option == "own" and voice_file is not None:

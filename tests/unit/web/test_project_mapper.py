@@ -470,3 +470,37 @@ def test_build_micro_video_use_case_and_request_maps_text_overlays(
     assert request.text_overlays[0].color == "#FF0000"
     assert request.text_overlays[1].text == "Chau"
     assert request.text_overlays[1].bold is False  # default del dataclass
+
+
+def test_build_micro_video_use_case_and_request_defaults_volume_and_caption_position(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.background_music_volume == pytest.approx(0.12)
+    assert request.narration_volume == pytest.approx(1.0)
+    assert request.caption_x == pytest.approx(0.5)
+    assert request.caption_y == pytest.approx(0.85)
+
+
+def test_build_micro_video_use_case_and_request_maps_volume_and_caption_position(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(
+        tmp_path,
+        background_music_volume=0.3,
+        narration_volume=0.0,
+        caption_x=0.1,
+        caption_y=0.0,
+    )
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.background_music_volume == pytest.approx(0.3)
+    assert request.narration_volume == pytest.approx(0.0)  # 0.0 es un valor real (silenciado), no "ausente"
+    assert request.caption_x == pytest.approx(0.1)
+    assert request.caption_y == pytest.approx(0.0)

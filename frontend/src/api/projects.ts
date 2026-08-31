@@ -245,6 +245,18 @@ export async function createMicroVideoProject(
     if (input.background_music_end != null) {
       formData.set('background_music_end', String(input.background_music_end))
     }
+    if (input.background_music_volume != null) {
+      formData.set('background_music_volume', String(input.background_music_volume))
+    }
+  }
+  if (input.narration_volume != null) {
+    formData.set('narration_volume', String(input.narration_volume))
+  }
+  if (input.caption_x != null) {
+    formData.set('caption_x', String(input.caption_x))
+  }
+  if (input.caption_y != null) {
+    formData.set('caption_y', String(input.caption_y))
   }
   if (input.text_overlays && input.text_overlays.length > 0) {
     formData.set(
