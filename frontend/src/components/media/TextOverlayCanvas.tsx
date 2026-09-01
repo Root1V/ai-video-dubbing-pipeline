@@ -1,5 +1,5 @@
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useRef } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CaptionHighlightStyle, FilterPreset, ImageAdjustment, TextOverlay } from '../../types/project'
 import { cn } from '../../lib/cn'
 
@@ -14,6 +14,24 @@ const CSS_FILTER_BY_PRESET: Record<FilterPreset, string | undefined> = {
   cool: 'hue-rotate(180deg) saturate(1.1)',
   warm: 'sepia(0.3) saturate(1.3) hue-rotate(-10deg)',
   dramatic: 'contrast(1.15) saturate(1.2)',
+}
+
+// Debe coincidir con el aspecto del contenedor (`aspectRatio: '9 / 16'` mas
+// abajo) y con VIDEO_WIDTH/VIDEO_HEIGHT del backend.
+const CONTAINER_ASPECT = 9 / 16
+
+/** Cuanto mas grande es la imagen ya escalada (cover-fit + zoom, ver RM-30)
+ * que el marco, como fraccion del ancho/alto del marco -- 0 = sin sobrante
+ * en ese eje (no se puede desplazar). Mismo orden de operaciones que
+ * `ffmpeg_processor.py::render_image_video`: 1) cubrir el marco 9:16
+ * (aspect-fit "increase"), 2) escalar un extra `zoom`x. */
+function computeExcess(naturalSize: { width: number; height: number } | null, zoom: number) {
+  if (!naturalSize) return { excessX: 0, excessY: 0 }
+  const imageAspect = naturalSize.width / naturalSize.height
+  if (imageAspect >= CONTAINER_ASPECT) {
+    return { excessX: (imageAspect / CONTAINER_ASPECT) * zoom - zoom, excessY: zoom - 1 }
+  }
+  return { excessX: zoom - 1, excessY: (CONTAINER_ASPECT / imageAspect) * zoom - zoom }
 }
 
 export interface CaptionPreview {
@@ -61,6 +79,11 @@ export function TextOverlayCanvas({
   onImagePan,
 }: TextOverlayCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    setNaturalSize(null)
+  }, [imageUrl])
 
   function handlePointerDown(
     event: ReactPointerEvent<HTMLElement>,
@@ -107,12 +130,22 @@ export function TextOverlayCanvas({
     let lastY = event.clientY
     let offsetX = imageAdjustment.offset_x
     let offsetY = imageAdjustment.offset_y
+    // El sobrante (cuanto mas grande es la imagen ya escalada que el marco)
+    // se calcula UNA vez al empezar a arrastrar -- no cambia durante el
+    // gesto (zoom no cambia mientras se arrastra). Dividir por el sobrante
+    // en PIXELES (no por el ancho del contenedor) es lo que hace que el
+    // arrastre siga al cursor 1 a 1 -- si un eje no tiene sobrante (p.ej.
+    // recien al hacer zoom aparece sobrante vertical que antes era cero),
+    // antes se quedaba trabado sin poder moverse en ese eje.
+    const { excessX, excessY } = computeExcess(naturalSize, imageAdjustment.zoom)
 
     function handlePointerMove(moveEvent: PointerEvent) {
       if (!container) return
       const rect = container.getBoundingClientRect()
-      offsetX = Math.min(1, Math.max(0, offsetX - (moveEvent.clientX - lastX) / rect.width))
-      offsetY = Math.min(1, Math.max(0, offsetY - (moveEvent.clientY - lastY) / rect.height))
+      const dx = moveEvent.clientX - lastX
+      const dy = moveEvent.clientY - lastY
+      if (excessX > 0.001) offsetX = Math.min(1, Math.max(0, offsetX - dx / (excessX * rect.width)))
+      if (excessY > 0.001) offsetY = Math.min(1, Math.max(0, offsetY - dy / (excessY * rect.height)))
       lastX = moveEvent.clientX
       lastY = moveEvent.clientY
       pan?.(offsetX, offsetY)
@@ -127,6 +160,42 @@ export function TextOverlayCanvas({
     window.addEventListener('pointerup', handlePointerUp)
   }
 
+  // Reproduce a mano el mismo orden de operaciones que
+  // `ffmpeg_processor.py::render_image_video` (cubrir el marco, escalar por
+  // `zoom`, recortar segun offset_x/offset_y) -- a diferencia de
+  // `object-position` + `transform:scale` por separado, esto SI le agrega
+  // sobrante real a cada eje al hacer zoom (ver `computeExcess`), asi que
+  // el arrastre funciona en cualquier direccion una vez zoomeado, no solo
+  // en el eje que ya tenia sobrante por la relacion de aspecto original.
+  function backgroundImageStyle(): CSSProperties | undefined {
+    if (!imageAdjustment) return undefined
+    const { offset_x: offsetX, offset_y: offsetY, zoom, filter_preset: filterPreset } = imageAdjustment
+    if (!naturalSize) {
+      // Mientras se carga la imagen y no conocemos su tamano natural: misma
+      // aproximacion simple de antes, para no saltar visualmente apenas carga.
+      return {
+        objectFit: 'cover',
+        objectPosition: `${offsetX * 100}% ${offsetY * 100}%`,
+        filter: CSS_FILTER_BY_PRESET[filterPreset],
+      }
+    }
+    const { excessX, excessY } = computeExcess(naturalSize, zoom)
+    return {
+      position: 'absolute',
+      // El preflight de Tailwind pone `img { max-width: 100%; height: auto }`
+      // -- sin anular eso aca, el ancho/alto de abajo queda capado a 100%
+      // sin importar el zoom, y el pan se ve "trabado" (bug reportado).
+      maxWidth: 'none',
+      maxHeight: 'none',
+      width: `${(1 + excessX) * 100}%`,
+      height: `${(1 + excessY) * 100}%`,
+      left: `${-excessX * offsetX * 100}%`,
+      top: `${-excessY * offsetY * 100}%`,
+      objectFit: 'cover',
+      filter: CSS_FILTER_BY_PRESET[filterPreset],
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -139,15 +208,13 @@ export function TextOverlayCanvas({
         className={cn('h-full w-full object-cover', onImagePan && 'cursor-move')}
         draggable={false}
         onPointerDown={onImagePan ? handleImagePointerDown : undefined}
-        style={
-          imageAdjustment
-            ? {
-                objectPosition: `${imageAdjustment.offset_x * 100}% ${imageAdjustment.offset_y * 100}%`,
-                transform: `scale(${imageAdjustment.zoom})`,
-                filter: CSS_FILTER_BY_PRESET[imageAdjustment.filter_preset],
-              }
-            : undefined
+        onLoad={(event) =>
+          setNaturalSize({
+            width: event.currentTarget.naturalWidth,
+            height: event.currentTarget.naturalHeight,
+          })
         }
+        style={backgroundImageStyle()}
       />
       {imageAdjustment?.filter_preset === 'dramatic' && (
         <div
