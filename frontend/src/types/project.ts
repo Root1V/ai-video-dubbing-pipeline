@@ -198,6 +198,9 @@ export interface CreateMicroVideoProjectInput {
    * igual que un overlay de texto. */
   caption_x?: number
   caption_y?: number
+  /** Encuadre (pan/zoom) elegido por el usuario para cada imagen, paralelo a
+   * `imageFiles` -- mismo orden, mismo índice (ver RM-30). */
+  image_adjustments?: ImageAdjustment[]
 }
 
 export type CaptionHighlightStyle = 'background' | 'text_color'
@@ -215,4 +218,16 @@ export interface TextOverlay {
   font_size: number
   color: string
   fade: boolean
+}
+
+/** Encuadre (pan/zoom) de una imagen del micro-video, elegido a mano por el
+ * usuario en el editor (ver RM-30). `offset_x`/`offset_y` son fracciones
+ * 0-1 de cuánto se desplaza la ventana de recorte (0 = borde
+ * superior/izquierdo visible, 1 = borde inferior/derecho visible); `zoom`
+ * >= 1.0 acerca la imagen antes de recortarla. Defaults (0.5, 0.5, 1.0)
+ * reproducen el recorte centrado sin zoom manual (comportamiento previo). */
+export interface ImageAdjustment {
+  offset_x: number
+  offset_y: number
+  zoom: number
 }

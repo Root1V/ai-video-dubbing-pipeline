@@ -77,13 +77,19 @@ class MediaProcessor(Protocol):
         duration_seconds: float,
         width: int = 1080,
         height: int = 1920,
+        offset_x: float = 0.5,
+        offset_y: float = 0.5,
+        zoom: float = 1.0,
     ) -> Path:
         """Renderiza un video vertical a partir de una imagen estatica (efecto
         Ken Burns: zoom lento y continuo) con `audio_path` como pista de
         audio, con una duracion igual a `duration_seconds`. `audio_path=None`
         renderiza el clip MUDO (ver RM-29: con varias imagenes, cada una se
-        renderiza por separado y el audio se mezcla despues sobre el video ya
-        concatenado, via `concatenate_videos` + `replace_audio_track`)."""
+        renderiza muda y se concatenan, el audio se mezcla despues sobre el
+        video ya concatenado). `offset_x`/`offset_y`/`zoom` (ver RM-30,
+        `domain.models.MicroVideoImage`) fijan el encuadre base ANTES del
+        Ken Burns automatico -- defaults (0.5, 0.5, 1.0) reproducen el
+        comportamiento previo a RM-30 (recorte centrado, sin zoom manual)."""
         ...
 
     def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:

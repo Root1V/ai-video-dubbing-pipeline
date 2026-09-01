@@ -127,6 +127,10 @@ def create_project(
     # Lista JSON de overlays de texto posicionables (ver RM-28,
     # domain.models.TextOverlay) -- mismo patron que `glossary`.
     text_overlays: str = Form("[]"),
+    # Lista JSON de encuadres por imagen (ver RM-30, domain.models.MicroVideoImage),
+    # paralela a [file, *additional_images] por indice -- mismo patron que
+    # `text_overlays`.
+    image_adjustments: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
@@ -155,6 +159,20 @@ def create_project(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="text_overlays debe ser una lista de objetos con 'text', 'x' e 'y'.",
+        )
+
+    try:
+        image_adjustments_list = json.loads(image_adjustments)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_adjustments no es JSON valido."
+        ) from exc
+    if not isinstance(image_adjustments_list, list) or not all(
+        isinstance(item, dict) for item in image_adjustments_list
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="image_adjustments debe ser una lista de objetos.",
         )
 
     is_tts = service_type == "tts"
@@ -266,6 +284,7 @@ def create_project(
             "caption_y": caption_y,
             "text_overlays": text_overlays_list,
             "additional_image_paths": additional_image_paths,
+            "image_adjustments": image_adjustments_list,
         }
         if voice_option == "own" and voice_file is not None:
             voice_path = storage.save_upload(voice_file, project.id, settings)

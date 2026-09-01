@@ -276,6 +276,18 @@ export async function createMicroVideoProject(
       ),
     )
   }
+  if (input.image_adjustments && input.image_adjustments.length > 0) {
+    formData.set(
+      'image_adjustments',
+      JSON.stringify(
+        input.image_adjustments.map((adjustment) => ({
+          offset_x: adjustment.offset_x,
+          offset_y: adjustment.offset_y,
+          zoom: adjustment.zoom,
+        })),
+      ),
+    )
+  }
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

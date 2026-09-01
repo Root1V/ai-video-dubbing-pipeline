@@ -869,6 +869,96 @@ def test_create_micro_video_project_defaults_additional_images_to_empty(
     assert resp.json()["config"]["additional_image_paths"] == []
 
 
+def test_create_micro_video_project_defaults_image_adjustments_to_empty(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["image_adjustments"] == []
+
+
+def test_create_micro_video_project_with_image_adjustments(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    adjustments = [{"offset_x": 0.2, "offset_y": 0.8, "zoom": 1.5}]
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "image_adjustments": json.dumps(adjustments),
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["image_adjustments"] == adjustments
+
+
+def test_create_micro_video_project_rejects_invalid_image_adjustments_json(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "image_adjustments": "not-json",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_micro_video_project_rejects_image_adjustments_not_a_list(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "image_adjustments": json.dumps({"offset_x": 0.5}),
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
 def test_create_micro_video_project_rejects_invalid_text_overlays_json(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:

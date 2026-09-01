@@ -14,7 +14,11 @@ import { EditorTopBar } from '../components/microVideoEditor/EditorTopBar'
 import type { EditorTool } from '../components/microVideoEditor/types'
 import { Alert } from '../components/ui/Alert'
 import { getErrorMessage } from '../lib/errors'
-import type { CaptionHighlightStyle, TextOverlay, TtsVoiceOption } from '../types/project'
+import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay, TtsVoiceOption } from '../types/project'
+
+function makeImageAdjustment(): ImageAdjustment {
+  return { offset_x: 0.5, offset_y: 0.5, zoom: 1.0 }
+}
 
 function makeOverlay(): TextOverlay {
   return {
@@ -37,6 +41,8 @@ export function NewMicroVideoProjectPage() {
   const [text, setText] = useState('')
   const [targetLang, setTargetLang] = useState('es')
   const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imageAdjustments, setImageAdjustments] = useState<ImageAdjustment[]>([])
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [voiceOption, setVoiceOption] = useState<TtsVoiceOption>('public_female')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [targetDuration, setTargetDuration] = useState<number | null>(null)
@@ -65,17 +71,18 @@ export function NewMicroVideoProjectPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   useEffect(() => {
-    const firstImage = imageFiles[0]
-    if (!firstImage) {
+    // El lienzo muestra la imagen ACTIVA (elegida en ImagePanel, ver RM-30)
+    // como referencia para posicionar overlays/subtitulos (que son
+    // globales, no por-imagen -- ver RM-29) y para ajustar su encuadre.
+    const activeImage = imageFiles[activeImageIndex]
+    if (!activeImage) {
       setImageUrl(null)
       return
     }
-    // El lienzo muestra la PRIMERA imagen como referencia para posicionar
-    // overlays/subtitulos (que son globales, no por-imagen -- ver RM-29).
-    const url = URL.createObjectURL(firstImage)
+    const url = URL.createObjectURL(activeImage)
     setImageUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [imageFiles])
+  }, [imageFiles, activeImageIndex])
 
   useEffect(() => {
     setMusicStart(0)
@@ -143,6 +150,7 @@ export function NewMicroVideoProjectPage() {
           text_overlays: textOverlays,
           caption_x: captionX,
           caption_y: captionY,
+          image_adjustments: imageAdjustments,
         },
         setUploadProgress,
       )
@@ -203,6 +211,12 @@ export function NewMicroVideoProjectPage() {
                 setCaptionX(x)
                 setCaptionY(y)
               }}
+              imageAdjustment={imageAdjustments[activeImageIndex]}
+              onImagePan={(offsetX, offsetY) =>
+                setImageAdjustments((prev) =>
+                  prev.map((a, i) => (i === activeImageIndex ? { ...a, offset_x: offsetX, offset_y: offsetY } : a)),
+                )
+              }
             />
           ) : (
             <p className="max-w-xs text-center text-sm text-muted-foreground">
@@ -215,8 +229,24 @@ export function NewMicroVideoProjectPage() {
           activeTool={activeTool}
           isSubmitting={isSubmitting}
           imageFiles={imageFiles}
-          onImageFilesAdded={(files) => setImageFiles((prev) => [...prev, ...files])}
-          onImageRemoveAt={(index) => setImageFiles((prev) => prev.filter((_, i) => i !== index))}
+          onImageFilesAdded={(files) => {
+            setImageFiles((prev) => [...prev, ...files])
+            setImageAdjustments((prev) => [...prev, ...files.map(() => makeImageAdjustment())])
+          }}
+          onImageRemoveAt={(index) => {
+            setImageFiles((prev) => prev.filter((_, i) => i !== index))
+            setImageAdjustments((prev) => prev.filter((_, i) => i !== index))
+            setActiveImageIndex((prev) => {
+              if (prev === index) return 0
+              return prev > index ? prev - 1 : prev
+            })
+          }}
+          activeImageIndex={activeImageIndex}
+          onSelectActiveImage={setActiveImageIndex}
+          imageAdjustments={imageAdjustments}
+          onImageZoomChange={(zoom) =>
+            setImageAdjustments((prev) => prev.map((a, i) => (i === activeImageIndex ? { ...a, zoom } : a)))
+          }
           hasImage={Boolean(imageUrl)}
           overlays={textOverlays}
           selectedOverlayId={selectedOverlayId}

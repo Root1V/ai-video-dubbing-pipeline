@@ -5,7 +5,7 @@ import { VoicePanel } from './panels/VoicePanel'
 import { MusicPanel } from './panels/MusicPanel'
 import { SubtitlesPanel } from './panels/SubtitlesPanel'
 import type { EditorTool } from './types'
-import type { CaptionHighlightStyle, TextOverlay, TtsVoiceOption } from '../../types/project'
+import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay, TtsVoiceOption } from '../../types/project'
 import type { MusicTrack } from '../../types/musicTracks'
 
 interface EditorRightPanelProps {
@@ -15,6 +15,10 @@ interface EditorRightPanelProps {
   imageFiles: File[]
   onImageFilesAdded: (files: File[]) => void
   onImageRemoveAt: (index: number) => void
+  activeImageIndex: number
+  onSelectActiveImage: (index: number) => void
+  imageAdjustments: ImageAdjustment[]
+  onImageZoomChange: (zoom: number) => void
 
   hasImage: boolean
   overlays: TextOverlay[]
@@ -70,6 +74,10 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
           onFilesAdded={props.onImageFilesAdded}
           onRemoveAt={props.onImageRemoveAt}
           isSubmitting={props.isSubmitting}
+          activeIndex={props.activeImageIndex}
+          onSelectActive={props.onSelectActiveImage}
+          imageAdjustments={props.imageAdjustments}
+          onZoomChange={props.onImageZoomChange}
         />
       )}
 

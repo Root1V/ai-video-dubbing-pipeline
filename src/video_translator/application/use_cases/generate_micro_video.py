@@ -206,18 +206,21 @@ class GenerateMicroVideoUseCase:
         # segmento de toda la duracion). El audio se mezcla DESPUES, sobre el
         # video ya concatenado, para no depender de donde caen los cortes
         # entre imagenes.
-        segment_duration = video_duration / len(request.image_paths)
+        segment_duration = video_duration / len(request.images)
         segment_paths: list[Path] = []
-        with timings.stage("image_to_video", num_images=len(request.image_paths)):
-            for i, image_path in enumerate(request.image_paths):
+        with timings.stage("image_to_video", num_images=len(request.images)):
+            for i, image in enumerate(request.images):
                 segment_path = workdir / f"segment_{i:03d}.mp4"
                 self._media.render_image_video(
-                    image_path,
+                    image.path,
                     None,
                     segment_path,
                     duration_seconds=segment_duration,
                     width=VIDEO_WIDTH,
                     height=VIDEO_HEIGHT,
+                    offset_x=image.offset_x,
+                    offset_y=image.offset_y,
+                    zoom=image.zoom,
                 )
                 segment_paths.append(segment_path)
 
@@ -256,16 +259,18 @@ class GenerateMicroVideoUseCase:
     def _validate_request(request: GenerateMicroVideoRequest) -> None:
         if not request.text.strip():
             raise VideoTranslatorError("El texto a narrar esta vacio.")
-        if not request.image_paths:
+        if not request.images:
             raise InvalidVideoFileError("Se necesita al menos una imagen.")
-        for image_path in request.image_paths:
-            if not image_path.exists():
-                raise InvalidVideoFileError(f"No existe el archivo: {image_path}")
-            if image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        for image in request.images:
+            if not image.path.exists():
+                raise InvalidVideoFileError(f"No existe el archivo: {image.path}")
+            if image.path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
                 raise InvalidVideoFileError(
-                    f"Extension de imagen no soportada '{image_path.suffix}'. "
+                    f"Extension de imagen no soportada '{image.path.suffix}'. "
                     f"Soportadas: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
                 )
+            if image.zoom < 1.0:
+                raise InvalidVideoFileError(f"zoom invalido ({image.zoom}): debe ser >= 1.0.")
 
 
 def _build_caption_segments(chunks_with_timing: list[tuple[str, float, float]]) -> list[TranslatedSegment]:

@@ -1,6 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useRef } from 'react'
-import type { CaptionHighlightStyle, TextOverlay } from '../../types/project'
+import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay } from '../../types/project'
 import { cn } from '../../lib/cn'
 
 export interface CaptionPreview {
@@ -23,6 +23,11 @@ interface TextOverlayCanvasProps {
    * mostrar nada (p.ej. sin narracion todavia). */
   captionPreview?: CaptionPreview
   onCaptionMove?: (x: number, y: number) => void
+  /** Encuadre (pan/zoom) de la imagen de fondo actualmente activa (ver
+   * RM-30) -- undefined = sin ajuste (recorte centrado, comportamiento
+   * previo). `onImagePan` habilita arrastrar la imagen para reposicionarla. */
+  imageAdjustment?: ImageAdjustment
+  onImagePan?: (offsetX: number, offsetY: number) => void
 }
 
 /** Lienzo de edicion: la imagen de fondo (misma relacion de aspecto 9:16
@@ -39,11 +44,13 @@ export function TextOverlayCanvas({
   onMove,
   captionPreview,
   onCaptionMove,
+  imageAdjustment,
+  onImagePan,
 }: TextOverlayCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   function handlePointerDown(
-    event: ReactPointerEvent<HTMLDivElement>,
+    event: ReactPointerEvent<HTMLElement>,
     onDrag: (x: number, y: number) => void,
   ) {
     event.preventDefault()
@@ -69,13 +76,65 @@ export function TextOverlayCanvas({
     window.addEventListener('pointerup', handlePointerUp)
   }
 
+  // A diferencia de handlePointerDown (mapea la posicion ABSOLUTA del
+  // puntero, natural para "donde soltaste el texto"), reposicionar una
+  // imagen se siente como arrastrar una foto: el contenido debe seguir al
+  // cursor. Se acumula el DELTA de movimiento y se resta del offset actual
+  // -- arrastrar hacia la derecha revela mas del lado izquierdo de la
+  // imagen, igual que un editor de recorte de foto estandar.
+  function handleImagePointerDown(event: ReactPointerEvent<HTMLImageElement>) {
+    const pan = onImagePan
+    if (!pan || !imageAdjustment) return
+    event.preventDefault()
+    const container = containerRef.current
+    if (!container) return
+    const target = event.currentTarget
+    target.setPointerCapture(event.pointerId)
+    let lastX = event.clientX
+    let lastY = event.clientY
+    let offsetX = imageAdjustment.offset_x
+    let offsetY = imageAdjustment.offset_y
+
+    function handlePointerMove(moveEvent: PointerEvent) {
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      offsetX = Math.min(1, Math.max(0, offsetX - (moveEvent.clientX - lastX) / rect.width))
+      offsetY = Math.min(1, Math.max(0, offsetY - (moveEvent.clientY - lastY) / rect.height))
+      lastX = moveEvent.clientX
+      lastY = moveEvent.clientY
+      pan?.(offsetX, offsetY)
+    }
+
+    function handlePointerUp() {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+  }
+
   return (
     <div
       ref={containerRef}
       className="relative mx-auto h-full max-h-full max-w-full select-none overflow-hidden rounded-2xl border border-border bg-secondary/30 shadow-lg"
       style={{ aspectRatio: '9 / 16', containerType: 'inline-size' }}
     >
-      <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+      <img
+        src={imageUrl}
+        alt=""
+        className={cn('h-full w-full object-cover', onImagePan && 'cursor-move')}
+        draggable={false}
+        onPointerDown={onImagePan ? handleImagePointerDown : undefined}
+        style={
+          imageAdjustment
+            ? {
+                objectPosition: `${imageAdjustment.offset_x * 100}% ${imageAdjustment.offset_y * 100}%`,
+                transform: `scale(${imageAdjustment.zoom})`,
+              }
+            : undefined
+        }
+      />
       {overlays.map((overlay) => (
         <div
           key={overlay.id}

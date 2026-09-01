@@ -181,6 +181,21 @@ class TextOverlay:
 
 
 @dataclass(slots=True)
+class MicroVideoImage:
+    """Una imagen del micro-video con el encuadre elegido por el usuario en
+    el editor (ver RM-30). `offset_x`/`offset_y` son fracciones 0-1 de
+    cuanto se desplaza la ventana de recorte (0 = borde superior/izquierdo
+    visible, 1 = borde inferior/derecho visible); `zoom` >= 1.0 acerca la
+    imagen antes de recortarla. Los defaults reproducen el comportamiento
+    previo a RM-30 (recorte centrado, sin zoom manual adicional)."""
+
+    path: Path
+    offset_x: float = 0.5
+    offset_y: float = 0.5
+    zoom: float = 1.0
+
+
+@dataclass(slots=True)
 class GenerateMicroVideoRequest:
     """Solicitud de generacion de un micro-video (imagen(es) + texto -> video
     vertical narrado con captions), entrada principal de
@@ -190,7 +205,7 @@ class GenerateMicroVideoRequest:
     # (ver RM-29), el video las recorre en orden, cada una con su propio
     # efecto Ken Burns, repartiendo la duracion final del video en partes
     # iguales entre todas.
-    image_paths: list[Path]
+    images: list[MicroVideoImage]
     text: str
     output_dir: Path
     language: str = "es"

@@ -166,18 +166,27 @@ class FFmpegMediaProcessor:
         duration_seconds: float,
         width: int = 1080,
         height: int = 1920,
+        offset_x: float = 0.5,
+        offset_y: float = 0.5,
+        zoom: float = 1.0,
     ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fps = 30
         total_frames = max(1, round(duration_seconds * fps))
-        # 1) scale+crop a exactamente widthxheight (cubre el encuadre, recorta
-        #    el sobrante centrado) para que la imagen de entrada -- de
-        #    cualquier orientacion/aspecto -- no se deforme. 2) zoompan sobre
-        #    ese frame ya normalizado: como su propio iw:ih coincide con
-        #    width:height, el zoom/crop interno no distorsiona tampoco.
+        # 1) scale a exactamente widthxheight (cubre el encuadre, recorta el
+        #    sobrante centrado) para que la imagen de entrada -- de cualquier
+        #    orientacion/aspecto -- no se deforme. 2) escala un extra `zoom`x
+        #    y recorta widthxheight desplazando la ventana segun
+        #    offset_x/offset_y (ver RM-30, encuadre elegido por el usuario en
+        #    el editor -- defaults 0.5/0.5/1.0 son un no-op, recorte
+        #    centrado sin zoom manual, igual que antes de RM-30). 3) zoompan
+        #    (Ken Burns automatico) sobre ese frame ya normalizado: como su
+        #    propio iw:ih coincide con width:height, el zoom/crop interno no
+        #    distorsiona tampoco.
         vf = (
             f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},"
+            f"scale=iw*{zoom}:ih*{zoom},"
+            f"crop={width}:{height}:x='(in_w-{width})*{offset_x}':y='(in_h-{height})*{offset_y}',"
             f"zoompan=z='min(zoom+0.0008,1.3)':d={total_frames}:"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},"
             f"format=yuv420p"

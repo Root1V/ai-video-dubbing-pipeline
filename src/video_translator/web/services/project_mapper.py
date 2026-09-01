@@ -30,6 +30,7 @@ from video_translator.container import (
 )
 from video_translator.domain.models import (
     GenerateMicroVideoRequest,
+    MicroVideoImage,
     OutputMode,
     SynthesizeTextRequest,
     TextOverlay,
@@ -81,6 +82,22 @@ def _parse_text_overlays(raw_overlays: object) -> list[TextOverlay]:
         }
         overlays.append(TextOverlay(**kwargs))
     return overlays
+
+
+def _parse_image_adjustments(raw_adjustments: object, image_paths: list[Path]) -> list[MicroVideoImage]:
+    """Combina `image_paths` (ya resuelto: imagen principal + adicionales,
+    ver RM-29) con la lista JSON guardada en `config['image_adjustments']`
+    (ver RM-30, `routers/projects.py::create_project`), por indice -- si
+    falta el ajuste de un indice (longitud desalineada, o el proyecto es
+    anterior a RM-30 y no tiene esta clave) usa los defaults del dataclass
+    (recorte centrado, sin zoom manual)."""
+    adjustments = raw_adjustments if isinstance(raw_adjustments, list) else []
+    images = []
+    for i, path in enumerate(image_paths):
+        item = adjustments[i] if i < len(adjustments) and isinstance(adjustments[i], dict) else {}
+        kwargs = {key: item[key] for key in ("offset_x", "offset_y", "zoom") if key in item}
+        images.append(MicroVideoImage(path=path, **kwargs))
+    return images
 
 
 def build_use_case_and_request(
@@ -240,7 +257,7 @@ def build_micro_video_use_case_and_request(
     additional_image_paths = config.get("additional_image_paths") or []
     image_paths = [Path(project.input_video_path), *[Path(p) for p in additional_image_paths]]
     request = GenerateMicroVideoRequest(
-        image_paths=image_paths,
+        images=_parse_image_adjustments(config.get("image_adjustments"), image_paths),
         text=config.get("narration_text", ""),
         output_dir=output_dir,
         language=config.get("target_lang", "es"),
