@@ -111,7 +111,8 @@ Commit: `a6bf89a`
 
 ## RM-31 — Filtros de imagen (brillo, contraste, sepia, etc.)
 **Why:** pedido explícito del usuario final; investigué estilos de filtro más usados en 2026 (VSCO/Lightroom/CapCut, ver fuentes) -- filtros como vintage/sepia, cool, warm, B&N y dramático son los presets estándar en la mayoría de editores.
-**Scope:** un selector de presets aplicados vía filtros de ffmpeg ya disponibles en este binario (confirmado con `ffmpeg -filters`): `curves=preset=sepia` (vintage/sepia), `eq` (brillo/contraste/saturación, también da B&N con `saturation=0`), `colorbalance`/`hue` (cool/warm), `vignette` (dramático). Sin nuevo binario ni dependencia.
+**Scope:** un selector de 5 presets + "original" por imagen (RM-30), aplicados vía filtros de ffmpeg ya disponibles en este binario (confirmado con `ffmpeg -h filter=...` y probado con una imagen real): `colorchannelmixer` (sepia, matriz clásica -- `curves` no tiene preset de sepia, solo "vintage"), `hue=s=0` (B&N), `colorbalance` (frío/cálido), `eq`+`vignette` (dramático). Sin nuevo binario ni dependencia. `MicroVideoImage` gana `filter_preset: str`, mismo objeto JSON que ya viaja el encuadre de RM-30.
+Commit: `df4614d`
 
 ## RM-32 — Emoticones sobre el video
 **Why:** pedido explícito del usuario final, además del texto ya arrastrable (RM-28).
