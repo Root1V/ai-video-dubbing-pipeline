@@ -20,6 +20,13 @@ function makeImageAdjustment(): ImageAdjustment {
   return { offset_x: 0.5, offset_y: 0.5, zoom: 1.0, filter_preset: 'none' }
 }
 
+function moveItem<T>(items: T[], from: number, to: number): T[] {
+  const copy = [...items]
+  const [moved] = copy.splice(from, 1)
+  copy.splice(to, 0, moved)
+  return copy
+}
+
 function makeOverlay(): TextOverlay {
   return {
     id: crypto.randomUUID(),
@@ -252,6 +259,16 @@ export function NewMicroVideoProjectPage() {
               prev.map((a, i) => (i === activeImageIndex ? { ...a, filter_preset } : a)),
             )
           }
+          onImageReorder={(from, to) => {
+            setImageFiles((prev) => moveItem(prev, from, to))
+            setImageAdjustments((prev) => moveItem(prev, from, to))
+            setActiveImageIndex((prev) => {
+              if (prev === from) return to
+              if (from < prev && to >= prev) return prev - 1
+              if (from > prev && to <= prev) return prev + 1
+              return prev
+            })
+          }}
           hasImage={Boolean(imageUrl)}
           overlays={textOverlays}
           selectedOverlayId={selectedOverlayId}
