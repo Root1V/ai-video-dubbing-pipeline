@@ -230,4 +230,11 @@ export interface ImageAdjustment {
   offset_x: number
   offset_y: number
   zoom: number
+  /** Estilo de color preestablecido (ver RM-31) -- 'none' = imagen original. */
+  filter_preset: FilterPreset
 }
+
+/** Estilos de color preestablecidos para imágenes del micro-video (ver
+ * RM-31) -- basados en los presets más usados en editores de video cortos
+ * (VSCO/CapCut/Lightroom). */
+export type FilterPreset = 'none' | 'sepia' | 'bw' | 'cool' | 'warm' | 'dramatic'

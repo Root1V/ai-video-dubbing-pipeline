@@ -90,12 +90,12 @@ def _parse_image_adjustments(raw_adjustments: object, image_paths: list[Path]) -
     (ver RM-30, `routers/projects.py::create_project`), por indice -- si
     falta el ajuste de un indice (longitud desalineada, o el proyecto es
     anterior a RM-30 y no tiene esta clave) usa los defaults del dataclass
-    (recorte centrado, sin zoom manual)."""
+    (recorte centrado, sin zoom manual, sin filtro de color -- ver RM-31)."""
     adjustments = raw_adjustments if isinstance(raw_adjustments, list) else []
     images = []
     for i, path in enumerate(image_paths):
         item = adjustments[i] if i < len(adjustments) and isinstance(adjustments[i], dict) else {}
-        kwargs = {key: item[key] for key in ("offset_x", "offset_y", "zoom") if key in item}
+        kwargs = {key: item[key] for key in ("offset_x", "offset_y", "zoom", "filter_preset") if key in item}
         images.append(MicroVideoImage(path=path, **kwargs))
     return images
 

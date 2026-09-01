@@ -284,6 +284,7 @@ export async function createMicroVideoProject(
           offset_x: adjustment.offset_x,
           offset_y: adjustment.offset_y,
           zoom: adjustment.zoom,
+          filter_preset: adjustment.filter_preset,
         })),
       ),
     )

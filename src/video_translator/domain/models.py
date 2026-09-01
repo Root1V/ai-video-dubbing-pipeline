@@ -187,12 +187,17 @@ class MicroVideoImage:
     cuanto se desplaza la ventana de recorte (0 = borde superior/izquierdo
     visible, 1 = borde inferior/derecho visible); `zoom` >= 1.0 acerca la
     imagen antes de recortarla. Los defaults reproducen el comportamiento
-    previo a RM-30 (recorte centrado, sin zoom manual adicional)."""
+    previo a RM-30 (recorte centrado, sin zoom manual adicional).
+    `filter_preset` (ver RM-31) es un estilo de color preestablecido --
+    "none" (default), "sepia", "bw", "cool", "warm" o "dramatic"; sin
+    validacion estricta (mismo criterio que `caption_highlight_style`), un
+    valor no reconocido simplemente no aplica ningun filtro."""
 
     path: Path
     offset_x: float = 0.5
     offset_y: float = 0.5
     zoom: float = 1.0
+    filter_preset: str = "none"
 
 
 @dataclass(slots=True)

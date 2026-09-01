@@ -18,6 +18,17 @@ from video_translator.utils.warning_collector import increment_counter
 
 logger = get_logger(__name__)
 
+# Estilos de color preestablecidos para imagenes de micro-video (ver RM-31).
+# Un preset no reconocido (incluido "none", el default) no aplica ningun
+# filtro -- ver render_image_video.
+_IMAGE_FILTER_PRESETS: dict[str, str] = {
+    "sepia": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+    "bw": "hue=s=0",
+    "cool": "colorbalance=rs=-0.1:gs=0.0:bs=0.15:rm=-0.1:bm=0.15:rh=-0.05:bh=0.1",
+    "warm": "colorbalance=rs=0.15:bs=-0.1:rm=0.15:bm=-0.1:rh=0.1:bh=-0.05",
+    "dramatic": "eq=contrast=1.2:saturation=1.15,vignette=PI/4",
+}
+
 
 class FFmpegMediaProcessor:
     def __init__(
@@ -169,6 +180,7 @@ class FFmpegMediaProcessor:
         offset_x: float = 0.5,
         offset_y: float = 0.5,
         zoom: float = 1.0,
+        filter_preset: str = "none",
     ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fps = 30
@@ -182,14 +194,18 @@ class FFmpegMediaProcessor:
         #    centrado sin zoom manual, igual que antes de RM-30). 3) zoompan
         #    (Ken Burns automatico) sobre ese frame ya normalizado: como su
         #    propio iw:ih coincide con width:height, el zoom/crop interno no
-        #    distorsiona tampoco.
+        #    distorsiona tampoco. 4) filtro de color preestablecido opcional
+        #    (ver RM-31) sobre valores de pixel -- independiente de la
+        #    geometria de los pasos anteriores, se aplica antes de la
+        #    conversion final de formato.
+        color_filter = _IMAGE_FILTER_PRESETS.get(filter_preset, "")
         vf = (
             f"scale={width}:{height}:force_original_aspect_ratio=increase,"
             f"scale=iw*{zoom}:ih*{zoom},"
             f"crop={width}:{height}:x='(in_w-{width})*{offset_x}':y='(in_h-{height})*{offset_y}',"
             f"zoompan=z='min(zoom+0.0008,1.3)':d={total_frames}:"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},"
-            f"format=yuv420p"
+            f"{color_filter + ',' if color_filter else ''}format=yuv420p"
         )
         # Sin "-shortest": si el audio dura menos que `duration_seconds` (el
         # caller puede pedir un video mas largo que la narracion a proposito

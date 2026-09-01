@@ -4,7 +4,16 @@ import { UploadCloud, X } from 'lucide-react'
 import { Button } from '../../ui/Button'
 import { cn } from '../../../lib/cn'
 import { formatBytes } from '../../../lib/format'
-import type { ImageAdjustment } from '../../../types/project'
+import type { FilterPreset, ImageAdjustment } from '../../../types/project'
+
+const FILTER_PRESET_OPTIONS: { value: FilterPreset; label: string }[] = [
+  { value: 'none', label: 'Original' },
+  { value: 'sepia', label: 'Sepia' },
+  { value: 'bw', label: 'B&N' },
+  { value: 'cool', label: 'Frío' },
+  { value: 'warm', label: 'Cálido' },
+  { value: 'dramatic', label: 'Dramático' },
+]
 
 interface ImagePanelProps {
   imageFiles: File[]
@@ -12,11 +21,12 @@ interface ImagePanelProps {
   onRemoveAt: (index: number) => void
   isSubmitting: boolean
   /** Indice de la imagen actualmente activa en el lienzo para ajustar su
-   * encuadre (pan/zoom, ver RM-30). */
+   * encuadre (pan/zoom, ver RM-30) y su filtro de color (ver RM-31). */
   activeIndex: number
   onSelectActive: (index: number) => void
   imageAdjustments: ImageAdjustment[]
   onZoomChange: (zoom: number) => void
+  onFilterPresetChange: (preset: FilterPreset) => void
 }
 
 /** Con mas de una imagen (ver RM-29), el video las recorre EN ESTE ORDEN --
@@ -34,6 +44,7 @@ export function ImagePanel({
   onSelectActive,
   imageAdjustments,
   onZoomChange,
+  onFilterPresetChange,
 }: ImagePanelProps) {
   const [thumbnails, setThumbnails] = useState<string[]>([])
 
@@ -126,6 +137,26 @@ export function ImagePanel({
                   <span className="w-10 text-right text-xs text-muted-foreground">
                     {imageAdjustments[index].zoom.toFixed(2)}x
                   </span>
+                </div>
+              )}
+              {index === activeIndex && imageAdjustments[index] && (
+                <div className="flex flex-wrap gap-1.5">
+                  {FILTER_PRESET_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => onFilterPresetChange(option.value)}
+                      disabled={isSubmitting}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs transition-colors',
+                        imageAdjustments[index].filter_preset === option.value
+                          ? 'border-primary bg-primary/5 font-medium'
+                          : 'border-border hover:bg-secondary/50',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
               )}
             </Fragment>

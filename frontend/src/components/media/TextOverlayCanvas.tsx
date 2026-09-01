@@ -1,7 +1,20 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useRef } from 'react'
-import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay } from '../../types/project'
+import type { CaptionHighlightStyle, FilterPreset, ImageAdjustment, TextOverlay } from '../../types/project'
 import { cn } from '../../lib/cn'
+
+// Aproximacion visual (no un match exacto de pixeles) de los presets de
+// color de RM-31 -- el filtro real se aplica en ffmpeg al generar el video.
+// 'dramatic' no tiene equivalente nativo de vinieta en CSS `filter`, se
+// aproxima por separado con un overlay radial (ver DRAMATIC_VIGNETTE_STYLE).
+const CSS_FILTER_BY_PRESET: Record<FilterPreset, string | undefined> = {
+  none: undefined,
+  sepia: 'sepia(0.8)',
+  bw: 'grayscale(1)',
+  cool: 'hue-rotate(180deg) saturate(1.1)',
+  warm: 'sepia(0.3) saturate(1.3) hue-rotate(-10deg)',
+  dramatic: 'contrast(1.15) saturate(1.2)',
+}
 
 export interface CaptionPreview {
   x: number
@@ -131,10 +144,17 @@ export function TextOverlayCanvas({
             ? {
                 objectPosition: `${imageAdjustment.offset_x * 100}% ${imageAdjustment.offset_y * 100}%`,
                 transform: `scale(${imageAdjustment.zoom})`,
+                filter: CSS_FILTER_BY_PRESET[imageAdjustment.filter_preset],
               }
             : undefined
         }
       />
+      {imageAdjustment?.filter_preset === 'dramatic' && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 100%)' }}
+        />
+      )}
       {overlays.map((overlay) => (
         <div
           key={overlay.id}

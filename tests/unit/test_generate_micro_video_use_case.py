@@ -74,6 +74,7 @@ class FakeMediaProcessor:
         self, image_path: Path, audio_path: Path | None, output_path: Path, duration_seconds: float,
         width: int = 1080, height: int = 1920,
         offset_x: float = 0.5, offset_y: float = 0.5, zoom: float = 1.0,
+        filter_preset: str = "none",
     ) -> Path:
         self.render_calls.append(
             {
@@ -85,6 +86,7 @@ class FakeMediaProcessor:
                 "offset_x": offset_x,
                 "offset_y": offset_y,
                 "zoom": zoom,
+                "filter_preset": filter_preset,
             }
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -352,6 +354,26 @@ def test_execute_uses_default_frame_when_image_has_no_adjustment(tmp_path: Path)
     assert media.render_calls[0]["offset_x"] == 0.5
     assert media.render_calls[0]["offset_y"] == 0.5
     assert media.render_calls[0]["zoom"] == 1.0
+    assert media.render_calls[0]["filter_preset"] == "none"
+
+
+def test_execute_passes_each_image_own_filter_preset(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_paths = _make_images(tmp_path, 2)
+    request = GenerateMicroVideoRequest(
+        images=[
+            MicroVideoImage(path=image_paths[0], filter_preset="sepia"),
+            MicroVideoImage(path=image_paths[1], filter_preset="dramatic"),
+        ],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    use_case.execute(request)
+
+    assert media.render_calls[0]["filter_preset"] == "sepia"
+    assert media.render_calls[1]["filter_preset"] == "dramatic"
 
 
 def test_execute_passes_each_image_own_offset_and_zoom(tmp_path: Path):

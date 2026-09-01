@@ -541,6 +541,21 @@ def test_build_micro_video_use_case_and_request_defaults_image_frame_without_adj
     assert request.images[0].offset_x == pytest.approx(0.5)
     assert request.images[0].offset_y == pytest.approx(0.5)
     assert request.images[0].zoom == pytest.approx(1.0)
+    assert request.images[0].filter_preset == "none"
+
+
+def test_build_micro_video_use_case_and_request_maps_image_filter_preset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    extra = str(tmp_path / "extra.jpg")
+    adjustments = [{"filter_preset": "sepia"}, {"filter_preset": "dramatic"}]
+    project = _make_micro_video_project(tmp_path, additional_image_paths=[extra], image_adjustments=adjustments)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.images[0].filter_preset == "sepia"
+    assert request.images[1].filter_preset == "dramatic"
 
 
 def test_build_micro_video_use_case_and_request_maps_image_adjustments(

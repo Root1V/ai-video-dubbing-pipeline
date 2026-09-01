@@ -221,6 +221,7 @@ class GenerateMicroVideoUseCase:
                     offset_x=image.offset_x,
                     offset_y=image.offset_y,
                     zoom=image.zoom,
+                    filter_preset=image.filter_preset,
                 )
                 segment_paths.append(segment_path)
 

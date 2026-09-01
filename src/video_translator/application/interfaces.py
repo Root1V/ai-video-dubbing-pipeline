@@ -80,6 +80,7 @@ class MediaProcessor(Protocol):
         offset_x: float = 0.5,
         offset_y: float = 0.5,
         zoom: float = 1.0,
+        filter_preset: str = "none",
     ) -> Path:
         """Renderiza un video vertical a partir de una imagen estatica (efecto
         Ken Burns: zoom lento y continuo) con `audio_path` como pista de
@@ -89,7 +90,10 @@ class MediaProcessor(Protocol):
         video ya concatenado). `offset_x`/`offset_y`/`zoom` (ver RM-30,
         `domain.models.MicroVideoImage`) fijan el encuadre base ANTES del
         Ken Burns automatico -- defaults (0.5, 0.5, 1.0) reproducen el
-        comportamiento previo a RM-30 (recorte centrado, sin zoom manual)."""
+        comportamiento previo a RM-30 (recorte centrado, sin zoom manual).
+        `filter_preset` (ver RM-31) aplica un estilo de color preestablecido
+        ("none", "sepia", "bw", "cool", "warm", "dramatic") -- "none" o un
+        valor no reconocido no aplican ningun filtro."""
         ...
 
     def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:

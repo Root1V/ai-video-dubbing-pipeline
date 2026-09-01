@@ -17,7 +17,7 @@ import { getErrorMessage } from '../lib/errors'
 import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay, TtsVoiceOption } from '../types/project'
 
 function makeImageAdjustment(): ImageAdjustment {
-  return { offset_x: 0.5, offset_y: 0.5, zoom: 1.0 }
+  return { offset_x: 0.5, offset_y: 0.5, zoom: 1.0, filter_preset: 'none' }
 }
 
 function makeOverlay(): TextOverlay {
@@ -246,6 +246,11 @@ export function NewMicroVideoProjectPage() {
           imageAdjustments={imageAdjustments}
           onImageZoomChange={(zoom) =>
             setImageAdjustments((prev) => prev.map((a, i) => (i === activeImageIndex ? { ...a, zoom } : a)))
+          }
+          onImageFilterPresetChange={(filter_preset) =>
+            setImageAdjustments((prev) =>
+              prev.map((a, i) => (i === activeImageIndex ? { ...a, filter_preset } : a)),
+            )
           }
           hasImage={Boolean(imageUrl)}
           overlays={textOverlays}

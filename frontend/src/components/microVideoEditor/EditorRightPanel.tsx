@@ -19,6 +19,7 @@ interface EditorRightPanelProps {
   onSelectActiveImage: (index: number) => void
   imageAdjustments: ImageAdjustment[]
   onImageZoomChange: (zoom: number) => void
+  onImageFilterPresetChange: (preset: ImageAdjustment['filter_preset']) => void
 
   hasImage: boolean
   overlays: TextOverlay[]
@@ -78,6 +79,7 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
           onSelectActive={props.onSelectActiveImage}
           imageAdjustments={props.imageAdjustments}
           onZoomChange={props.onImageZoomChange}
+          onFilterPresetChange={props.onImageFilterPresetChange}
         />
       )}
 
