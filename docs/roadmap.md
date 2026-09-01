@@ -106,7 +106,8 @@ Commit: `68f78cf`
 
 ## RM-30 — Ajustar tamaño/posición de la imagen
 **Why:** una imagen subida tal cual puede no encuadrar bien en el video vertical 9:16 (recortada mal, mal centrada).
-**Scope:** en el lienzo del editor, permitir recortar/reposicionar/escalar cada imagen (RM-29) dentro del marco 9:16 antes de generar, con el mismo criterio de arrastre ya usado para texto/subtítulos.
+**Scope:** en el lienzo del editor, arrastrar para reposicionar (pan) y un slider para acercar (zoom) cada imagen (RM-29) dentro del marco 9:16 antes de generar -- el encuadre elegido se aplica ANTES del Ken Burns automático existente, no lo reemplaza. `GenerateMicroVideoRequest.image_paths: list[Path]` pasa a `images: list[MicroVideoImage]` (path + offset_x/offset_y/zoom, defaults = comportamiento previo).
+Commit: `a6bf89a`
 
 ## RM-31 — Filtros de imagen (brillo, contraste, sepia, etc.)
 **Why:** pedido explícito del usuario final; investigué estilos de filtro más usados en 2026 (VSCO/Lightroom/CapCut, ver fuentes) -- filtros como vintage/sepia, cool, warm, B&N y dramático son los presets estándar en la mayoría de editores.
