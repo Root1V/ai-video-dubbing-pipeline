@@ -257,10 +257,27 @@ export function TextOverlayCanvas({
             top: `${captionPreview.y * 100}%`,
             ...(captionPreview.highlightStyle === 'text_color'
               ? { color: captionPreview.bgColor, textShadow: '0 0 3px rgba(0,0,0,0.9)' }
-              : { color: '#FFFFFF', backgroundColor: captionPreview.bgColor }),
+              : captionPreview.highlightStyle === 'karaoke'
+                ? { color: '#FFFFFF', textShadow: '0 0 3px rgba(0,0,0,0.9)' }
+                : { color: '#FFFFFF', backgroundColor: captionPreview.bgColor }),
           }}
         >
-          {captionPreview.text}
+          {captionPreview.highlightStyle === 'karaoke' ? (
+            // Preview estatico (no hay reproduccion real en el editor):
+            // aproxima "se resalta la palabra que se esta narrando"
+            // resaltando la PRIMERA palabra del texto de ejemplo (ver RM-25).
+            (() => {
+              const [firstWord, ...rest] = captionPreview.text.split(' ')
+              return (
+                <>
+                  <span style={{ color: captionPreview.bgColor }}>{firstWord}</span>
+                  {rest.length > 0 ? ` ${rest.join(' ')}` : ''}
+                </>
+              )
+            })()
+          ) : (
+            captionPreview.text
+          )}
         </div>
       )}
     </div>

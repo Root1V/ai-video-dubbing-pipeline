@@ -474,6 +474,58 @@ def test_execute_writes_text_color_highlight_style_without_a_box(tmp_path: Path)
     assert fields[15] == "1"  # BorderStyle=1 (sin caja, solo contorno)
 
 
+def test_execute_writes_karaoke_highlight_style_fixed_white_primary_colour(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        caption_bg_color="#00FF00",
+        caption_highlight_style="karaoke",
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    style_line = next(line for line in content.splitlines() if line.startswith("Style:"))
+    fields = style_line.split(",")
+    # El color elegido NO va en la linea de Style (va inline por palabra) --
+    # PrimaryColour queda fijo en blanco, sin caja.
+    assert fields[3] == "&H00FFFFFF"
+    assert fields[15] == "1"  # BorderStyle=1 (sin caja, solo contorno)
+
+
+def test_execute_writes_one_karaoke_dialogue_per_word(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)],
+        text="Uno dos tres.",
+        output_dir=tmp_path / "out",
+        caption_bg_color="#00FF00",
+        caption_highlight_style="karaoke",
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    dialogue_lines = [line for line in content.splitlines() if line.startswith("Dialogue:")]
+    # "Uno dos tres." -- 3 palabras, un Dialogue por palabra (no uno por caption).
+    assert len(dialogue_lines) == 3
+    # "#00FF00" (verde) inline, sin byte de alpha: &H00FF00&.
+    for line in dialogue_lines:
+        assert line.count("{\\c&H00FF00&}") == 1
+        assert line.count("{\\c}") == 1
+    # Cada Dialogue cubre una ventana de tiempo distinta y en orden.
+    dialogues = _read_ass_dialogues(media.caption_calls[0]["ass_path"])
+    starts = [start for start, _end, _text in dialogues]
+    assert starts == sorted(starts)
+    assert starts[0] == pytest.approx(0.0, abs=0.01)
+
+
 def test_execute_holds_the_image_when_narration_is_shorter_than_target_duration(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)  # cada fragmento dura 1.0s (FakeMediaProcessor)

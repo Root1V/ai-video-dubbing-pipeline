@@ -4,6 +4,11 @@ import type { CaptionHighlightStyle } from '../../../types/project'
 const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; description: string }[] = [
   { value: 'background', label: 'Caja de fondo', description: 'Texto blanco sobre una caja de color' },
   { value: 'text_color', label: 'Color de texto', description: 'El texto toma el color, sin caja' },
+  {
+    value: 'karaoke',
+    label: 'Karaoke (palabra por palabra)',
+    description: 'Se resalta solo la palabra que se está narrando',
+  },
 ]
 
 interface SubtitlesPanelProps {
@@ -49,9 +54,9 @@ export function SubtitlesPanel({
           className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
         />
         <label htmlFor="caption-bg-color" className="text-xs text-muted-foreground">
-          {highlightStyle === 'text_color'
-            ? 'Color del texto de los captions.'
-            : 'Color de la caja de fondo -- el texto es siempre blanco.'}
+          {highlightStyle === 'text_color' && 'Color del texto de los captions.'}
+          {highlightStyle === 'karaoke' && 'Color de la palabra resaltada en cada momento.'}
+          {highlightStyle === 'background' && 'Color de la caja de fondo -- el texto es siempre blanco.'}
         </label>
       </div>
     </div>

@@ -203,7 +203,7 @@ export interface CreateMicroVideoProjectInput {
   image_adjustments?: ImageAdjustment[]
 }
 
-export type CaptionHighlightStyle = 'background' | 'text_color'
+export type CaptionHighlightStyle = 'background' | 'text_color' | 'karaoke'
 
 /** Un texto libre superpuesto al micro-video, posicionado a mano por el
  * usuario (ver RM-28). `x`/`y` son fracciones 0-1 del ancho/alto del video

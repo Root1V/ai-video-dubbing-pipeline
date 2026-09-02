@@ -68,15 +68,27 @@ def _convert_bold_to_ass(text: str) -> str:
     return _BOLD_PATTERN.sub(r"{\\b1}\1{\\b0}", text)
 
 
-def _hex_to_ass_color(hex_color: str) -> str:
-    """Convierte "#RRGGBB" al formato de color de ASS: &HAABBGGRR (orden BGR,
-    alpha primero, siempre opaco -- ver CAPTION_BG_ALPHA_HEX). Si el valor no
+def _hex_to_bgr(hex_color: str) -> str:
+    """Convierte "#RRGGBB" a "BBGGRR" (orden de color de ASS). Si el valor no
     es un hex valido, cae a negro solido."""
     value = hex_color.lstrip("#")
     if len(value) != 6 or any(c not in "0123456789abcdefABCDEF" for c in value):
         value = "000000"
     rr, gg, bb = value[0:2], value[2:4], value[4:6]
-    return f"&H{CAPTION_BG_ALPHA_HEX}{bb}{gg}{rr}"
+    return f"{bb}{gg}{rr}"
+
+
+def _hex_to_ass_color(hex_color: str) -> str:
+    """Convierte "#RRGGBB" al color de una linea "Style:" de ASS:
+    &HAABBGGRR (alpha primero, siempre opaco -- ver CAPTION_BG_ALPHA_HEX)."""
+    return f"&H{CAPTION_BG_ALPHA_HEX}{_hex_to_bgr(hex_color)}"
+
+
+def _hex_to_ass_inline_color(hex_color: str) -> str:
+    """Convierte "#RRGGBB" a un override inline `{\\c...}` de ASS --
+    &HBBGGRR&, SIN byte de alpha (el override `\\c` no lo lleva, a
+    diferencia del campo de color de una linea "Style:")."""
+    return f"&H{_hex_to_bgr(hex_color)}&"
 
 
 class GenerateMicroVideoUseCase:
@@ -274,11 +286,28 @@ class GenerateMicroVideoUseCase:
                 raise InvalidVideoFileError(f"zoom invalido ({image.zoom}): debe ser >= 1.0.")
 
 
+def _distribute_duration(pieces: list[str], start: float, duration: float) -> list[tuple[str, float, float]]:
+    """Reparte `duration` entre `pieces` en proporcion a su cantidad de
+    caracteres, asumiendo ritmo de habla uniforme -- mismo criterio en dos
+    niveles: fragmento de TTS -> caption (ver _build_caption_segments) y
+    caption -> palabra (ver _build_karaoke_dialogues, RM-25). No hay
+    timestamps reales de ningun nivel mas fino que el fragmento de TTS."""
+    total_chars = sum(len(piece) for piece in pieces) or 1
+    cursor = start
+    result: list[tuple[str, float, float]] = []
+    for piece in pieces:
+        piece_duration = duration * (len(piece) / total_chars)
+        result.append((piece, cursor, cursor + piece_duration))
+        cursor += piece_duration
+    return result
+
+
 def _build_caption_segments(chunks_with_timing: list[tuple[str, float, float]]) -> list[TranslatedSegment]:
     """Convierte los fragmentos de TTS (texto, inicio, duracion) en captions
     mas cortos y con mas movimiento: cada fragmento se vuelve a partir en
     piezas de hasta CAPTION_MAX_CHARS, repartiendo la duracion real del
-    fragmento entre sus piezas en proporcion a su cantidad de caracteres.
+    fragmento entre sus piezas en proporcion a su cantidad de caracteres
+    (ver _distribute_duration).
 
     No hay timestamps por palabra del motor de TTS -- esto es una
     aproximacion (asume ritmo de habla uniforme dentro de un mismo
@@ -289,21 +318,17 @@ def _build_caption_segments(chunks_with_timing: list[tuple[str, float, float]]) 
     seg_id = 0
     for chunk_text, chunk_start, chunk_duration in chunks_with_timing:
         pieces = _split_caption_text(chunk_text, CAPTION_MAX_CHARS)
-        total_chars = sum(len(piece) for piece in pieces) or 1
-        cursor = chunk_start
-        for piece in pieces:
-            piece_duration = chunk_duration * (len(piece) / total_chars)
+        for piece, piece_start, piece_end in _distribute_duration(pieces, chunk_start, chunk_duration):
             segments.append(
                 TranslatedSegment(
                     id=seg_id,
-                    start=cursor,
-                    end=cursor + piece_duration,
+                    start=piece_start,
+                    end=piece_end,
                     source_text=piece,
                     translated_text=piece,
                 )
             )
             seg_id += 1
-            cursor += piece_duration
     return segments
 
 
@@ -345,11 +370,20 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
 
     "text_color": el texto queda del color elegido, sin caja -- solo un
     contorno negro (BorderStyle=1) para que se lea sobre cualquier fondo.
+
+    "karaoke" (ver RM-25): mismo criterio visual que "text_color" (sin
+    caja, con contorno), pero PrimaryColour queda FIJO en blanco -- es el
+    color de las palabras que todavia no se dijeron/ya se dijeron; la
+    palabra activa se pinta con un override inline por Dialogue (ver
+    _build_karaoke_dialogues), no por este estilo.
     """
     ass_color = _hex_to_ass_color(color)
     if highlight_style == "text_color":
         # PrimaryColour, SecondaryColour, OutlineColour, BackColour
         colours = f"{ass_color},&H000000FF,&H00000000,&H00000000"
+        border_style, outline, shadow = 1, 3, 1
+    elif highlight_style == "karaoke":
+        colours = "&H00FFFFFF,&H000000FF,&H00000000,&H00000000"
         border_style, outline, shadow = 1, 3, 1
     else:
         colours = f"&H00FFFFFF,&H000000FF,{ass_color},{ass_color}"
@@ -361,6 +395,39 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
         # criterio que los overlays de texto -- arrastrable en el editor.
         f"0,0,0,0,100,100,0,0,{border_style},{outline},{shadow},5,60,60,{CAPTION_MARGIN_V},1"
     )
+
+
+def _build_karaoke_dialogues(segments: list[TranslatedSegment], pos_tag: str, color: str) -> list[str]:
+    """Arma los `Dialogue:` para el estilo "karaoke" (ver RM-25): a
+    diferencia de los otros dos estilos (un Dialogue por caption), esto
+    emite VARIOS Dialogue por caption -- uno por palabra, cada uno
+    mostrando el texto COMPLETO del caption pero con esa palabra envuelta
+    en un override inline de color (el resto queda en PrimaryColour, fijo
+    en blanco por `_build_caption_style`). El timing de cada palabra
+    dentro del caption se estima con `_distribute_duration` (mismo
+    criterio que ya usa `_build_caption_segments` un nivel mas arriba)."""
+    inline_color = _hex_to_ass_inline_color(color)
+    lines: list[str] = []
+    for seg in segments:
+        # Mismo criterio que el loop de los otros estilos: despojar llaves
+        # literales ANTES de aplicar cualquier override tag propio.
+        raw_text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
+        words = [word for word in raw_text.split(" ") if word]
+        if not words:
+            continue
+        converted_words = [_convert_bold_to_ass(word) for word in words]
+        windows = _distribute_duration(words, seg.start, seg.end - seg.start)
+        for active_index, (_, word_start, word_end) in enumerate(windows):
+            rendered = [
+                "{\\c" + inline_color + "}" + word + "{\\c}" if i == active_index else word
+                for i, word in enumerate(converted_words)
+            ]
+            text = pos_tag + " ".join(rendered)
+            lines.append(
+                f"Dialogue: 0,{_format_ass_timestamp(word_start)},{_format_ass_timestamp(word_end)},"
+                f"Default,,0,0,0,,{text}"
+            )
+    return lines
 
 
 def _write_ass_captions(
@@ -421,16 +488,19 @@ def _write_ass_captions(
         *overlay_dialogues,
     ]
     pos_tag = "{" + _ass_pos_tag(caption_x, caption_y, width, height) + "}"
-    for seg in segments:
-        # Se despojan llaves literales ANTES de convertir "**negrita**" a
-        # tags ASS ("{\b1}...{\b0}") -- de lo contrario un usuario que
-        # escriba "{" a proposito podria inyectar sus propios overrides ASS.
-        raw_text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
-        text = pos_tag + _convert_bold_to_ass(raw_text)
-        lines.append(
-            f"Dialogue: 0,{_format_ass_timestamp(seg.start)},{_format_ass_timestamp(seg.end)},"
-            f"Default,,0,0,0,,{text}"
-        )
+    if highlight_style == "karaoke":
+        lines.extend(_build_karaoke_dialogues(segments, pos_tag, color))
+    else:
+        for seg in segments:
+            # Se despojan llaves literales ANTES de convertir "**negrita**" a
+            # tags ASS ("{\b1}...{\b0}") -- de lo contrario un usuario que
+            # escriba "{" a proposito podria inyectar sus propios overrides ASS.
+            raw_text = seg.translated_text.replace("{", "").replace("}", "").replace("\n", " ")
+            text = pos_tag + _convert_bold_to_ass(raw_text)
+            lines.append(
+                f"Dialogue: 0,{_format_ass_timestamp(seg.start)},{_format_ass_timestamp(seg.end)},"
+                f"Default,,0,0,0,,{text}"
+            )
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
 
