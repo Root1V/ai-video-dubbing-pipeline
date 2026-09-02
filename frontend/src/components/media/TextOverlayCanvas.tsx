@@ -29,9 +29,9 @@ function computeExcess(naturalSize: { width: number; height: number } | null, zo
   if (!naturalSize) return { excessX: 0, excessY: 0 }
   const imageAspect = naturalSize.width / naturalSize.height
   if (imageAspect >= CONTAINER_ASPECT) {
-    return { excessX: (imageAspect / CONTAINER_ASPECT) * zoom - zoom, excessY: zoom - 1 }
+    return { excessX: (imageAspect / CONTAINER_ASPECT) * zoom - 1, excessY: zoom - 1 }
   }
-  return { excessX: zoom - 1, excessY: (CONTAINER_ASPECT / imageAspect) * zoom - zoom }
+  return { excessX: zoom - 1, excessY: (CONTAINER_ASPECT / imageAspect) * zoom - 1 }
 }
 
 export interface CaptionPreview {
