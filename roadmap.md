@@ -28,7 +28,7 @@
 | RM-22 | Micro-video con video generado por IA | todo | Alternativa a RM-14 con un modelo de video generativo en vez de composición ffmpeg. |
 | RM-23 | Estilo de resaltado de captions: caja o color de texto | done | Elegir entre caja de fondo (actual) o cambiar el color de la palabra. |
 | RM-24 | Música de fondo en micro-video | done | Biblioteca de pistas para elegir, o sin música. |
-| RM-25 | Resaltado por palabra en captions (karaoke) | todo | Elegir entre pintar toda la frase o solo la palabra que se está hablando. |
+| RM-25 | Resaltado por palabra en captions (karaoke) | done | Elegir entre pintar toda la frase o solo la palabra que se está hablando. |
 | RM-26 | Categorías de música + panel de mantenimiento | done | 5 categorías de música de fondo y una pantalla admin para subir pistas nuevas (con limpieza automática de audio). |
 | RM-27 | Texto editable sobre el video | done | Superado por RM-28 (texto movible incluye elegir la posición). |
 | RM-28 | Editor de video completo | done | Editor con texto movible, audio de fondo recortable, subtítulos y voz en off, todo en un mismo lienzo. |

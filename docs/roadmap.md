@@ -83,7 +83,8 @@ Commit: `358aab8`, `96ef4bf`
 
 ## RM-25 — Resaltado por palabra en captions (karaoke)
 **Why:** hoy el resaltado (RM-14/RM-23) pinta el caption completo durante toda su ventana de tiempo; un estilo "karaoke" que solo resalta la palabra que se está diciendo en ese instante es más dinámico y común en redes sociales.
-**Scope:** selector en la UI para elegir entre "Resaltar toda la frase" (actual) o "Resaltar solo la palabra actual" (se muestra el caption completo, pero el resaltado avanza palabra por palabra). Requiere estimar el timing de cada palabra dentro de un caption (no hay timestamps por palabra del motor de TTS — se aproxima por duración proporcional a la cantidad de caracteres, mismo criterio que ya usa `_build_caption_segments` a nivel de caption).
+**Scope:** tercer estilo ("karaoke") en el mismo selector de RM-23 -- se muestra el caption completo, pero el resaltado avanza palabra por palabra. El timing de cada palabra dentro de un caption se estima igual que ya se estima el timing de cada caption dentro de un fragmento de TTS (proporcional a caracteres, `_distribute_duration` compartido por ambos niveles). Un Dialogue ASS por palabra (no uno por caption) con la palabra activa envuelta en un override inline `\c` -- se prefirió sobre los tags `\k` de karaoke nativos de ASS por reusar una tecnica ya probada en produccion (`_convert_bold_to_ass` hace lo mismo con `\b`).
+Commit: `436e54f`
 
 ## RM-26 — Categorías de música + panel de mantenimiento
 **Why:** la biblioteca de música de fondo (RM-24) hoy es un catálogo fijo de 4 pistas sin organización; a medida que se agreguen más pistas hace falta agruparlas y una forma de subir nuevas sin tocar código.
