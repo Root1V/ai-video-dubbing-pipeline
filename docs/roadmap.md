@@ -122,6 +122,10 @@ Commit: `df4614d`
 **Why:** pedido explícito del usuario final; investigué tendencias de texto en video de 2026 (CapCut/tipografía cinética, ver fuentes) -- sombra dura, contorno grueso, y texto con degradado son los estilos más comunes en contenido corto viral, más allá de negrita/color plano (ya soportado desde RM-28).
 **Scope:** variantes de estilo adicionales para TextOverlay (y opcionalmente los captions): sombra dura offset, contorno más grueso configurable, relleno con degradado de 2 colores -- todo vía tags ASS estándar (`\shad`, `\bord`, y un degradado aproximado con `\1c`/`\2c` en múltiples líneas o un gradiente pre-renderizado). No incluye animación tipo "tipografía cinética" (palabra por palabra) -- eso es una iniciativa más grande, separada.
 
+## RM-34 — Podcast de audio
+**Why:** pedido explícito del usuario -- un servicio de audio orientado a episodios largos (guion/conversación), no solo la síntesis de un texto suelto que ya cubre RM-02.
+**Scope:** nuevo servicio (paralelo a `tts`/`micro_video`) que convierte un guion largo en un episodio de audio narrado, reusando la selección de voz ya existente (pública o clonación propia, ver RM-02/`SpeechSynthesizer`) -- no se reinventa la síntesis ni la clonación, solo se les da un formato de entrada/salida pensado para podcasts. Sin definir todavía: si el guion admite múltiples voces/hablantes en un mismo episodio (conversación) o es de un solo narrador -- a resolver en el plan de implementación.
+
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
 **Scope:** sección "Administración" en el menú (solo admin): listado, botón "Agregar usuario" (nombre/email/password/rol), cambio de rol y activar/desactivar inline. `GET/POST/PATCH /api/users`, todos protegidos con `require_admin`. Un admin no puede quitarse su propio rol ni desactivarse a sí mismo (bloqueado en backend y reflejado en la UI). Sigue sin auto-registro ni invitaciones por email — crear una cuenta requiere acceso admin, por diseño.
