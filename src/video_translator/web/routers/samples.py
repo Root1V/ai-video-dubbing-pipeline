@@ -11,7 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from video_translator.container import PUBLIC_VOICE_FEMALE_WAV, PUBLIC_VOICE_MALE_WAV
+from video_translator.container import (
+    EMOJI_ASSETS_DIR,
+    PUBLIC_VOICE_FEMALE_WAV,
+    PUBLIC_VOICE_MALE_WAV,
+)
 from video_translator.web.db.models import MusicTrack, User
 from video_translator.web.deps import get_current_user, get_db_session
 
@@ -49,4 +53,18 @@ def get_music_sample(
     file_path = Path(track.file_path)
     if not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pista no encontrada.")
+    return FileResponse(path=file_path, filename=file_path.name)
+
+
+@router.get("/emoji/{emoji_id}")
+def get_emoji_sample(
+    emoji_id: str,
+    _current_user: User = Depends(get_current_user),
+) -> FileResponse:
+    """Sirve un PNG del set curado de emojis (ver RM-32) -- el editor los usa
+    para el preview en el lienzo (arrastrar/soltar), la generacion real del
+    video los resuelve por su cuenta (ver generate_micro_video.py)."""
+    file_path = EMOJI_ASSETS_DIR / f"{emoji_id}.png"
+    if not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Emoji no encontrado.")
     return FileResponse(path=file_path, filename=file_path.name)

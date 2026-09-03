@@ -201,6 +201,8 @@ export interface CreateMicroVideoProjectInput {
   /** Encuadre (pan/zoom) elegido por el usuario para cada imagen, paralelo a
    * `imageFiles` -- mismo orden, mismo índice (ver RM-30). */
   image_adjustments?: ImageAdjustment[]
+  /** Emojis superpuestos posicionables en el editor (ver RM-32). */
+  emoji_overlays?: EmojiOverlay[]
 }
 
 export type CaptionHighlightStyle = 'background' | 'text_color' | 'karaoke'
@@ -217,6 +219,21 @@ export interface TextOverlay {
   font_family: string
   font_size: number
   color: string
+  fade: boolean
+}
+
+/** Un emoji superpuesto al micro-video, posicionado a mano por el usuario
+ * (ver RM-32). `x`/`y` son fracciones 0-1 del ancho/alto del video -- el
+ * CENTRO del emoji, mismo criterio que TextOverlay. No es texto libre:
+ * `emoji_id` referencia uno de un set curado de imágenes bundleadas (este
+ * sistema no puede renderizar emoji Unicode vía el pipeline de texto del
+ * backend). */
+export interface EmojiOverlay {
+  id: string
+  emoji_id: string
+  x: number
+  y: number
+  size: number
   fade: boolean
 }
 

@@ -11,7 +11,12 @@ import pytest
 
 from video_translator.application.use_cases.generate_micro_video import GenerateMicroVideoUseCase
 from video_translator.domain.exceptions import InvalidVideoFileError, VideoTranslatorError
-from video_translator.domain.models import GenerateMicroVideoRequest, MicroVideoImage, TextOverlay
+from video_translator.domain.models import (
+    EmojiOverlay,
+    GenerateMicroVideoRequest,
+    MicroVideoImage,
+    TextOverlay,
+)
 
 
 class FakeMediaProcessor:
@@ -22,6 +27,7 @@ class FakeMediaProcessor:
     def __init__(self):
         self.render_calls: list[dict] = []
         self.caption_calls: list[dict] = []
+        self.emoji_calls: list[dict] = []
         self.fit_calls: list[dict] = []
         self.music_calls: list[dict] = []
         self.music_range_calls: list[dict] = []
@@ -103,6 +109,26 @@ class FakeMediaProcessor:
         self.caption_calls.append({"video_path": video_path, "ass_path": ass_path})
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-final-video")
+        return output_path
+
+    def overlay_emojis(
+        self,
+        video_path: Path,
+        placements: list[tuple[Path, float, float, float, bool]],
+        output_path: Path,
+        width: int,
+        duration_seconds: float,
+    ) -> Path:
+        self.emoji_calls.append(
+            {
+                "video_path": video_path,
+                "placements": placements,
+                "width": width,
+                "duration_seconds": duration_seconds,
+            }
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake-final-video-with-emojis")
         return output_path
 
     def fit_audio_to_duration(self, audio_path: Path, target_seconds: float) -> bool:
@@ -603,6 +629,67 @@ def test_execute_without_overlays_adds_no_overlay_style_or_dialogue(tmp_path: Pa
 
     content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
     assert "Overlay0" not in content
+
+
+def test_execute_without_emoji_overlays_does_not_call_overlay_emojis(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+
+    result = use_case.execute(request)
+
+    # Sin emojis, no se gasta un paso de ffmpeg de mas -- el video final es
+    # el que ya produjo caption_burn directamente.
+    assert media.emoji_calls == []
+    assert result.output_video.exists()
+
+
+def test_execute_passes_resolved_emoji_placements(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    emoji = EmojiOverlay(emoji_id="fuego", x=0.25, y=0.75, size=0.2, fade=True)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        emoji_overlays=[emoji],
+    )
+
+    result = use_case.execute(request)
+
+    assert len(media.emoji_calls) == 1
+    placements = media.emoji_calls[0]["placements"]
+    assert len(placements) == 1
+    asset_path, x, y, size, fade = placements[0]
+    assert asset_path.name == "fuego.png"
+    assert asset_path.is_file()
+    assert (x, y, size, fade) == (0.25, 0.75, 0.2, True)
+    assert media.emoji_calls[0]["width"] == 1080
+    # El video final con emojis lo produce overlay_emojis, no caption_burn
+    # directamente.
+    assert result.output_video.read_bytes() == b"fake-final-video-with-emojis"
+
+
+def test_execute_omits_unrecognized_emoji_id(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    emoji = EmojiOverlay(emoji_id="no-existe-este-emoji", x=0.5, y=0.5)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        emoji_overlays=[emoji],
+    )
+
+    result = use_case.execute(request)
+
+    # Un id no reconocido no rompe la generacion -- simplemente se omite
+    # esa capa (mismo criterio que filter_preset/caption_highlight_style).
+    assert media.emoji_calls[0]["placements"] == []
+    assert result.output_video.exists()
 
 
 def test_execute_writes_overlay_position_bold_color_and_font(tmp_path: Path):

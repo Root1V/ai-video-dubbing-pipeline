@@ -959,6 +959,96 @@ def test_create_micro_video_project_rejects_image_adjustments_not_a_list(
     assert resp.status_code == 422
 
 
+def test_create_micro_video_project_defaults_emoji_overlays_to_empty(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["emoji_overlays"] == []
+
+
+def test_create_micro_video_project_with_emoji_overlays(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    overlays = [{"emoji_id": "fuego", "x": 0.25, "y": 0.75, "size": 0.2, "fade": True}]
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "emoji_overlays": json.dumps(overlays),
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["emoji_overlays"] == overlays
+
+
+def test_create_micro_video_project_rejects_invalid_emoji_overlays_json(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "emoji_overlays": "not-json",
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
+def test_create_micro_video_project_rejects_emoji_overlays_missing_required_fields(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "emoji_overlays": json.dumps([{"emoji_id": "fuego"}]),
+        },
+        files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 422
+
+
 def test_create_micro_video_project_rejects_invalid_text_overlays_json(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:

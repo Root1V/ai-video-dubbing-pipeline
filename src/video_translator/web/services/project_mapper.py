@@ -29,6 +29,7 @@ from video_translator.container import (
     build_translate_video_use_case,
 )
 from video_translator.domain.models import (
+    EmojiOverlay,
     GenerateMicroVideoRequest,
     MicroVideoImage,
     OutputMode,
@@ -81,6 +82,22 @@ def _parse_text_overlays(raw_overlays: object) -> list[TextOverlay]:
             if key in item
         }
         overlays.append(TextOverlay(**kwargs))
+    return overlays
+
+
+def _parse_emoji_overlays(raw_overlays: object) -> list[EmojiOverlay]:
+    """Convierte la lista de dicts guardada en `config['emoji_overlays']`
+    (ver RM-32, `routers/projects.py::create_project` ya valido que cada
+    item tiene 'emoji_id'/'x'/'y') en `EmojiOverlay`s -- las claves
+    opcionales ausentes toman el default del dataclass."""
+    if not isinstance(raw_overlays, list):
+        return []
+    overlays = []
+    for item in raw_overlays:
+        if not isinstance(item, dict):
+            continue
+        kwargs = {key: item[key] for key in ("emoji_id", "x", "y", "size", "fade") if key in item}
+        overlays.append(EmojiOverlay(**kwargs))
     return overlays
 
 
@@ -273,6 +290,7 @@ def build_micro_video_use_case_and_request(
         text_overlays=_parse_text_overlays(config.get("text_overlays")),
         caption_x=_config_float(config, "caption_x", 0.5),
         caption_y=_config_float(config, "caption_y", 0.85),
+        emoji_overlays=_parse_emoji_overlays(config.get("emoji_overlays")),
     )
     use_case = build_generate_micro_video_use_case(settings)
     return use_case, request

@@ -289,6 +289,20 @@ export async function createMicroVideoProject(
       ),
     )
   }
+  if (input.emoji_overlays && input.emoji_overlays.length > 0) {
+    formData.set(
+      'emoji_overlays',
+      JSON.stringify(
+        input.emoji_overlays.map((overlay) => ({
+          emoji_id: overlay.emoji_id,
+          x: overlay.x,
+          y: overlay.y,
+          size: overlay.size,
+          fade: overlay.fade,
+        })),
+      ),
+    )
+  }
 
   const { data } = await apiClient.post<Project>('/projects', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

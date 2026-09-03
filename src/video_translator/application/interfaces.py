@@ -53,6 +53,26 @@ class MediaProcessor(Protocol):
         pedido)."""
         ...
 
+    def overlay_emojis(
+        self,
+        video_path: Path,
+        placements: list[tuple[Path, float, float, float, bool]],
+        output_path: Path,
+        width: int,
+        duration_seconds: float,
+    ) -> Path:
+        """Compone imagenes PNG con transparencia sobre el video via el
+        filtro `overlay` de ffmpeg (ver RM-32) -- el pipeline ASS/libass de
+        texto no puede renderizar emoji en este sistema (probado a mano:
+        ni con la fuente por defecto ni pidiendo explicitamente una fuente
+        de emoji instalada aparece nada, ver docs/roadmap.md). Cada
+        `placements` es `(asset_path, x, y, size, fade)`: `x`/`y` fracciones
+        0-1 del CENTRO del emoji, `size` fraccion del ancho del video (el
+        emoji es cuadrado), `fade` = aparece/desaparece gradual a lo largo
+        de `duration_seconds`. `placements` vacio = copia el video tal
+        cual (no-op), sin gastar un paso de ffmpeg de mas."""
+        ...
+
     def attach_soft_subtitles(
         self, video_path: Path, srt_path: Path, output_path: Path, lang_code: str = "spa"
     ) -> Path:

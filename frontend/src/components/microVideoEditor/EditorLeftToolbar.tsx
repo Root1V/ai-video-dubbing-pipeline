@@ -1,4 +1,4 @@
-import { Captions, Image as ImageIcon, Mic, Music, Type, Volume2 } from 'lucide-react'
+import { Captions, Image as ImageIcon, Mic, Music, Smile, Type, Volume2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import type { EditorTool } from './types'
@@ -6,6 +6,7 @@ import type { EditorTool } from './types'
 const TOOLS: { id: EditorTool; label: string; icon: LucideIcon }[] = [
   { id: 'image', label: 'Imagen', icon: ImageIcon },
   { id: 'text', label: 'Texto', icon: Type },
+  { id: 'emoji', label: 'Emoji', icon: Smile },
   { id: 'narration', label: 'Narración', icon: Mic },
   { id: 'voice', label: 'Voz', icon: Volume2 },
   { id: 'music', label: 'Música', icon: Music },

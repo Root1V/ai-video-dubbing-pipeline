@@ -247,6 +247,13 @@ PUBLIC_VOICE_MALE_WAV = _DEFAULT_VOICES_DIR / "locutor.wav"
 PUBLIC_VOICE_FEMALE_WAV = _DEFAULT_VOICES_DIR / "locutora.wav"
 DEFAULT_TTS_VOICE_WAV = PUBLIC_VOICE_FEMALE_WAV
 
+# Set curado de PNGs de emoji bundleados (ver RM-32) -- el pipeline
+# ASS/libass de texto no puede renderizar emoji en este sistema, asi que se
+# componen como imagen. Usado tanto por `application/use_cases/
+# generate_micro_video.py` (resolver emoji_id -> ruta real al generar el
+# video) como por `web/routers/samples.py` (servirlos al editor).
+EMOJI_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "emojis"
+
 def build_music_track_media_processor(settings: Settings) -> MediaProcessor:
     """MediaProcessor para limpiar una pista de musica recien subida al
     catalogo (ver RM-26, `web/services/music_tracks.py`) -- misma

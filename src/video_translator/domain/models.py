@@ -201,6 +201,23 @@ class MicroVideoImage:
 
 
 @dataclass(slots=True)
+class EmojiOverlay:
+    """Un emoji superpuesto al micro-video (ver RM-32), posicionado a mano
+    por el usuario -- mismo criterio que TextOverlay (x/y son el CENTRO,
+    fracciones 0-1 del ancho/alto del video). No es texto libre: `emoji_id`
+    referencia uno de un set curado de imagenes bundleadas (ver
+    assets/emojis/), porque este sistema no puede renderizar emoji via el
+    pipeline ASS/libass que usa el texto -- se compone como imagen con el
+    filtro `overlay` de ffmpeg en su lugar (ver MediaProcessor.overlay_emojis)."""
+
+    emoji_id: str
+    x: float
+    y: float
+    size: float = 0.15  # fraccion del ANCHO del video (el emoji es cuadrado)
+    fade: bool = False  # aparece/desaparece gradual, mismo criterio que TextOverlay.fade
+
+
+@dataclass(slots=True)
 class GenerateMicroVideoRequest:
     """Solicitud de generacion de un micro-video (imagen(es) + texto -> video
     vertical narrado con captions), entrada principal de
@@ -248,6 +265,9 @@ class GenerateMicroVideoRequest:
     # arrastrable en el editor igual que un overlay de texto).
     caption_x: float = 0.5
     caption_y: float = 0.85
+    # Emojis superpuestos posicionables (ver RM-32) -- lista vacia = sin
+    # emojis, comportamiento previo.
+    emoji_overlays: list[EmojiOverlay] = field(default_factory=list)
 
 
 @dataclass(slots=True)

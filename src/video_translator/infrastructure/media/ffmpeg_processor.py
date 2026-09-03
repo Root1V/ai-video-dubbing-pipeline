@@ -112,6 +112,72 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=MuxingError)
         return output_path
 
+    def overlay_emojis(
+        self,
+        video_path: Path,
+        placements: list[tuple[Path, float, float, float, bool]],
+        output_path: Path,
+        width: int,
+        duration_seconds: float,
+    ) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if not placements:
+            cmd = [self._ffmpeg, "-y", "-i", str(video_path), "-c", "copy", str(output_path)]
+            self._run(cmd, error_cls=MuxingError)
+            return output_path
+
+        cmd = [self._ffmpeg, "-y", "-i", str(video_path)]
+        for asset_path, *_rest in placements:
+            # "-loop 1": sin esto, cada PNG es una entrada de UN solo frame
+            # que termina casi de inmediato -- `overlay` "por suerte" lo
+            # sostiene el resto del clip, pero `fade` (que evalua su propia
+            # linea de tiempo) no tiene mas frames que fundir y el emoji
+            # nunca llega a aparecer. Probado a mano: sin loop, un emoji con
+            # fade queda invisible todo el video (confirmado con
+            # alphaextract, el canal alpha nunca sale de 0).
+            cmd += ["-loop", "1", "-i", str(asset_path)]
+
+        filter_parts: list[str] = []
+        last_label = "0:v"
+        for i, (_asset_path, x, y, size, fade) in enumerate(placements, start=1):
+            size_px = max(1, round(size * width))
+            scaled_label = f"e{i}s"
+            filter_parts.append(f"[{i}:v]scale={size_px}:{size_px}[{scaled_label}]")
+            layer_label = scaled_label
+            if fade:
+                # Mismo fundido de 0.5s (o un cuarto de la duracion, para
+                # videos muy cortos) que ya usa OVERLAY_FADE_MS de los
+                # TextOverlay -- ver generate_micro_video.py.
+                fade_duration = min(0.5, duration_seconds / 4)
+                fade_out_start = max(0.0, duration_seconds - fade_duration)
+                faded_label = f"e{i}f"
+                filter_parts.append(
+                    f"[{layer_label}]fade=t=in:st=0:d={fade_duration}:alpha=1,"
+                    f"fade=t=out:st={fade_out_start}:d={fade_duration}:alpha=1[{faded_label}]"
+                )
+                layer_label = faded_label
+            out_label = f"ov{i}"
+            filter_parts.append(
+                f"[{last_label}][{layer_label}]overlay="
+                f"x='{x}*main_w-overlay_w/2':y='{y}*main_h-overlay_h/2'[{out_label}]"
+            )
+            last_label = out_label
+
+        cmd += [
+            "-filter_complex", ";".join(filter_parts),
+            "-map", f"[{last_label}]",
+            "-map", "0:a?",
+            # Cada emoji quedo "-loop 1" (tecnicamente infinito) -- sin este
+            # limite explicito el video de salida puede seguir generando
+            # frames mas alla de lo esperado (mismo problema ya resuelto en
+            # render_image_video/mix_background_music).
+            "-t", str(duration_seconds),
+            "-c:a", "copy",
+            str(output_path),
+        ]
+        self._run(cmd, error_cls=MuxingError)
+        return output_path
+
     def attach_soft_subtitles(
         self, video_path: Path, srt_path: Path, output_path: Path, lang_code: str = "spa"
     ) -> Path:

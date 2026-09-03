@@ -1,11 +1,18 @@
 import { ImagePanel } from './panels/ImagePanel'
 import { TextPanel } from './panels/TextPanel'
+import { EmojiPanel } from './panels/EmojiPanel'
 import { NarrationPanel } from './panels/NarrationPanel'
 import { VoicePanel } from './panels/VoicePanel'
 import { MusicPanel } from './panels/MusicPanel'
 import { SubtitlesPanel } from './panels/SubtitlesPanel'
 import type { EditorTool } from './types'
-import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay, TtsVoiceOption } from '../../types/project'
+import type {
+  CaptionHighlightStyle,
+  EmojiOverlay,
+  ImageAdjustment,
+  TextOverlay,
+  TtsVoiceOption,
+} from '../../types/project'
 import type { MusicTrack } from '../../types/musicTracks'
 
 interface EditorRightPanelProps {
@@ -28,6 +35,12 @@ interface EditorRightPanelProps {
   onAddOverlay: () => void
   onChangeOverlay: (overlay: TextOverlay) => void
   onRemoveOverlay: (id: string) => void
+
+  emojiOverlays: EmojiOverlay[]
+  selectedEmojiOverlayId: string | null
+  onAddEmojiOverlay: (emojiId: string) => void
+  onChangeEmojiOverlay: (overlay: EmojiOverlay) => void
+  onRemoveEmojiOverlay: (id: string) => void
 
   text: string
   onTextChange: (text: string) => void
@@ -55,6 +68,7 @@ interface EditorRightPanelProps {
 const TOOL_TITLES: Record<EditorTool, string> = {
   image: 'Imagen',
   text: 'Texto',
+  emoji: 'Emoji',
   narration: 'Narración',
   voice: 'Voz',
   music: 'Música de fondo',
@@ -93,6 +107,17 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
           onAddOverlay={props.onAddOverlay}
           onChangeOverlay={props.onChangeOverlay}
           onRemoveOverlay={props.onRemoveOverlay}
+        />
+      )}
+
+      {props.activeTool === 'emoji' && (
+        <EmojiPanel
+          hasImage={props.hasImage}
+          overlays={props.emojiOverlays}
+          selectedOverlayId={props.selectedEmojiOverlayId}
+          onAddOverlay={props.onAddEmojiOverlay}
+          onChangeOverlay={props.onChangeEmojiOverlay}
+          onRemoveOverlay={props.onRemoveEmojiOverlay}
         />
       )}
 

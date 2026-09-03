@@ -1,6 +1,12 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import type { CaptionHighlightStyle, FilterPreset, ImageAdjustment, TextOverlay } from '../../types/project'
+import type {
+  CaptionHighlightStyle,
+  EmojiOverlay,
+  FilterPreset,
+  ImageAdjustment,
+  TextOverlay,
+} from '../../types/project'
 import { cn } from '../../lib/cn'
 
 // Aproximacion visual (no un match exacto de pixeles) de los presets de
@@ -59,6 +65,16 @@ interface TextOverlayCanvasProps {
    * previo). `onImagePan` habilita arrastrar la imagen para reposicionarla. */
   imageAdjustment?: ImageAdjustment
   onImagePan?: (offsetX: number, offsetY: number) => void
+  /** Emojis superpuestos (ver RM-32) -- misma mecanica de drag que
+   * TextOverlay. `emojiImageUrls` son las URLs ya resueltas (blob, via
+   * fetchEmojiSampleUrl) por `emoji_id`, precargadas una sola vez para
+   * todo el set curado -- un id sin URL todavia cargada simplemente no
+   * se dibuja ese frame. */
+  emojiOverlays?: EmojiOverlay[]
+  emojiImageUrls?: Record<string, string>
+  selectedEmojiId?: string | null
+  onSelectEmoji?: (id: string) => void
+  onMoveEmoji?: (id: string, x: number, y: number) => void
 }
 
 /** Lienzo de edicion: la imagen de fondo (misma relacion de aspecto 9:16
@@ -77,6 +93,11 @@ export function TextOverlayCanvas({
   onCaptionMove,
   imageAdjustment,
   onImagePan,
+  emojiOverlays,
+  emojiImageUrls,
+  selectedEmojiId,
+  onSelectEmoji,
+  onMoveEmoji,
 }: TextOverlayCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
@@ -248,6 +269,31 @@ export function TextOverlayCanvas({
           {overlay.text || 'Texto'}
         </div>
       ))}
+      {emojiOverlays?.map((overlay) => {
+        const src = emojiImageUrls?.[overlay.emoji_id]
+        if (!src) return null
+        return (
+          <img
+            key={overlay.id}
+            src={src}
+            alt=""
+            draggable={false}
+            onPointerDown={(event) => {
+              onSelectEmoji?.(overlay.id)
+              handlePointerDown(event, (x, y) => onMoveEmoji?.(overlay.id, x, y))
+            }}
+            className={cn(
+              'absolute -translate-x-1/2 -translate-y-1/2 cursor-move',
+              overlay.id === selectedEmojiId && 'outline outline-2 outline-dashed outline-primary',
+            )}
+            style={{
+              left: `${overlay.x * 100}%`,
+              top: `${overlay.y * 100}%`,
+              width: `${overlay.size * 100}cqw`,
+            }}
+          />
+        )
+      })}
       {captionPreview && (
         <div
           onPointerDown={(event) => handlePointerDown(event, (x, y) => onCaptionMove?.(x, y))}

@@ -15,3 +15,8 @@ export async function fetchMusicSampleUrl(trackId: string): Promise<string> {
   const { data } = await apiClient.get(`/samples/music/${trackId}`, { responseType: 'blob' })
   return URL.createObjectURL(data as Blob)
 }
+
+export async function fetchEmojiSampleUrl(emojiId: string): Promise<string> {
+  const { data } = await apiClient.get(`/samples/emoji/${emojiId}`, { responseType: 'blob' })
+  return URL.createObjectURL(data as Blob)
+}

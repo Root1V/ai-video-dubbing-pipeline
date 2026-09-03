@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { createMicroVideoProject } from '../api/projects'
 import { fetchMusicTracks } from '../api/musicTracks'
-import { fetchMusicSampleUrl } from '../api/samples'
+import { fetchEmojiSampleUrl, fetchMusicSampleUrl } from '../api/samples'
+import { EMOJI_PALETTE } from '../lib/emojiPalette'
 import { TextOverlayCanvas } from '../components/media/TextOverlayCanvas'
 import type { CaptionPreview } from '../components/media/TextOverlayCanvas'
 import { EditorBottomTracks } from '../components/microVideoEditor/EditorBottomTracks'
@@ -14,7 +15,13 @@ import { EditorTopBar } from '../components/microVideoEditor/EditorTopBar'
 import type { EditorTool } from '../components/microVideoEditor/types'
 import { Alert } from '../components/ui/Alert'
 import { getErrorMessage } from '../lib/errors'
-import type { CaptionHighlightStyle, ImageAdjustment, TextOverlay, TtsVoiceOption } from '../types/project'
+import type {
+  CaptionHighlightStyle,
+  EmojiOverlay,
+  ImageAdjustment,
+  TextOverlay,
+  TtsVoiceOption,
+} from '../types/project'
 
 function makeImageAdjustment(): ImageAdjustment {
   return { offset_x: 0.5, offset_y: 0.5, zoom: 1.0, filter_preset: 'none' }
@@ -41,6 +48,10 @@ function makeOverlay(): TextOverlay {
   }
 }
 
+function makeEmojiOverlay(emojiId: string): EmojiOverlay {
+  return { id: crypto.randomUUID(), emoji_id: emojiId, x: 0.5, y: 0.5, size: 0.15, fade: false }
+}
+
 export function NewMicroVideoProjectPage() {
   const navigate = useNavigate()
 
@@ -61,6 +72,9 @@ export function NewMicroVideoProjectPage() {
   const [musicPreviewUrl, setMusicPreviewUrl] = useState<string | null>(null)
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([])
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
+  const [emojiOverlays, setEmojiOverlays] = useState<EmojiOverlay[]>([])
+  const [selectedEmojiOverlayId, setSelectedEmojiOverlayId] = useState<string | null>(null)
+  const [emojiImageUrls, setEmojiImageUrls] = useState<Record<string, string>>({})
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [activeTool, setActiveTool] = useState<EditorTool>('image')
   const [narrationVolume, setNarrationVolume] = useState(1.0)
@@ -114,6 +128,31 @@ export function NewMicroVideoProjectPage() {
     }
   }, [backgroundMusic])
 
+  useEffect(() => {
+    // Precarga las URLs (blob) de TODO el set curado una sola vez -- son
+    // pocas imagenes chicas (72x72), no vale la pena cargarlas bajo demanda
+    // por emoji individual (ver RM-32).
+    let cancelled = false
+    const urls: string[] = []
+    Promise.all(
+      EMOJI_PALETTE.map(async (item) => {
+        const url = await fetchEmojiSampleUrl(item.id)
+        urls.push(url)
+        return [item.id, url] as const
+      }),
+    ).then((entries) => {
+      if (cancelled) {
+        urls.forEach((url) => URL.revokeObjectURL(url))
+        return
+      }
+      setEmojiImageUrls(Object.fromEntries(entries))
+    })
+    return () => {
+      cancelled = true
+      urls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [])
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!name.trim()) {
@@ -158,6 +197,7 @@ export function NewMicroVideoProjectPage() {
           caption_x: captionX,
           caption_y: captionY,
           image_adjustments: imageAdjustments,
+          emoji_overlays: emojiOverlays,
         },
         setUploadProgress,
       )
@@ -224,6 +264,16 @@ export function NewMicroVideoProjectPage() {
                   prev.map((a, i) => (i === activeImageIndex ? { ...a, offset_x: offsetX, offset_y: offsetY } : a)),
                 )
               }
+              emojiOverlays={emojiOverlays}
+              emojiImageUrls={emojiImageUrls}
+              selectedEmojiId={selectedEmojiOverlayId}
+              onSelectEmoji={(id) => {
+                setSelectedEmojiOverlayId(id)
+                setActiveTool('emoji')
+              }}
+              onMoveEmoji={(id, x, y) =>
+                setEmojiOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, x, y } : o)))
+              }
             />
           ) : (
             <p className="max-w-xs text-center text-sm text-muted-foreground">
@@ -283,6 +333,20 @@ export function NewMicroVideoProjectPage() {
           onRemoveOverlay={(id) => {
             setTextOverlays((prev) => prev.filter((o) => o.id !== id))
             setSelectedOverlayId(null)
+          }}
+          emojiOverlays={emojiOverlays}
+          selectedEmojiOverlayId={selectedEmojiOverlayId}
+          onAddEmojiOverlay={(emojiId) => {
+            const overlay = makeEmojiOverlay(emojiId)
+            setEmojiOverlays((prev) => [...prev, overlay])
+            setSelectedEmojiOverlayId(overlay.id)
+          }}
+          onChangeEmojiOverlay={(updated) =>
+            setEmojiOverlays((prev) => prev.map((o) => (o.id === updated.id ? updated : o)))
+          }
+          onRemoveEmojiOverlay={(id) => {
+            setEmojiOverlays((prev) => prev.filter((o) => o.id !== id))
+            setSelectedEmojiOverlayId(null)
           }}
           text={text}
           onTextChange={setText}

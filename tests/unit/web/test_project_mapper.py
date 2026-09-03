@@ -472,6 +472,37 @@ def test_build_micro_video_use_case_and_request_maps_text_overlays(
     assert request.text_overlays[1].bold is False  # default del dataclass
 
 
+def test_build_micro_video_use_case_and_request_defaults_emoji_overlays_to_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    project = _make_micro_video_project(tmp_path)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.emoji_overlays == []
+
+
+def test_build_micro_video_use_case_and_request_maps_emoji_overlays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    overlays = [
+        {"emoji_id": "fuego", "x": 0.25, "y": 0.75, "size": 0.2, "fade": True},
+        {"emoji_id": "corazon", "x": 0.5, "y": 0.5},
+    ]
+    project = _make_micro_video_project(tmp_path, emoji_overlays=overlays)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert len(request.emoji_overlays) == 2
+    assert request.emoji_overlays[0].emoji_id == "fuego"
+    assert request.emoji_overlays[0].size == pytest.approx(0.2)
+    assert request.emoji_overlays[0].fade is True
+    assert request.emoji_overlays[1].emoji_id == "corazon"
+    assert request.emoji_overlays[1].size == pytest.approx(0.15)  # default del dataclass
+
+
 def test_build_micro_video_use_case_and_request_defaults_volume_and_caption_position(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:

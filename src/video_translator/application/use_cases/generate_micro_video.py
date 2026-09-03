@@ -18,6 +18,7 @@ from video_translator.application.interfaces import MediaProcessor, SpeechSynthe
 from video_translator.application.use_cases.text_chunking import split_into_chunks
 from video_translator.domain.exceptions import InvalidVideoFileError, VideoTranslatorError
 from video_translator.domain.models import (
+    EmojiOverlay,
     GenerateMicroVideoRequest,
     GenerateMicroVideoResult,
     TextOverlay,
@@ -54,6 +55,10 @@ CAPTION_BG_ALPHA_HEX = "00"
 # Duracion del fade in/out de un overlay con TextOverlay.fade=True (ver
 # _build_overlay_style_and_dialogue), clampeada para videos muy cortos.
 OVERLAY_FADE_MS = 500
+# Set curado de PNGs de emoji bundleados (ver RM-32, docs/roadmap.md) --
+# el pipeline ASS/libass de texto no puede renderizar emoji en este
+# sistema, asi que se componen como imagen via MediaProcessor.overlay_emojis.
+_EMOJI_ASSET_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "emojis"
 
 # "**palabra**" se resalta en negrita en el caption (no se lee en voz alta:
 # ver _strip_bold_markers, usado para el texto que va al sintetizador).
@@ -251,8 +256,18 @@ class GenerateMicroVideoUseCase:
             )
 
         output_video = request.output_dir / "micro_video.mp4"
-        with timings.stage("caption_burn"):
-            self._media.render_ass_captions(background_path, captions_path, output_video)
+        if request.emoji_overlays:
+            captioned_path = workdir / "captioned.mp4"
+            with timings.stage("caption_burn"):
+                self._media.render_ass_captions(background_path, captions_path, captioned_path)
+            placements = _resolve_emoji_placements(request.emoji_overlays)
+            with timings.stage("emoji_burn", num_emojis=len(placements)):
+                self._media.overlay_emojis(
+                    captioned_path, placements, output_video, VIDEO_WIDTH, video_duration
+                )
+        else:
+            with timings.stage("caption_burn"):
+                self._media.render_ass_captions(background_path, captions_path, output_video)
 
         timings.set_outputs(video_bytes=output_video.stat().st_size)
         timings.write_report(report_path, final=True)
@@ -521,6 +536,22 @@ def _ass_pos_tag(x: float, y: float, width: int, height: int) -> str:
     de texto y por los captions de la narracion (ambos "arrastrables" en el
     editor con el mismo criterio: el punto es el CENTRO del texto)."""
     return f"\\pos({round(x * width)},{round(y * height)})"
+
+
+def _resolve_emoji_placements(
+    overlays: list[EmojiOverlay],
+) -> list[tuple[Path, float, float, float, bool]]:
+    """Resuelve cada `EmojiOverlay.emoji_id` a la ruta real de su PNG
+    bundleado (ver _EMOJI_ASSET_DIR) -- un id no reconocido simplemente se
+    omite (sin validacion estricta, mismo criterio que `filter_preset`/
+    `caption_highlight_style`), no rompe la generacion del video."""
+    placements: list[tuple[Path, float, float, float, bool]] = []
+    for overlay in overlays:
+        asset_path = _EMOJI_ASSET_DIR / f"{overlay.emoji_id}.png"
+        if not asset_path.is_file():
+            continue
+        placements.append((asset_path, overlay.x, overlay.y, overlay.size, overlay.fade))
+    return placements
 
 
 def _build_overlay_style_and_dialogue(

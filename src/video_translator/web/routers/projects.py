@@ -131,6 +131,9 @@ def create_project(
     # paralela a [file, *additional_images] por indice -- mismo patron que
     # `text_overlays`.
     image_adjustments: str = Form("[]"),
+    # Lista JSON de emojis posicionables (ver RM-32, domain.models.EmojiOverlay)
+    # -- mismo patron que `text_overlays`.
+    emoji_overlays: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     settings: WebSettings = Depends(get_web_settings),
@@ -173,6 +176,21 @@ def create_project(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="image_adjustments debe ser una lista de objetos.",
+        )
+
+    try:
+        emoji_overlays_list = json.loads(emoji_overlays)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="emoji_overlays no es JSON valido."
+        ) from exc
+    if not isinstance(emoji_overlays_list, list) or not all(
+        isinstance(item, dict) and "emoji_id" in item and "x" in item and "y" in item
+        for item in emoji_overlays_list
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="emoji_overlays debe ser una lista de objetos con 'emoji_id', 'x' e 'y'.",
         )
 
     is_tts = service_type == "tts"
@@ -285,6 +303,7 @@ def create_project(
             "text_overlays": text_overlays_list,
             "additional_image_paths": additional_image_paths,
             "image_adjustments": image_adjustments_list,
+            "emoji_overlays": emoji_overlays_list,
         }
         if voice_option == "own" and voice_file is not None:
             voice_path = storage.save_upload(voice_file, project.id, settings)
