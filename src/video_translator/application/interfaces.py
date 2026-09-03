@@ -41,7 +41,9 @@ class MediaProcessor(Protocol):
         """Incrusta (quema) subtitulos en el video, no seleccionables/desactivables."""
         ...
 
-    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
+    def render_ass_captions(
+        self, video_path: Path, ass_path: Path, output_path: Path, fonts_dir: Path | None = None
+    ) -> Path:
         """Incrusta captions ya formateados como .ass (con su propio header
         de resolucion y estilo, ver GenerateMicroVideoUseCase) via el filtro
         `ass` de ffmpeg -- a diferencia de `burn_subtitles` (pensado para un
@@ -50,7 +52,9 @@ class MediaProcessor(Protocol):
         implicito que libass aplica a un .srt sin resolucion declarada
         (asume 384x288 y lo escala al tamano real del video, lo que en un
         vertical de 1080x1920 arma un font varias veces mas grande de lo
-        pedido)."""
+        pedido). `fonts_dir` (ver RM-33) agrega una carpeta de busqueda de
+        fuentes SIN necesitar que esten instaladas en el sistema -- probado
+        a mano que esto funciona incluso con la copia del sistema ausente."""
         ...
 
     def overlay_emojis(

@@ -179,14 +179,16 @@ class TextOverlay:
     color: str = "#FFFFFF"  # hex "#RRGGBB"
     fade: bool = False  # aparece/desaparece gradual en vez de un corte seco
     # Estilo visual adicional (ver RM-33) -- "flat" (default, comportamiento
-    # previo), "hard_shadow" (sombra dura), "thick_outline" (contorno
-    # grueso) o "gradient" (degradado de color, ver gradient_color). Sin
-    # validacion estricta (mismo criterio que filter_preset): un valor no
-    # reconocido cae a "flat".
+    # previo), "hard_shadow", "thick_outline", "long_shadow", "hollow"
+    # (solo contorno, sin relleno), "neon_glow", "colored_outline", o
+    # "gradient" (degradado de color, ver accent_color). Sin validacion
+    # estricta (mismo criterio que filter_preset): un valor no reconocido
+    # cae a "flat".
     text_style: str = "flat"
-    # Color FINAL del degradado cuando text_style="gradient" -- el color de
-    # arranque es `color`. Ignorado en cualquier otro text_style.
-    gradient_color: str = "#FFFFFF"
+    # Segundo color, su significado depende de text_style: color FINAL del
+    # degradado ("gradient"), color del brillo ("neon_glow"), o color del
+    # contorno ("colored_outline"). Ignorado en cualquier otro text_style.
+    accent_color: str = "#FFFFFF"
 
 
 @dataclass(slots=True)

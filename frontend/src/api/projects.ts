@@ -273,7 +273,7 @@ export async function createMicroVideoProject(
           color: overlay.color,
           fade: overlay.fade,
           text_style: overlay.text_style,
-          gradient_color: overlay.gradient_color,
+          accent_color: overlay.accent_color,
         })),
       ),
     )

@@ -6,14 +6,31 @@ import { Switch } from '../ui/Switch'
 import { Button } from '../ui/Button'
 import { cn } from '../../lib/cn'
 
-const FONT_OPTIONS = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Comic Sans MS']
+// Arial/Impact quedan como opciones "seguras" (siempre disponibles en
+// cualquier sistema); el resto son tipografias bundleadas por el backend
+// (ver RM-33, assets/fonts/) -- probadas a mano, no dependen de que esten
+// instaladas en la maquina.
+const FONT_OPTIONS = ['Arial', 'Impact', 'Bebas Neue', 'Montserrat', 'Poppins', 'Righteous', 'Pacifico', 'Dancing Script']
 
 const TEXT_STYLE_OPTIONS: { value: TextStyle; label: string }[] = [
   { value: 'flat', label: 'Normal' },
   { value: 'hard_shadow', label: 'Sombra dura' },
   { value: 'thick_outline', label: 'Contorno grueso' },
+  { value: 'long_shadow', label: 'Sombra larga' },
+  { value: 'hollow', label: 'Solo contorno' },
+  { value: 'neon_glow', label: 'Neón' },
+  { value: 'colored_outline', label: 'Contorno de color' },
   { value: 'gradient', label: 'Degradado' },
 ]
+
+// Label del segundo color picker ("accent_color") -- su significado
+// depende del estilo activo (ver RM-33). Un estilo sin entrada aca no
+// muestra ese picker (no lo usa).
+const ACCENT_COLOR_LABELS: Partial<Record<TextStyle, string>> = {
+  gradient: 'Color final',
+  neon_glow: 'Color del brillo',
+  colored_outline: 'Color del contorno',
+}
 
 interface TextOverlayPanelProps {
   overlay: TextOverlay
@@ -25,6 +42,7 @@ interface TextOverlayPanelProps {
  * tipografia, tamano, color y fade in/out (ver RM-28). La posicion se
  * cambia arrastrando en el canvas, no aca. */
 export function TextOverlayPanel({ overlay, onChange, onRemove }: TextOverlayPanelProps) {
+  const accentLabel = ACCENT_COLOR_LABELS[overlay.text_style]
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
       <div className="flex items-center justify-between gap-2">
@@ -89,9 +107,7 @@ export function TextOverlayPanel({ overlay, onChange, onRemove }: TextOverlayPan
 
       <div className="flex items-center gap-3">
         <div className="flex flex-col gap-1">
-          {overlay.text_style === 'gradient' && (
-            <span className="text-xs text-muted-foreground">Color inicial</span>
-          )}
+          {accentLabel && <span className="text-xs text-muted-foreground">Color inicial</span>}
           <input
             type="color"
             value={overlay.color}
@@ -99,13 +115,13 @@ export function TextOverlayPanel({ overlay, onChange, onRemove }: TextOverlayPan
             className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
           />
         </div>
-        {overlay.text_style === 'gradient' && (
+        {accentLabel && (
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">Color final</span>
+            <span className="text-xs text-muted-foreground">{accentLabel}</span>
             <input
               type="color"
-              value={overlay.gradient_color}
-              onChange={(e) => onChange({ ...overlay, gradient_color: e.target.value })}
+              value={overlay.accent_color}
+              onChange={(e) => onChange({ ...overlay, accent_color: e.target.value })}
               className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
             />
           </div>

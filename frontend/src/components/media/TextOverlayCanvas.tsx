@@ -35,9 +35,20 @@ function textOverlayStyle(overlay: TextOverlay): CSSProperties {
       return { color: overlay.color, textShadow: '4px 4px 0 rgba(0,0,0,0.9)' }
     case 'thick_outline':
       return { color: overlay.color, WebkitTextStroke: '3px black' }
+    case 'long_shadow':
+      return { color: overlay.color, textShadow: '10px 10px 0 rgba(0,0,0,0.9)' }
+    case 'hollow':
+      return { color: 'transparent', WebkitTextStroke: `2px ${overlay.color}` }
+    case 'neon_glow':
+      return {
+        color: overlay.color,
+        textShadow: `0 0 4px ${overlay.accent_color}, 0 0 8px ${overlay.accent_color}, 0 0 16px ${overlay.accent_color}`,
+      }
+    case 'colored_outline':
+      return { color: overlay.color, WebkitTextStroke: `4px ${overlay.accent_color}` }
     case 'gradient':
       return {
-        background: `linear-gradient(90deg, ${overlay.color}, ${overlay.gradient_color})`,
+        background: `linear-gradient(90deg, ${overlay.color}, ${overlay.accent_color})`,
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
         color: 'transparent',

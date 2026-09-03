@@ -105,8 +105,10 @@ class FakeMediaProcessor:
         output_path.write_bytes(b"fake-concatenated-video")
         return output_path
 
-    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
-        self.caption_calls.append({"video_path": video_path, "ass_path": ass_path})
+    def render_ass_captions(
+        self, video_path: Path, ass_path: Path, output_path: Path, fonts_dir: Path | None = None
+    ) -> Path:
+        self.caption_calls.append({"video_path": video_path, "ass_path": ass_path, "fonts_dir": fonts_dir})
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-final-video")
         return output_path
@@ -767,6 +769,97 @@ def test_execute_writes_hard_shadow_and_thick_outline_styles(tmp_path: Path):
     assert (outline_fields[16], outline_fields[17]) == ("10", "1")
 
 
+def test_execute_writes_long_shadow_style(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(text="Largo", x=0.5, y=0.5, text_style="long_shadow")
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
+    assert (fields[16], fields[17]) == ("1", "18")
+
+
+def test_execute_writes_hollow_style_with_transparent_fill(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(text="Hollow", x=0.5, y=0.5, text_style="hollow", color="#00FF00")
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
+    # PrimaryColour totalmente transparente (sin relleno real)...
+    assert fields[3] == "&HFF000000"
+    # ... y el color elegido por el usuario pasa al OutlineColour (verde, BGR &H0000FF00&... con alpha "00").
+    assert fields[5] == "&H0000FF00"
+    assert (fields[16], fields[17]) == ("6", "0")
+
+
+def test_execute_writes_neon_glow_style_with_blur_and_accent_outline(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(
+        text="Neon", x=0.5, y=0.5, text_style="neon_glow", color="#FFFFFF", accent_color="#FF00FF"
+    )
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
+    assert fields[5] == "&H00FF00FF"  # OutlineColour = accent_color (magenta, BGR)
+    assert (fields[16], fields[17]) == ("4", "0")
+    dialogue_line = next(line for line in content.splitlines() if line.startswith("Dialogue: 0,0:00:00.00"))
+    assert "\\blur6" in dialogue_line
+
+
+def test_execute_writes_colored_outline_style(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(
+        text="Outline", x=0.5, y=0.5, text_style="colored_outline", color="#FFFFFF", accent_color="#00CCFF"
+    )
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
+    assert fields[3] == "&H00FFFFFF"  # PrimaryColour = color (fill blanco, opaco)
+    assert fields[5] == "&H00FFCC00"  # OutlineColour = accent_color (BGR de #00CCFF)
+    assert (fields[16], fields[17]) == ("6", "1")
+
+
+def test_execute_passes_fonts_dir_to_render_ass_captions(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+
+    use_case.execute(request)
+
+    fonts_dir = media.caption_calls[0]["fonts_dir"]
+    assert fonts_dir is not None
+    assert fonts_dir.name == "fonts"
+    assert fonts_dir.is_dir()
+
+
 def test_execute_writes_unrecognized_text_style_as_flat(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
@@ -788,7 +881,7 @@ def test_execute_writes_gradient_colors_per_character(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(
-        text="AB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", gradient_color="#0000FF"
+        text="AB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", accent_color="#0000FF"
     )
     request = GenerateMicroVideoRequest(
         images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
@@ -808,7 +901,7 @@ def test_execute_preserves_line_break_in_gradient_text(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(
-        text="A\nB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", gradient_color="#0000FF"
+        text="A\nB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", accent_color="#0000FF"
     )
     request = GenerateMicroVideoRequest(
         images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]

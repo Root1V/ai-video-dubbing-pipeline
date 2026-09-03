@@ -80,7 +80,7 @@ def _parse_text_overlays(raw_overlays: object) -> list[TextOverlay]:
             key: item[key]
             for key in (
                 "text", "x", "y", "bold", "font_family", "font_size", "color", "fade",
-                "text_style", "gradient_color",
+                "text_style", "accent_color",
             )
             if key in item
         }

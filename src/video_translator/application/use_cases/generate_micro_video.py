@@ -59,16 +59,10 @@ OVERLAY_FADE_MS = 500
 # el pipeline ASS/libass de texto no puede renderizar emoji en este
 # sistema, asi que se componen como imagen via MediaProcessor.overlay_emojis.
 _EMOJI_ASSET_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "emojis"
-# (Outline, Shadow) de la linea "Style:" por TextOverlay.text_style (ver
-# RM-33) -- probados a mano con el ffmpeg-full real. "flat" son los valores
-# que ya tenia el estilo antes de RM-33 (comportamiento previo). Un
-# text_style no reconocido cae a "flat" (.get(..., _TEXT_STYLE_OUTLINE_SHADOW["flat"])).
-_TEXT_STYLE_OUTLINE_SHADOW: dict[str, tuple[int, int]] = {
-    "flat": (3, 1),
-    "hard_shadow": (2, 8),
-    "thick_outline": (10, 1),
-    "gradient": (3, 1),
-}
+# Tipografias bundleadas para los TextOverlay (ver RM-33) -- se le pasan a
+# render_ass_captions como `fonts_dir` para que libass las encuentre sin
+# necesitar que esten instaladas en el sistema (probado a mano).
+_TEXT_ASSET_FONTS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
 
 # "**palabra**" se resalta en negrita en el caption (no se lee en voz alta:
 # ver _strip_bold_markers, usado para el texto que va al sintetizador).
@@ -113,6 +107,40 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     if len(value) != 6 or any(c not in "0123456789abcdefABCDEF" for c in value):
         value = "000000"
     return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+# PrimaryColour totalmente transparente (alpha=FF) -- usado por el estilo
+# "hollow" (ver _text_style_ass_params), donde el "relleno" real no se
+# dibuja, solo el contorno.
+_TRANSPARENT_ASS_COLOR = "&HFF000000"
+_BLACK_ASS_OUTLINE = "&H00000000"
+
+
+def _text_style_ass_params(overlay: TextOverlay) -> tuple[str, str, int, int, str]:
+    """Devuelve (PrimaryColour, OutlineColour, Outline, Shadow, override_tag_extra)
+    de la linea Style:/Dialogue: de un TextOverlay segun su text_style (ver
+    RM-33) -- todos los valores probados a mano con el ffmpeg-full real.
+    Un text_style no reconocido cae al comportamiento "flat" (mismo
+    criterio que filter_preset/caption_highlight_style)."""
+    fill = _hex_to_ass_color(overlay.color)
+    accent = _hex_to_ass_color(overlay.accent_color)
+    if overlay.text_style == "hard_shadow":
+        return fill, _BLACK_ASS_OUTLINE, 2, 8, ""
+    if overlay.text_style == "thick_outline":
+        return fill, _BLACK_ASS_OUTLINE, 10, 1, ""
+    if overlay.text_style == "long_shadow":
+        return fill, _BLACK_ASS_OUTLINE, 1, 18, ""
+    if overlay.text_style == "hollow":
+        # El color elegido por el usuario pasa al CONTORNO -- no hay
+        # relleno real que mostrar.
+        return _TRANSPARENT_ASS_COLOR, fill, 6, 0, ""
+    if overlay.text_style == "neon_glow":
+        return fill, accent, 4, 0, "\\blur6"
+    if overlay.text_style == "colored_outline":
+        return fill, accent, 6, 1, ""
+    # "flat" y "gradient" (el degradado reemplaza el relleno via \1c en el
+    # texto, no en la Style) -- comportamiento previo a RM-33.
+    return fill, _BLACK_ASS_OUTLINE, 3, 1, ""
 
 
 def _apply_gradient_colors(text: str, start_hex: str, end_hex: str) -> str:
@@ -307,11 +335,14 @@ class GenerateMicroVideoUseCase:
                 silent_path, final_audio_path, background_path, keep_original_as_secondary=False
             )
 
+        fonts_dir = _TEXT_ASSET_FONTS_DIR if _TEXT_ASSET_FONTS_DIR.is_dir() else None
         output_video = request.output_dir / "micro_video.mp4"
         if request.emoji_overlays:
             captioned_path = workdir / "captioned.mp4"
             with timings.stage("caption_burn"):
-                self._media.render_ass_captions(background_path, captions_path, captioned_path)
+                self._media.render_ass_captions(
+                    background_path, captions_path, captioned_path, fonts_dir=fonts_dir
+                )
             placements = _resolve_emoji_placements(request.emoji_overlays)
             with timings.stage("emoji_burn", num_emojis=len(placements)):
                 self._media.overlay_emojis(
@@ -319,7 +350,9 @@ class GenerateMicroVideoUseCase:
                 )
         else:
             with timings.stage("caption_burn"):
-                self._media.render_ass_captions(background_path, captions_path, output_video)
+                self._media.render_ass_captions(
+                    background_path, captions_path, output_video, fonts_dir=fonts_dir
+                )
 
         timings.set_outputs(video_bytes=output_video.stat().st_size)
         timings.write_report(report_path, final=True)
@@ -616,24 +649,23 @@ def _build_overlay_style_and_dialogue(
     captions) para que se lea sobre cualquier fondo sin importar el color
     elegido."""
     style_name = f"Overlay{index}"
-    ass_color = _hex_to_ass_color(overlay.color)
     bold_flag = -1 if overlay.bold else 0
-    outline, shadow = _TEXT_STYLE_OUTLINE_SHADOW.get(
-        overlay.text_style, _TEXT_STYLE_OUTLINE_SHADOW["flat"]
-    )
+    primary, outline_colour, outline, shadow, extra_tag = _text_style_ass_params(overlay)
     style = (
         f"Style: {style_name},{overlay.font_family},{overlay.font_size},"
-        f"{ass_color},&H000000FF,&H00000000,&H00000000,"
+        f"{primary},&H000000FF,{outline_colour},&H00000000,"
         f"{bold_flag},0,0,0,100,100,0,0,1,{outline},{shadow},5,0,0,0,1"
     )
     override = "{" + _ass_pos_tag(overlay.x, overlay.y, width, height)
     if overlay.fade:
         fade_ms = max(1, min(OVERLAY_FADE_MS, int(duration * 1000 / 4)))
         override += f"\\fad({fade_ms},{fade_ms})"
+    if extra_tag:
+        override += extra_tag
     override += "}"
     escaped_text = _escape_overlay_text(overlay.text)
     body = (
-        _apply_gradient_colors(escaped_text, overlay.color, overlay.gradient_color)
+        _apply_gradient_colors(escaped_text, overlay.color, overlay.accent_color)
         if overlay.text_style == "gradient"
         else escaped_text
     )

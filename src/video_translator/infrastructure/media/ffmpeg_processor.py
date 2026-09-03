@@ -99,13 +99,23 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=MuxingError)
         return output_path
 
-    def render_ass_captions(self, video_path: Path, ass_path: Path, output_path: Path) -> Path:
+    def render_ass_captions(
+        self, video_path: Path, ass_path: Path, output_path: Path, fonts_dir: Path | None = None
+    ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         ass_filter_path = str(ass_path).replace("\\", "/").replace(":", "\\:")
+        ass_filter = f"ass='{ass_filter_path}'"
+        if fonts_dir is not None:
+            # Agrega una carpeta de busqueda de fuentes SIN necesitar que
+            # esten instaladas en el sistema (ver RM-33) -- probado a mano
+            # que libass las encuentra igual con la copia del sistema
+            # ausente, mismo criterio de escape que ass_filter_path.
+            fonts_dir_escaped = str(fonts_dir).replace("\\", "/").replace(":", "\\:")
+            ass_filter += f":fontsdir='{fonts_dir_escaped}'"
         cmd = [
             self._ffmpeg, "-y",
             "-i", str(video_path),
-            "-vf", f"ass='{ass_filter_path}'",
+            "-vf", ass_filter,
             "-c:a", "copy",
             str(output_path),
         ]
