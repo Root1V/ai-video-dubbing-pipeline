@@ -35,6 +35,6 @@
 | RM-29 | Múltiples imágenes en el micro-video | done | Crear el video a partir de varias imágenes en vez de una sola. |
 | RM-30 | Ajustar tamaño/posición de la imagen | done | Recortar/reposicionar cada imagen dentro del lienzo antes de generar. |
 | RM-31 | Filtros de imagen (brillo, contraste, sepia, etc.) | done | Estilos preestablecidos de color sobre la(s) imagen(es). |
-| RM-32 | Emoticones sobre el video | todo | Agregar emojis arrastrables igual que el texto. |
+| RM-32 | Emoticones sobre el video | done | Agregar emojis arrastrables igual que el texto. |
 | RM-33 | Estilos de texto más profesionales | todo | Sombra, degradado, contorno y otras variantes visuales para el texto/captions. |
 | RM-34 | Podcast de audio | todo | Nuevo servicio: guion largo → episodio de audio, con voz pública o clonada. |

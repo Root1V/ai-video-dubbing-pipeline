@@ -117,7 +117,8 @@ Commit: `df4614d`
 
 ## RM-32 — Emoticones sobre el video
 **Why:** pedido explícito del usuario final, además del texto ya arrastrable (RM-28).
-**Scope:** agregar emojis como un tipo de overlay arrastrable, mismo mecanismo de posición/fade que TextOverlay -- un emoji es en sí mismo un carácter Unicode, así que puede reusar el mismo pipeline de texto (ASS ya renderiza emoji como parte de una fuente con cobertura Unicode) en vez de necesitar una librería de íconos aparte.
+**Scope:** la asunción original (reusar el pipeline ASS del texto, un emoji es un carácter Unicode) resultó falsa en este sistema -- probado a mano con el `ffmpeg-full` real: ningún emoji se renderiza vía ASS, ni con la fuente por defecto ni pidiendo explícitamente "Apple Color Emoji" o "Noto Color Emoji" (instalada vía Homebrew para la prueba). En su lugar, emojis como imágenes: 20 PNG curados de Twemoji (CC-BY 4.0, atribución en `assets/emojis/SOURCES.md`) compuestos con el filtro `overlay` de ffmpeg en una etapa nueva del pipeline (`emoji_burn`, después de `caption_burn`), mismo mecanismo de posición/fade arrastrable que TextOverlay. Nuevo endpoint autenticado `GET /samples/emoji/{id}` (mismo patrón que voces/música) para que el editor pueda previsualizarlos.
+Commit: `3e4945b`
 
 ## RM-33 — Estilos de texto más profesionales
 **Why:** pedido explícito del usuario final; investigué tendencias de texto en video de 2026 (CapCut/tipografía cinética, ver fuentes) -- sombra dura, contorno grueso, y texto con degradado son los estilos más comunes en contenido corto viral, más allá de negrita/color plano (ya soportado desde RM-28).
