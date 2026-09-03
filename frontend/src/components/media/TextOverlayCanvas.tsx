@@ -22,6 +22,31 @@ const CSS_FILTER_BY_PRESET: Record<FilterPreset, string | undefined> = {
   dramatic: 'contrast(1.15) saturate(1.2)',
 }
 
+// Aproximacion visual (no pixel-perfect) de los estilos de texto de RM-33
+// -- el resultado real lo arma el backend via tags ASS (Outline/Shadow, o
+// un degradado por caracter con \1c, ver generate_micro_video.py). El
+// degradado en particular puede verse INCLUSO mas suave aca que en el
+// video final (CSS linear-gradient es continuo, el backend lo discretiza
+// por caracter), mismo criterio ya aceptado para el resto de los previews
+// de este editor.
+function textOverlayStyle(overlay: TextOverlay): CSSProperties {
+  switch (overlay.text_style) {
+    case 'hard_shadow':
+      return { color: overlay.color, textShadow: '4px 4px 0 rgba(0,0,0,0.9)' }
+    case 'thick_outline':
+      return { color: overlay.color, WebkitTextStroke: '3px black' }
+    case 'gradient':
+      return {
+        background: `linear-gradient(90deg, ${overlay.color}, ${overlay.gradient_color})`,
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        color: 'transparent',
+      }
+    default:
+      return { color: overlay.color, textShadow: '0 0 3px rgba(0,0,0,0.8)' }
+  }
+}
+
 // Debe coincidir con el aspecto del contenedor (`aspectRatio: '9 / 16'` mas
 // abajo) y con VIDEO_WIDTH/VIDEO_HEIGHT del backend.
 const CONTAINER_ASPECT = 9 / 16
@@ -259,11 +284,10 @@ export function TextOverlayCanvas({
             top: `${overlay.y * 100}%`,
             fontFamily: overlay.font_family,
             fontWeight: overlay.bold ? 'bold' : 'normal',
-            color: overlay.color,
             // El tamano de fuente en el video final esta en px sobre un
             // ancho de 1080 -- se escala al ancho real del canvas en pantalla.
             fontSize: `${(overlay.font_size / 1080) * 100}cqw`,
-            textShadow: '0 0 3px rgba(0,0,0,0.8)',
+            ...textOverlayStyle(overlay),
           }}
         >
           {overlay.text || 'Texto'}

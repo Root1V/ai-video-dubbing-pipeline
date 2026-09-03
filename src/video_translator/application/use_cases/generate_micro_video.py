@@ -59,6 +59,16 @@ OVERLAY_FADE_MS = 500
 # el pipeline ASS/libass de texto no puede renderizar emoji en este
 # sistema, asi que se componen como imagen via MediaProcessor.overlay_emojis.
 _EMOJI_ASSET_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "emojis"
+# (Outline, Shadow) de la linea "Style:" por TextOverlay.text_style (ver
+# RM-33) -- probados a mano con el ffmpeg-full real. "flat" son los valores
+# que ya tenia el estilo antes de RM-33 (comportamiento previo). Un
+# text_style no reconocido cae a "flat" (.get(..., _TEXT_STYLE_OUTLINE_SHADOW["flat"])).
+_TEXT_STYLE_OUTLINE_SHADOW: dict[str, tuple[int, int]] = {
+    "flat": (3, 1),
+    "hard_shadow": (2, 8),
+    "thick_outline": (10, 1),
+    "gradient": (3, 1),
+}
 
 # "**palabra**" se resalta en negrita en el caption (no se lee en voz alta:
 # ver _strip_bold_markers, usado para el texto que va al sintetizador).
@@ -94,6 +104,48 @@ def _hex_to_ass_inline_color(hex_color: str) -> str:
     &HBBGGRR&, SIN byte de alpha (el override `\\c` no lo lleva, a
     diferencia del campo de color de una linea "Style:")."""
     return f"&H{_hex_to_bgr(hex_color)}&"
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    """Convierte "#RRGGBB" a (r, g, b). Mismo criterio de fallback a negro
+    que _hex_to_bgr si el valor no es un hex valido."""
+    value = hex_color.lstrip("#")
+    if len(value) != 6 or any(c not in "0123456789abcdefABCDEF" for c in value):
+        value = "000000"
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def _apply_gradient_colors(text: str, start_hex: str, end_hex: str) -> str:
+    """Interpola color por caracter entre start_hex y end_hex (ver RM-33,
+    TextOverlay.text_style="gradient") -- ASS/libass no tiene un tag de
+    relleno degradado nativo para texto, esto lo aproxima con un override
+    `\\1c` por caracter (probado a mano: con textos de 5+ caracteres se ve
+    como un degradado suave, discretizado por caracter). Preserva "\\N"
+    (salto de linea, ya escapado por _escape_overlay_text) como una unidad
+    sin colorear -- partirlo en "\\" y "N" por separado rompe el override."""
+    start_rgb = _hex_to_rgb(start_hex)
+    end_rgb = _hex_to_rgb(end_hex)
+    glyphs: list[str] = []
+    for token in re.split(r"(\\N)", text):
+        if token == "\\N":
+            glyphs.append(token)
+        else:
+            glyphs.extend(token)
+    steps = max(1, sum(1 for g in glyphs if g != "\\N") - 1)
+    parts: list[str] = []
+    step = 0
+    for glyph in glyphs:
+        if glyph == "\\N":
+            parts.append(glyph)
+            continue
+        t = step / steps
+        r = round(start_rgb[0] + (end_rgb[0] - start_rgb[0]) * t)
+        g = round(start_rgb[1] + (end_rgb[1] - start_rgb[1]) * t)
+        b = round(start_rgb[2] + (end_rgb[2] - start_rgb[2]) * t)
+        inline_color = _hex_to_ass_inline_color(f"#{r:02X}{g:02X}{b:02X}")
+        parts.append("{\\1c" + inline_color + "}" + glyph)
+        step += 1
+    return "".join(parts)
 
 
 class GenerateMicroVideoUseCase:
@@ -566,17 +618,26 @@ def _build_overlay_style_and_dialogue(
     style_name = f"Overlay{index}"
     ass_color = _hex_to_ass_color(overlay.color)
     bold_flag = -1 if overlay.bold else 0
+    outline, shadow = _TEXT_STYLE_OUTLINE_SHADOW.get(
+        overlay.text_style, _TEXT_STYLE_OUTLINE_SHADOW["flat"]
+    )
     style = (
         f"Style: {style_name},{overlay.font_family},{overlay.font_size},"
         f"{ass_color},&H000000FF,&H00000000,&H00000000,"
-        f"{bold_flag},0,0,0,100,100,0,0,1,3,1,5,0,0,0,1"
+        f"{bold_flag},0,0,0,100,100,0,0,1,{outline},{shadow},5,0,0,0,1"
     )
     override = "{" + _ass_pos_tag(overlay.x, overlay.y, width, height)
     if overlay.fade:
         fade_ms = max(1, min(OVERLAY_FADE_MS, int(duration * 1000 / 4)))
         override += f"\\fad({fade_ms},{fade_ms})"
     override += "}"
-    text = override + _escape_overlay_text(overlay.text)
+    escaped_text = _escape_overlay_text(overlay.text)
+    body = (
+        _apply_gradient_colors(escaped_text, overlay.color, overlay.gradient_color)
+        if overlay.text_style == "gradient"
+        else escaped_text
+    )
+    text = override + body
     dialogue = (
         f"Dialogue: 0,{_format_ass_timestamp(0)},{_format_ass_timestamp(duration)},"
         f"{style_name},,0,0,0,,{text}"

@@ -78,7 +78,10 @@ def _parse_text_overlays(raw_overlays: object) -> list[TextOverlay]:
             continue
         kwargs = {
             key: item[key]
-            for key in ("text", "x", "y", "bold", "font_family", "font_size", "color", "fade")
+            for key in (
+                "text", "x", "y", "bold", "font_family", "font_size", "color", "fade",
+                "text_style", "gradient_color",
+            )
             if key in item
         }
         overlays.append(TextOverlay(**kwargs))

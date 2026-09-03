@@ -220,7 +220,16 @@ export interface TextOverlay {
   font_size: number
   color: string
   fade: boolean
+  /** Estilo visual adicional (ver RM-33) -- 'flat' = comportamiento previo. */
+  text_style: TextStyle
+  /** Color final del degradado cuando text_style='gradient' -- `color` es
+   * el color de arranque en ese modo. Ignorado en cualquier otro estilo. */
+  gradient_color: string
 }
+
+/** Estilos de texto preestablecidos (ver RM-33) -- basados en las
+ * tendencias más comunes en contenido corto viral de 2026. */
+export type TextStyle = 'flat' | 'hard_shadow' | 'thick_outline' | 'gradient'
 
 /** Un emoji superpuesto al micro-video, posicionado a mano por el usuario
  * (ver RM-32). `x`/`y` son fracciones 0-1 del ancho/alto del video -- el

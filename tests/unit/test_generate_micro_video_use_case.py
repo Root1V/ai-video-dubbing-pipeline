@@ -728,6 +728,101 @@ def test_execute_writes_overlay_position_bold_color_and_font(tmp_path: Path):
     assert "\\fad(" not in dialogue_line
 
 
+def test_execute_writes_default_outline_and_shadow_for_flat_style(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(text="Hola", x=0.5, y=0.5)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    style_line = next(line for line in content.splitlines() if line.startswith("Style: Overlay0"))
+    fields = style_line.split(",")
+    assert fields[16] == "3"  # Outline
+    assert fields[17] == "1"  # Shadow
+
+
+def test_execute_writes_hard_shadow_and_thick_outline_styles(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlays = [
+        TextOverlay(text="Sombra", x=0.5, y=0.3, text_style="hard_shadow"),
+        TextOverlay(text="Contorno", x=0.5, y=0.6, text_style="thick_outline"),
+    ]
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=overlays
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    shadow_fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
+    outline_fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay1")).split(",")
+    assert (shadow_fields[16], shadow_fields[17]) == ("2", "8")
+    assert (outline_fields[16], outline_fields[17]) == ("10", "1")
+
+
+def test_execute_writes_unrecognized_text_style_as_flat(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(text="Hola", x=0.5, y=0.5, text_style="no-existe-este-estilo")
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
+    assert (fields[16], fields[17]) == ("3", "1")
+
+
+def test_execute_writes_gradient_colors_per_character(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(
+        text="AB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", gradient_color="#0000FF"
+    )
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    dialogue_line = next(line for line in content.splitlines() if line.startswith("Dialogue: 0,0:00:00.00"))
+    # "A" -> color de arranque (rojo, BGR &H0000FF&), "B" -> color final (azul, BGR &HFF0000&).
+    assert "{\\1c&H0000FF&}A" in dialogue_line
+    assert "{\\1c&HFF0000&}B" in dialogue_line
+
+
+def test_execute_preserves_line_break_in_gradient_text(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    overlay = TextOverlay(
+        text="A\nB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", gradient_color="#0000FF"
+    )
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    dialogue_line = next(line for line in content.splitlines() if line.startswith("Dialogue: 0,0:00:00.00"))
+    # Si "\N" se partiera en "\\" y "N" coloreados por separado, este
+    # substring literal ya no aparecería intacto en la linea.
+    assert "\\N" in dialogue_line
+
+
 def test_execute_writes_overlay_fade_when_requested(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)

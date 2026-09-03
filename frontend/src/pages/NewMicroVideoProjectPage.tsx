@@ -45,6 +45,8 @@ function makeOverlay(): TextOverlay {
     font_size: 64,
     color: '#FFFFFF',
     fade: false,
+    text_style: 'flat',
+    gradient_color: '#FFFFFF',
   }
 }
 
