@@ -122,7 +122,8 @@ Commit: `3e4945b`
 
 ## RM-33 — Estilos de texto más profesionales
 **Why:** pedido explícito del usuario final; investigué tendencias de texto en video de 2026 (CapCut/tipografía cinética, ver fuentes) -- sombra dura, contorno grueso, y texto con degradado son los estilos más comunes en contenido corto viral, más allá de negrita/color plano (ya soportado desde RM-28).
-**Scope:** variantes de estilo adicionales para TextOverlay (y opcionalmente los captions): sombra dura offset, contorno más grueso configurable, relleno con degradado de 2 colores -- todo vía tags ASS estándar (`\shad`, `\bord`, y un degradado aproximado con `\1c`/`\2c` en múltiples líneas o un gradiente pre-renderizado). No incluye animación tipo "tipografía cinética" (palabra por palabra) -- eso es una iniciativa más grande, separada.
+**Scope:** `TextOverlay` gana `text_style` ("flat"/"hard_shadow"/"thick_outline"/"gradient") + `gradient_color`. Sombra dura y contorno grueso son directo (los campos `Shadow`/`Outline` de la línea `Style:` de ASS, ya usados, ahora configurables por preset -- valores probados a mano: (2,8) y (10,1)). Degradado: ASS no tiene relleno degradado nativo, se aproxima con un override `\1c` por CARACTER interpolando entre `color` y `gradient_color` (probado a mano, se ve como un degradado suave). No incluye animación tipo "tipografía cinética" (palabra por palabra) -- eso es una iniciativa más grande, separada.
+Commit: `725121b`
 
 ## RM-34 — Podcast de audio
 **Why:** pedido explícito del usuario -- un servicio de audio orientado a episodios largos (guion/conversación), no solo la síntesis de un texto suelto que ya cubre RM-02.
