@@ -129,7 +129,12 @@ def _text_style_ass_params(overlay: TextOverlay) -> tuple[str, str, int, int, st
     if overlay.text_style == "thick_outline":
         return fill, _BLACK_ASS_OUTLINE, 10, 1, ""
     if overlay.text_style == "long_shadow":
-        return fill, _BLACK_ASS_OUTLINE, 1, 18, ""
+        # Shadow=0: el tag `Shadow` nativo de ASS es una UNICA copia solida
+        # desplazada -- probado a mano con texto real, se ve como un
+        # duplicado "flotando" al lado, no como una sombra. La cinta
+        # diagonal se arma a mano en _build_overlay_style_and_dialogue con
+        # varias copias solidas en negro (ver _LONG_SHADOW_STEPS).
+        return fill, _BLACK_ASS_OUTLINE, 1, 0, ""
     if overlay.text_style == "hollow":
         # El color elegido por el usuario pasa al CONTORNO -- no hay
         # relleno real que mostrar.
@@ -559,9 +564,9 @@ def _write_ass_captions(
     overlay_styles: list[str] = []
     overlay_dialogues: list[str] = []
     for i, overlay in enumerate(overlays or []):
-        overlay_style, overlay_dialogue = _build_overlay_style_and_dialogue(overlay, i, width, height, duration)
+        overlay_style, overlay_dialogue_lines = _build_overlay_style_and_dialogue(overlay, i, width, height, duration)
         overlay_styles.append(overlay_style)
-        overlay_dialogues.append(overlay_dialogue)
+        overlay_dialogues.extend(overlay_dialogue_lines)
 
     lines = [
         "[Script Info]",
@@ -639,15 +644,32 @@ def _resolve_emoji_placements(
     return placements
 
 
+# Cuantas copias solidas en negro arma la cinta de "long_shadow" (ver
+# _build_overlay_style_and_dialogue) -- desplazadas diagonalmente 1px, 2px,
+# ..., hasta este valor, de mas lejos a mas cerca. Mismo numero de pasos
+# que usa la aproximacion CSS del editor (TextOverlayCanvas.tsx) para que
+# el preview y el video final se vean iguales.
+_LONG_SHADOW_STEPS = 18
+
+
 def _build_overlay_style_and_dialogue(
     overlay: TextOverlay, index: int, width: int, height: int, duration: float
-) -> tuple[str, str]:
+) -> tuple[str, list[str]]:
     """Arma el `Style:`/`Dialogue:` de un TextOverlay: Alignment=5 (centro)
     para que `\\pos(x,y)` posicione el CENTRO del texto en (x,y) -- coincide
     con "donde se soltó el texto al arrastrarlo" en el editor. BorderStyle=1
     con contorno negro (mismo criterio que el estilo "text_color" de los
     captions) para que se lea sobre cualquier fondo sin importar el color
-    elegido."""
+    elegido.
+
+    Devuelve una LISTA de `Dialogue:` (no una unica linea): "long_shadow"
+    necesita varias -- ver _LONG_SHADOW_STEPS y el comentario en
+    _text_style_ass_params. Se arman como copias solidas en negro
+    (`\\1c` + `\\bord0\\shad0`, sin usar el Outline/Shadow de la Style)
+    desplazadas diagonalmente, declaradas ANTES que la copia de color
+    normal -- mismo Layer, libass dibuja en el orden declarado (ver
+    comentario en _write_ass_captions), asi que el texto de color queda
+    arriba de toda la cinta."""
     style_name = f"Overlay{index}"
     bold_flag = -1 if overlay.bold else 0
     primary, outline_colour, outline, shadow, extra_tag = _text_style_ass_params(overlay)
@@ -656,25 +678,34 @@ def _build_overlay_style_and_dialogue(
         f"{primary},&H000000FF,{outline_colour},&H00000000,"
         f"{bold_flag},0,0,0,100,100,0,0,1,{outline},{shadow},5,0,0,0,1"
     )
-    override = "{" + _ass_pos_tag(overlay.x, overlay.y, width, height)
+    fade_tag = ""
     if overlay.fade:
         fade_ms = max(1, min(OVERLAY_FADE_MS, int(duration * 1000 / 4)))
-        override += f"\\fad({fade_ms},{fade_ms})"
-    if extra_tag:
-        override += extra_tag
-    override += "}"
+        fade_tag = f"\\fad({fade_ms},{fade_ms})"
     escaped_text = _escape_overlay_text(overlay.text)
     body = (
         _apply_gradient_colors(escaped_text, overlay.color, overlay.accent_color)
         if overlay.text_style == "gradient"
         else escaped_text
     )
-    text = override + body
-    dialogue = (
+
+    dialogues: list[str] = []
+    if overlay.text_style == "long_shadow":
+        base_x = round(overlay.x * width)
+        base_y = round(overlay.y * height)
+        for step in range(_LONG_SHADOW_STEPS, 0, -1):
+            ribbon_override = f"{{\\pos({base_x + step},{base_y + step}){fade_tag}\\1c&H000000&\\bord0\\shad0}}"
+            dialogues.append(
+                f"Dialogue: 0,{_format_ass_timestamp(0)},{_format_ass_timestamp(duration)},"
+                f"{style_name},,0,0,0,,{ribbon_override}{body}"
+            )
+
+    override = "{" + _ass_pos_tag(overlay.x, overlay.y, width, height) + fade_tag + extra_tag + "}"
+    dialogues.append(
         f"Dialogue: 0,{_format_ass_timestamp(0)},{_format_ass_timestamp(duration)},"
-        f"{style_name},,0,0,0,,{text}"
+        f"{style_name},,0,0,0,,{override}{body}"
     )
-    return style, dialogue
+    return style, dialogues
 
 
 def _format_ass_timestamp(seconds: float) -> str:

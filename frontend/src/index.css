@@ -2,6 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tipografias bundleadas para los TextOverlay del micro-video (ver RM-33,
+   src/video_translator/assets/fonts/SOURCES.md) -- mismos archivos que usa
+   el backend via fontsdir= al renderizar con ffmpeg, copiados aca (
+   public/fonts/) para que el editor las pueda dibujar en el preview del
+   canvas sin depender de que esten instaladas en la maquina del usuario. */
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('/fonts/BebasNeue-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/fonts/Montserrat-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('/fonts/Poppins-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Righteous';
+  src: url('/fonts/Righteous-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pacifico';
+  src: url('/fonts/Pacifico-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Dancing Script';
+  src: url('/fonts/DancingScript-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     --background: 240 20% 98%;

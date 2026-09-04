@@ -782,7 +782,29 @@ def test_execute_writes_long_shadow_style(tmp_path: Path):
 
     content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
     fields = next(line for line in content.splitlines() if line.startswith("Style: Overlay0")).split(",")
-    assert (fields[16], fields[17]) == ("1", "18")
+    # Shadow=0: el tag `Shadow` nativo de ASS es una UNICA copia solida
+    # desplazada (probado a mano con texto real: se ve como un duplicado
+    # "flotando" al lado, no como una sombra) -- la cinta diagonal se arma
+    # a mano con copias `Dialogue:` (ver abajo), no con este tag.
+    assert (fields[16], fields[17]) == ("1", "0")
+
+    overlay_dialogues = [
+        line for line in content.splitlines() if line.startswith("Dialogue: 0,0:00:00.00") and ",Overlay0," in line
+    ]
+    # _LONG_SHADOW_STEPS copias solidas en negro desplazadas diagonalmente
+    # + la copia de color normal encima, al final.
+    assert len(overlay_dialogues) == 19
+    ribbon_lines, main_line = overlay_dialogues[:-1], overlay_dialogues[-1]
+    assert all("\\1c&H000000&\\bord0\\shad0" in line for line in ribbon_lines)
+    # x=0.5*1080=540, y=0.5*1920=960 (ver VIDEO_WIDTH/VIDEO_HEIGHT en
+    # _make_use_case) -- offsets diagonales decrecientes: la primera copia
+    # (mas lejos) es +18,+18, la ultima del ribbon (mas cerca) es +1,+1.
+    assert "\\pos(558,978)" in ribbon_lines[0]
+    assert "\\pos(541,961)" in ribbon_lines[-1]
+    # La copia final (encima de la cinta) usa la posicion real del overlay,
+    # sin forzar el color a negro.
+    assert "\\pos(540,960)" in main_line
+    assert "\\1c&H000000&" not in main_line
 
 
 def test_execute_writes_hollow_style_with_transparent_fill(tmp_path: Path):

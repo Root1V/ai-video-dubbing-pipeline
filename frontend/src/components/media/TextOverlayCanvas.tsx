@@ -22,6 +22,17 @@ const CSS_FILTER_BY_PRESET: Record<FilterPreset, string | undefined> = {
   dramatic: 'contrast(1.15) saturate(1.2)',
 }
 
+// Los valores de Outline/Shadow que usa el backend (ver
+// _text_style_ass_params en generate_micro_video.py) estan en pixeles sobre
+// un lienzo de 1080 de ancho -- misma escala que overlay.font_size (ver
+// `fontSize` mas abajo). Convertirlos a la MISMA unidad `cqw` que el
+// tamano de fuente es lo que hace que el grosor del contorno/sombra en el
+// preview escale igual que el font-size (antes eran px fijos: un font_size
+// grande dejaba el contorno desproporcionadamente fino, y viceversa).
+function px2cqw(px: number): string {
+  return `${(px / 1080) * 100}cqw`
+}
+
 // Aproximacion visual (no pixel-perfect) de los estilos de texto de RM-33
 // -- el resultado real lo arma el backend via tags ASS (Outline/Shadow, o
 // un degradado por caracter con \1c, ver generate_micro_video.py). El
@@ -32,20 +43,43 @@ const CSS_FILTER_BY_PRESET: Record<FilterPreset, string | undefined> = {
 function textOverlayStyle(overlay: TextOverlay): CSSProperties {
   switch (overlay.text_style) {
     case 'hard_shadow':
-      return { color: overlay.color, textShadow: '4px 4px 0 rgba(0,0,0,0.9)' }
+      return { color: overlay.color, textShadow: `${px2cqw(8)} ${px2cqw(8)} 0 rgba(0,0,0,0.9)` }
     case 'thick_outline':
-      return { color: overlay.color, WebkitTextStroke: '3px black' }
+      return {
+        color: overlay.color,
+        WebkitTextStroke: `${px2cqw(10)} black`,
+        paintOrder: 'stroke fill',
+      }
     case 'long_shadow':
-      return { color: overlay.color, textShadow: '10px 10px 0 rgba(0,0,0,0.9)' }
+      // Una sola copia de fondo desplazada, igual que el `Shadow` de ASS
+      // (que tampoco es una "cinta" escalonada) -- pero encadenar varios
+      // pasos intermedios (en vez de un solo salto de 18px) es lo que la
+      // hace leerse como una sombra continua en vez de un texto duplicado
+      // "flotando" al lado.
+      return {
+        color: overlay.color,
+        textShadow: Array.from({ length: 18 }, (_, i) => `${px2cqw(i + 1)} ${px2cqw(i + 1)} 0 rgba(0,0,0,0.9)`).join(
+          ', ',
+        ),
+      }
     case 'hollow':
-      return { color: 'transparent', WebkitTextStroke: `2px ${overlay.color}` }
+      return {
+        color: 'transparent',
+        WebkitTextFillColor: 'transparent',
+        WebkitTextStroke: `${px2cqw(6)} ${overlay.color}`,
+        paintOrder: 'stroke fill',
+      }
     case 'neon_glow':
       return {
         color: overlay.color,
-        textShadow: `0 0 4px ${overlay.accent_color}, 0 0 8px ${overlay.accent_color}, 0 0 16px ${overlay.accent_color}`,
+        textShadow: `0 0 ${px2cqw(4)} ${overlay.accent_color}, 0 0 ${px2cqw(10)} ${overlay.accent_color}, 0 0 ${px2cqw(20)} ${overlay.accent_color}`,
       }
     case 'colored_outline':
-      return { color: overlay.color, WebkitTextStroke: `4px ${overlay.accent_color}` }
+      return {
+        color: overlay.color,
+        WebkitTextStroke: `${px2cqw(6)} ${overlay.accent_color}`,
+        paintOrder: 'stroke fill',
+      }
     case 'gradient':
       return {
         background: `linear-gradient(90deg, ${overlay.color}, ${overlay.accent_color})`,
