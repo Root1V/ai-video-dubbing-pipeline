@@ -319,9 +319,13 @@ export function TextOverlayCanvas({
         // iniciando su propio gesto nativo de "arrastrar la imagen como
         // archivo" en vez de dispararnos mousedown/mousemove normales, salvo
         // que ademas se le apague `-webkit-user-drag` por CSS.
+        // `cursor-grab`, no `cursor-move`: macOS no tiene un glyph nativo
+        // para el cursor "move" y Safari cae al de flecha normal en vez de
+        // dibujar algo generico -- "grab" (mano abierta) si tiene glyph
+        // propio en macOS y se ve bien en los tres navegadores.
         className={cn(
           'h-full w-full object-cover [-webkit-user-drag:none]',
-          onImagePan && 'cursor-move',
+          onImagePan && 'cursor-grab active:cursor-grabbing',
         )}
         draggable={false}
         onMouseDown={onImagePan ? handleImagePointerDown : undefined}
@@ -347,7 +351,7 @@ export function TextOverlayCanvas({
             handlePointerDown(event, (x, y) => onMove(overlay.id, x, y))
           }}
           className={cn(
-            'absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-move whitespace-pre-wrap px-1 text-center',
+            'absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing whitespace-pre-wrap px-1 text-center',
             overlay.id === selectedId && 'outline outline-2 outline-dashed outline-primary',
           )}
           style={{
@@ -378,7 +382,7 @@ export function TextOverlayCanvas({
               handlePointerDown(event, (x, y) => onMoveEmoji?.(overlay.id, x, y))
             }}
             className={cn(
-              'absolute -translate-x-1/2 -translate-y-1/2 cursor-move',
+              'absolute -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing',
               overlay.id === selectedEmojiId && 'outline outline-2 outline-dashed outline-primary',
             )}
             style={{
@@ -392,7 +396,7 @@ export function TextOverlayCanvas({
       {captionPreview && (
         <div
           onMouseDown={(event) => handlePointerDown(event, (x, y) => onCaptionMove?.(x, y))}
-          className="absolute max-w-[85%] -translate-x-1/2 -translate-y-1/2 cursor-move whitespace-pre-wrap rounded px-2 py-1 text-center text-sm font-semibold"
+          className="absolute max-w-[85%] -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing whitespace-pre-wrap rounded px-2 py-1 text-center text-sm font-semibold"
           style={{
             left: `${captionPreview.x * 100}%`,
             top: `${captionPreview.y * 100}%`,
