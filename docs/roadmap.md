@@ -139,7 +139,7 @@ Commits: `725121b`, `05c9724`, `37c8c21`
 ## RM-35 — Logo e icono de marca definitivos
 **Why:** el ícono usado hasta ahora en el sidebar, el login y el favicon era un genérico ("sparkle" de lucide-react dentro de un cuadrado violeta), no el logo real de la marca.
 **Scope:** logo (PNG con transparencia, provisto por el usuario) reemplaza el ícono de `Sidebar.tsx` y `LoginPage.tsx` -- sin el cuadrado de fondo violeta que tenía el sparkle, porque el logo ya trae su propio color (degradado violeta-celeste). Dos copias del archivo original en `frontend/public/` (nunca se toca/mueve el original del usuario): `logo.png` (512px, para la UI) y `favicon.png` (128px, para la pestaña del navegador) -- se elimina el `favicon.svg` por defecto de Vite que quedó sin uso.
-Commit: `(pendiente)`
+Commit: `9ec7b81`
 
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
