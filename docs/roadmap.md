@@ -141,6 +141,22 @@ Commits: `725121b`, `05c9724`, `37c8c21`
 **Scope:** logo (PNG con transparencia, provisto por el usuario) reemplaza el ícono de `Sidebar.tsx` y `LoginPage.tsx` -- sin el cuadrado de fondo violeta que tenía el sparkle, porque el logo ya trae su propio color (degradado violeta-celeste). Dos copias del archivo original en `frontend/public/` (nunca se toca/mueve el original del usuario): `logo.png` (512px, para la UI) y `favicon.png` (128px, para la pestaña del navegador) -- se elimina el `favicon.svg` por defecto de Vite que quedó sin uso.
 Commit: `9ec7b81`
 
+## RM-36 — Videos como input para Micro-Video
+**Why:** pedido explícito del usuario -- hoy Micro-Video (RM-14/RM-29) solo acepta imágenes como material de entrada (con Ken Burns); el usuario quiere poder usar también clips de video ya existentes, no solo fotos.
+**Scope:** subir uno o más videos, además de o en lugar de imágenes, que se incorporen a la línea de tiempo del short video en el orden elegido (mismo criterio de orden/reordenamiento que ya existe para las imágenes). A definir en el plan de implementación: si el audio original de cada clip se descarta (el short video ya tiene su propia narración de fondo) o se puede mezclar; límite de duración por clip y del video total; si el recorte/zoom manual de RM-30 aplica igual a un clip de video que a una imagen.
+
+## RM-37 — Publicar el short video en redes sociales
+**Why:** pedido explícito del usuario -- hoy el video generado se descarga a mano y el usuario lo sube por separado a cada red; publicarlo automáticamente ahorra ese paso repetitivo.
+**Scope:** botón para publicar el short video ya generado en TikTok, YouTube (Shorts), Instagram (Reels) y Facebook, eligiendo una red a la vez o todas juntas. Necesita autenticación OAuth y la API de subida de video de cada plataforma por separado. A definir en el plan de implementación: si la cuenta que se conecta es del usuario final o una cuenta propia de la empresa, qué pasa si una publicación falla o es rechazada por una red y las otras no, y si hay límites de la propia API (rate limits, tamaño máximo) a respetar.
+
+## RM-38 — Generación: banco de imágenes/audios/videos a demanda
+**Why:** pedido explícito del usuario -- separar la generación de material crudo con IA de armar el short video en sí, para poder preparar contenido de antemano y reusarlo después en vez de generarlo cada vez desde cero.
+**Scope:** nueva sección "Generación" donde se piden imágenes, audios o videos generados por IA a demanda; quedan guardados en una biblioteca del usuario y disponibles para elegir como material de entrada en Micro-Video (RM-14/RM-29/RM-36) sin volver a generarlos. A definir en el plan de implementación: qué modelo(s) de generación de imagen/audio/video se usan (locales, como el resto del pipeline, u otro proveedor), y si hay un límite de almacenamiento/cuota por usuario.
+
+## RM-39 — Generación agéntica de short videos
+**Why:** pedido explícito del usuario -- en vez de armar el short video paso a paso a mano, delegarle el trabajo completo a uno o más agentes que decidan y ejecuten usando las herramientas ya disponibles en la plataforma.
+**Scope:** uno o más agentes a los que se les da un objetivo (y opcionalmente input: imágenes, ideas, guion) arman el short video de punta a punta, usando como "tools" lo que ya existe (doblaje, voz/clonación, la generación de RM-38, y el armado de Micro-Video en sí). A definir en el plan de implementación: qué motor de agentes se usa, cuánto control o revisión intermedia tiene el usuario antes de que el agente publique o dé por terminado el video (ver también RM-37), y el costo/límite de iteraciones por corrida.
+
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
 **Scope:** sección "Administración" en el menú (solo admin): listado, botón "Agregar usuario" (nombre/email/password/rol), cambio de rol y activar/desactivar inline. `GET/POST/PATCH /api/users`, todos protegidos con `require_admin`. Un admin no puede quitarse su propio rol ni desactivarse a sí mismo (bloqueado en backend y reflejado en la UI). Sigue sin auto-registro ni invitaciones por email — crear una cuenta requiere acceso admin, por diseño.

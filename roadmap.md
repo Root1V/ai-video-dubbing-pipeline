@@ -39,3 +39,7 @@
 | RM-33 | Estilos de texto más profesionales | done | Sombra, degradado, contorno y otras variantes visuales para el texto/captions. |
 | RM-34 | Podcast de audio | todo | Nuevo servicio: guion largo → episodio de audio, con voz pública o clonada. |
 | RM-35 | Logo e icono de marca definitivos | done | Reemplaza el ícono genérico (sparkle) por el logo real de Prosodia en el sidebar, login y favicon. |
+| RM-36 | Videos como input para Micro-Video | todo | Además de imágenes, poder usar clips de video existentes como material de entrada del short video. |
+| RM-37 | Publicar el short video en redes sociales | todo | Publicar el video generado en TikTok, YouTube, Instagram y Facebook, una por una o todas a la vez. |
+| RM-38 | Generación: banco de imágenes/audios/videos a demanda | todo | Nueva sección para generar material con IA de antemano y reusarlo luego en Micro-Video. |
+| RM-39 | Generación agéntica de short videos | todo | Un agente arma el short video de punta a punta a partir de un objetivo, usando las herramientas ya existentes. |
