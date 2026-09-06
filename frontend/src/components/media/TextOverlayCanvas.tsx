@@ -370,8 +370,6 @@ export function TextOverlayCanvas({
         <video
           ref={videoRef}
           src={mediaUrl}
-          muted
-          autoPlay
           playsInline
           // Mismo criterio que el `<img>` de abajo: `cursor-grab`, no
           // `cursor-move` (sin glyph nativo en macOS); mousedown en mouse
@@ -387,6 +385,21 @@ export function TextOverlayCanvas({
             setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
             onMediaDurationLoaded?.(video.duration)
             video.currentTime = clipStart ?? 0
+            // CON sonido a proposito (sin atributo `muted`/`autoPlay`, se
+            // dispara a mano aca): el usuario necesita ESCUCHAR el clip
+            // para elegir bien donde recortarlo (ver RM-36). `muted` se
+            // resetea a false en cada clip nuevo -- el elemento <video> se
+            // reusa entre items (mismo nodo, solo cambia `src`), asi que un
+            // fallback mudo de un clip anterior no debe pegarsele al
+            // siguiente. Si el navegador bloquea el autoplay con audio
+            // (falta un gesto previo del usuario en esta pestaña), se
+            // reintenta mudo -- que al menos siga reproduciendo, aunque sin
+            // sonido en ese caso.
+            video.muted = false
+            video.play().catch(() => {
+              video.muted = true
+              void video.play().catch(() => {})
+            })
           }}
           // Sin el atributo nativo `loop`: reinicia siempre en 0, no en
           // clipStart -- el loop dentro del rango elegido se hace a mano
