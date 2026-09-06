@@ -255,6 +255,12 @@ class GenerateMicroVideoRequest:
     # "karaoke_background" = igual que "karaoke" pero la palabra activa
     # prende una caja de fondo en vez de cambiar de color.
     caption_highlight_style: str = "background"
+    # Color del texto -- solo tiene efecto en "background" y
+    # "karaoke_background" (ahi el texto no toma el valor de
+    # `caption_bg_color`, que en esos dos estilos es pura y exclusivamente
+    # el color de la caja/resaltado). En "text_color"/"karaoke" el texto
+    # sigue tomando `caption_bg_color` como antes, este campo se ignora.
+    caption_text_color: str = "#FFFFFF"
     # None = sin musica de fondo (comportamiento previo). Si se fija, se
     # mezcla en volumen bajo debajo de la narracion (nunca debe taparla) y
     # se ajusta (loop/recorte) a la duracion final del video.

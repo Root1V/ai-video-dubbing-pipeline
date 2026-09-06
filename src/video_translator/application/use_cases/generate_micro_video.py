@@ -296,6 +296,7 @@ class GenerateMicroVideoUseCase:
                 VIDEO_HEIGHT,
                 request.caption_bg_color,
                 request.caption_highlight_style,
+                text_color=request.caption_text_color,
                 overlays=request.text_overlays,
                 duration=video_duration,
                 caption_x=request.caption_x,
@@ -463,18 +464,21 @@ def _split_caption_text(text: str, max_chars: int) -> list[str]:
     return pieces
 
 
-def _build_caption_style(highlight_style: str, color: str) -> str:
+def _build_caption_style(highlight_style: str, color: str, text_color: str) -> str:
     """Arma la linea "Style:" de ASS segun el estilo de resaltado elegido:
 
-    "background" (default): texto blanco sobre una caja opaca del color
-    elegido (BorderStyle=3). OutlineColour se fija IGUAL a BackColour a
-    proposito: probado en la practica, en BorderStyle=3 esta version de
-    libass rellena la caja con OutlineColour, no con BackColour como sugiere
-    la documentacion -- dejarlo en un color fijo (p.ej. negro) hacia que la
-    caja saliera siempre negra sin importar el color elegido.
+    "background" (default): texto de `text_color` (blanco por defecto)
+    sobre una caja opaca del color elegido (BorderStyle=3). OutlineColour
+    se fija IGUAL a BackColour a proposito: probado en la practica, en
+    BorderStyle=3 esta version de libass rellena la caja con OutlineColour,
+    no con BackColour como sugiere la documentacion -- dejarlo en un color
+    fijo (p.ej. negro) hacia que la caja saliera siempre negra sin importar
+    el color elegido.
 
-    "text_color": el texto queda del color elegido, sin caja -- solo un
-    contorno negro (BorderStyle=1) para que se lea sobre cualquier fondo.
+    "text_color": el texto queda del color elegido (`color`, no
+    `text_color` -- este estilo nunca tuvo un color de caja separado), sin
+    caja, solo un contorno negro (BorderStyle=1) para que se lea sobre
+    cualquier fondo.
 
     "karaoke" (ver RM-25): mismo criterio visual que "text_color" (sin
     caja, con contorno), pero PrimaryColour queda FIJO en blanco -- es el
@@ -484,16 +488,19 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
 
     "karaoke_background": variante de "karaoke" -- en vez de que la palabra
     activa cambie de COLOR, se le resalta el FONDO (una caja opaca detras,
-    solo de esa palabra). PrimaryColour tambien fijo en blanco. OutlineColour
-    arranca totalmente transparente (alpha FF) para que las palabras que no
-    estan activas no muestren ninguna caja -- la palabra activa la prende
-    con un override inline (ver _build_karaoke_dialogues). BorderStyle=3
-    (igual que "background"): probado a mano con el ffmpeg-full real que en
-    ese modo la "caja" de OutlineColour se dibuja POR CADA TRAMO de texto
-    con un override propio, no por todo el Dialogue -- eso es lo que
-    permite que solo la palabra activa muestre caja.
+    solo de esa palabra). PrimaryColour usa `text_color` (blanco por
+    defecto) para TODAS las palabras -- a diferencia de "karaoke", nunca
+    cambia, ni siquiera la activa. OutlineColour arranca totalmente
+    transparente (alpha FF) para que las palabras que no estan activas no
+    muestren ninguna caja -- la palabra activa la prende con un override
+    inline (ver _build_karaoke_dialogues). BorderStyle=3 (igual que
+    "background"): probado a mano con el ffmpeg-full real que en ese modo
+    la "caja" de OutlineColour se dibuja POR CADA TRAMO de texto con un
+    override propio, no por todo el Dialogue -- eso es lo que permite que
+    solo la palabra activa muestre caja.
     """
     ass_color = _hex_to_ass_color(color)
+    ass_text_color = _hex_to_ass_color(text_color)
     if highlight_style == "text_color":
         # PrimaryColour, SecondaryColour, OutlineColour, BackColour
         colours = f"{ass_color},&H000000FF,&H00000000,&H00000000"
@@ -502,10 +509,10 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
         colours = "&H00FFFFFF,&H000000FF,&H00000000,&H00000000"
         border_style, outline, shadow = 1, 3, 1
     elif highlight_style == "karaoke_background":
-        colours = f"&H00FFFFFF,&H000000FF,{_TRANSPARENT_ASS_COLOR},&H00000000"
+        colours = f"{ass_text_color},&H000000FF,{_TRANSPARENT_ASS_COLOR},&H00000000"
         border_style, outline, shadow = 3, 8, 0
     else:
-        colours = f"&H00FFFFFF,&H000000FF,{ass_color},{ass_color}"
+        colours = f"{ass_text_color},&H000000FF,{ass_color},{ass_color}"
         border_style, outline, shadow = 3, 2, 0
     return (
         f"Style: Default,Arial,{CAPTION_FONT_SIZE},{colours},"
@@ -568,6 +575,7 @@ def _write_ass_captions(
     height: int,
     color: str,
     highlight_style: str,
+    text_color: str = "#FFFFFF",
     overlays: list[TextOverlay] | None = None,
     duration: float = 0.0,
     caption_x: float = 0.5,
@@ -586,7 +594,7 @@ def _write_ass_captions(
     `\\pos(x,y)` para la posicion absoluta -- no hace falta ningun filtro de
     ffmpeg nuevo, `render_ass_captions` ya sabe renderizar esto tal cual."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    style = _build_caption_style(highlight_style, color)
+    style = _build_caption_style(highlight_style, color, text_color)
     overlay_styles: list[str] = []
     overlay_dialogues: list[str] = []
     for i, overlay in enumerate(overlays or []):

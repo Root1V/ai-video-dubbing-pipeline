@@ -238,6 +238,7 @@ export async function createMicroVideoProject(
   }
   formData.set('caption_bg_color', input.caption_bg_color ?? '#000000')
   formData.set('caption_highlight_style', input.caption_highlight_style ?? 'background')
+  formData.set('caption_text_color', input.caption_text_color ?? '#FFFFFF')
   if (input.background_music) {
     formData.set('background_music', input.background_music)
     if (input.background_music_start != null) {

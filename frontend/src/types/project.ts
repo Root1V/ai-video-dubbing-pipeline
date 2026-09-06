@@ -181,6 +181,10 @@ export interface CreateMicroVideoProjectInput {
   /** "background" (default) = caja de fondo de ese color detras del texto
    * blanco. "text_color" = el texto queda de ese color, sin caja. */
   caption_highlight_style?: CaptionHighlightStyle
+  /** Color del texto, "#RRGGBB" -- solo tiene efecto en "background" y
+   * "karaoke_background" (ahi caption_bg_color es pura y exclusivamente el
+   * color de la caja/resaltado, no del texto). Blanco por defecto. */
+  caption_text_color?: string
   /** Id de una pista de música (ver MUSIC_OPTIONS en NewMicroVideoProjectPage),
    * o undefined = sin música de fondo. */
   background_music?: string

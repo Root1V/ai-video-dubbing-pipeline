@@ -285,6 +285,7 @@ def build_micro_video_use_case_and_request(
         target_duration_seconds=float(target_duration) if target_duration else None,
         caption_bg_color=config.get("caption_bg_color", "#000000"),
         caption_highlight_style=config.get("caption_highlight_style", "background"),
+        caption_text_color=config.get("caption_text_color", "#FFFFFF"),
         background_music_path=_resolve_background_music_path(background_music_track, db),
         background_music_start=float(config.get("background_music_start") or 0.0),
         background_music_end=float(background_music_end) if background_music_end else None,

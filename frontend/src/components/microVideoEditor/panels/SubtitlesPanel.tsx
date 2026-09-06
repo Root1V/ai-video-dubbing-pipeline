@@ -2,7 +2,7 @@ import { cn } from '../../../lib/cn'
 import type { CaptionHighlightStyle } from '../../../types/project'
 
 const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; description: string }[] = [
-  { value: 'background', label: 'Caja de fondo', description: 'Texto blanco sobre una caja de color' },
+  { value: 'background', label: 'Caja de fondo', description: 'Texto sobre una caja de color' },
   { value: 'text_color', label: 'Color de texto', description: 'El texto toma el color, sin caja' },
   {
     value: 'karaoke',
@@ -16,11 +16,24 @@ const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; de
   },
 ]
 
+// "background" y "karaoke_background" son los unicos dos estilos donde el
+// texto y la caja/resaltado son colores INDEPENDIENTES (ver
+// caption_text_color) -- en "text_color"/"karaoke" el unico color elegible
+// ya es el del texto/la palabra, no hace falta un segundo picker.
+const HAS_SEPARATE_TEXT_COLOR: Record<CaptionHighlightStyle, boolean> = {
+  background: true,
+  karaoke_background: true,
+  text_color: false,
+  karaoke: false,
+}
+
 interface SubtitlesPanelProps {
   highlightStyle: CaptionHighlightStyle
   onHighlightStyleChange: (style: CaptionHighlightStyle) => void
   captionBgColor: string
   onCaptionBgColorChange: (color: string) => void
+  captionTextColor: string
+  onCaptionTextColorChange: (color: string) => void
 }
 
 export function SubtitlesPanel({
@@ -28,7 +41,19 @@ export function SubtitlesPanel({
   onHighlightStyleChange,
   captionBgColor,
   onCaptionBgColorChange,
+  captionTextColor,
+  onCaptionTextColorChange,
 }: SubtitlesPanelProps) {
+  const hasTextColor = HAS_SEPARATE_TEXT_COLOR[highlightStyle]
+  const bgColorLabel =
+    highlightStyle === 'text_color'
+      ? 'Color del texto'
+      : highlightStyle === 'karaoke'
+        ? 'Color de la palabra resaltada'
+        : highlightStyle === 'karaoke_background'
+          ? 'Color del fondo resaltado'
+          : 'Color de la caja de fondo'
+
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-sm font-medium">Resaltado de los captions</span>
@@ -50,20 +75,27 @@ export function SubtitlesPanel({
           </button>
         ))}
       </div>
-      <div className="mt-2 flex items-center gap-3">
-        <input
-          id="caption-bg-color"
-          type="color"
-          value={captionBgColor}
-          onChange={(e) => onCaptionBgColorChange(e.target.value)}
-          className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
-        />
-        <label htmlFor="caption-bg-color" className="text-xs text-muted-foreground">
-          {highlightStyle === 'text_color' && 'Color del texto de los captions.'}
-          {highlightStyle === 'karaoke' && 'Color de la palabra resaltada en cada momento.'}
-          {highlightStyle === 'karaoke_background' && 'Color del fondo de la palabra resaltada en cada momento.'}
-          {highlightStyle === 'background' && 'Color de la caja de fondo -- el texto es siempre blanco.'}
-        </label>
+      <div className="mt-2 flex items-center gap-4">
+        {hasTextColor && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Color del texto</span>
+            <input
+              type="color"
+              value={captionTextColor}
+              onChange={(e) => onCaptionTextColorChange(e.target.value)}
+              className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">{bgColorLabel}</span>
+          <input
+            type="color"
+            value={captionBgColor}
+            onChange={(e) => onCaptionBgColorChange(e.target.value)}
+            className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent p-1"
+          />
+        </div>
       </div>
     </div>
   )

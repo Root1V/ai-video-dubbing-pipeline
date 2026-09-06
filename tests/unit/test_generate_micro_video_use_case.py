@@ -479,6 +479,31 @@ def test_execute_writes_chosen_caption_background_color(tmp_path: Path):
     assert style_line.split(",")[15] == "3"  # BorderStyle
 
 
+def test_execute_writes_chosen_caption_text_color_for_background_style(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        caption_bg_color="#FF0000",
+        caption_text_color="#0000FF",
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    style_line = next(line for line in content.splitlines() if line.startswith("Style:"))
+    fields = style_line.split(",")
+    # "#0000FF" (azul) en ASS es BGR, opaco: &H00FF0000 -- PrimaryColour (el
+    # texto) ya no queda fijo en blanco, y la caja sigue siendo la elegida
+    # por separado en caption_bg_color ("#FF0000" -> &H000000FF).
+    assert fields[3] == "&H00FF0000"
+    assert fields[5] == "&H000000FF"
+    assert fields[15] == "3"  # BorderStyle=3 (caja)
+
+
 def test_execute_writes_text_color_highlight_style_without_a_box(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
@@ -609,6 +634,35 @@ def test_execute_writes_one_karaoke_background_dialogue_per_word(tmp_path: Path)
     starts = [start for start, _end, _text in dialogues]
     assert starts == sorted(starts)
     assert starts[0] == pytest.approx(0.0, abs=0.01)
+
+
+def test_execute_writes_chosen_caption_text_color_for_karaoke_background_style(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        images=[MicroVideoImage(path=image_path)],
+        text="Uno dos.",
+        output_dir=tmp_path / "out",
+        caption_bg_color="#00FF00",
+        caption_highlight_style="karaoke_background",
+        caption_text_color="#0000FF",
+    )
+
+    use_case.execute(request)
+
+    content = media.caption_calls[0]["ass_path"].read_text(encoding="utf-8")
+    style_line = next(line for line in content.splitlines() if line.startswith("Style:"))
+    fields = style_line.split(",")
+    # "#0000FF" (azul) en ASS es BGR, opaco: &H00FF0000 -- PrimaryColour (el
+    # texto, todas las palabras, activa o no) ya no queda fijo en blanco. La
+    # caja de resaltado sigue siendo caption_bg_color por separado, y arranca
+    # transparente en la Style (ver test_..._fixed_white_primary_colour).
+    assert fields[3] == "&H00FF0000"
+    dialogue_lines = [line for line in content.splitlines() if line.startswith("Dialogue:")]
+    for line in dialogue_lines:
+        assert line.count("{\\3c&H00FF00&\\3a&H00&}") == 1
+        assert "\\c" not in line
 
 
 def test_execute_holds_the_image_when_narration_is_shorter_than_target_duration(tmp_path: Path):

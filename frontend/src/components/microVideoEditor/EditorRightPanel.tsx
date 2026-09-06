@@ -63,6 +63,8 @@ interface EditorRightPanelProps {
   onHighlightStyleChange: (style: CaptionHighlightStyle) => void
   captionBgColor: string
   onCaptionBgColorChange: (color: string) => void
+  captionTextColor: string
+  onCaptionTextColorChange: (color: string) => void
 }
 
 const TOOL_TITLES: Record<EditorTool, string> = {
@@ -157,6 +159,8 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
           onHighlightStyleChange={props.onHighlightStyleChange}
           captionBgColor={props.captionBgColor}
           onCaptionBgColorChange={props.onCaptionBgColorChange}
+          captionTextColor={props.captionTextColor}
+          onCaptionTextColorChange={props.onCaptionTextColorChange}
         />
       )}
     </aside>

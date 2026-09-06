@@ -115,6 +115,9 @@ export interface CaptionPreview {
   y: number
   text: string
   bgColor: string
+  /** Color del texto -- solo se usa en los estilos "background" y
+   * "karaoke_background" (ver caption_text_color). */
+  textColor: string
   highlightStyle: CaptionHighlightStyle
 }
 
@@ -402,9 +405,11 @@ export function TextOverlayCanvas({
             top: `${captionPreview.y * 100}%`,
             ...(captionPreview.highlightStyle === 'text_color'
               ? { color: captionPreview.bgColor, textShadow: '0 0 3px rgba(0,0,0,0.9)' }
-              : captionPreview.highlightStyle === 'karaoke' || captionPreview.highlightStyle === 'karaoke_background'
+              : captionPreview.highlightStyle === 'karaoke'
                 ? { color: '#FFFFFF', textShadow: '0 0 3px rgba(0,0,0,0.9)' }
-                : { color: '#FFFFFF', backgroundColor: captionPreview.bgColor }),
+                : captionPreview.highlightStyle === 'karaoke_background'
+                  ? { color: captionPreview.textColor, textShadow: '0 0 3px rgba(0,0,0,0.9)' }
+                  : { color: captionPreview.textColor, backgroundColor: captionPreview.bgColor }),
           }}
         >
           {captionPreview.highlightStyle === 'karaoke' || captionPreview.highlightStyle === 'karaoke_background' ? (

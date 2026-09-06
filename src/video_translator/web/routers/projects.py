@@ -109,6 +109,9 @@ def create_project(
     # "background" / "text_color" / "karaoke" / "karaoke_background" -- ver
     # GenerateMicroVideoRequest.caption_highlight_style.
     caption_highlight_style: str = Form("background"),
+    # Solo tiene efecto en "background"/"karaoke_background" -- ver
+    # GenerateMicroVideoRequest.caption_text_color.
+    caption_text_color: str = Form("#FFFFFF"),
     # id (UUID) de una fila de MusicTrack (ver RM-26), o None/omitido = sin
     # musica de fondo.
     background_music: str | None = Form(None),
@@ -293,6 +296,7 @@ def create_project(
             "target_duration_seconds": target_duration_seconds,
             "caption_bg_color": caption_bg_color,
             "caption_highlight_style": caption_highlight_style,
+            "caption_text_color": caption_text_color,
             "background_music": background_music,
             "background_music_start": background_music_start,
             "background_music_end": background_music_end,

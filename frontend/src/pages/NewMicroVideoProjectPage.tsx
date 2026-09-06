@@ -67,6 +67,7 @@ export function NewMicroVideoProjectPage() {
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [targetDuration, setTargetDuration] = useState<number | null>(null)
   const [captionBgColor, setCaptionBgColor] = useState('#000000')
+  const [captionTextColor, setCaptionTextColor] = useState('#FFFFFF')
   const [highlightStyle, setHighlightStyle] = useState<CaptionHighlightStyle>('background')
   const [backgroundMusic, setBackgroundMusic] = useState<string | null>(null)
   const [musicStart, setMusicStart] = useState(0)
@@ -190,6 +191,7 @@ export function NewMicroVideoProjectPage() {
           target_duration_seconds: targetDuration ?? undefined,
           caption_bg_color: captionBgColor,
           caption_highlight_style: highlightStyle,
+          caption_text_color: captionTextColor,
           background_music: backgroundMusic ?? undefined,
           background_music_start: backgroundMusic ? musicStart : undefined,
           background_music_end: backgroundMusic ? musicEnd : undefined,
@@ -217,6 +219,7 @@ export function NewMicroVideoProjectPage() {
         y: captionY,
         text: text.trim() ? text.trim().slice(0, 40) : 'Así se ven tus subtítulos',
         bgColor: captionBgColor,
+        textColor: captionTextColor,
         highlightStyle,
       }
     : undefined
@@ -368,6 +371,8 @@ export function NewMicroVideoProjectPage() {
           onHighlightStyleChange={setHighlightStyle}
           captionBgColor={captionBgColor}
           onCaptionBgColorChange={setCaptionBgColor}
+          captionTextColor={captionTextColor}
+          onCaptionTextColorChange={setCaptionTextColor}
         />
       </div>
 
