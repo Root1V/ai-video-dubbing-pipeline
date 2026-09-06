@@ -8,6 +8,7 @@ import { fetchEmojiSampleUrl, fetchMusicSampleUrl } from '../api/samples'
 import { EMOJI_PALETTE } from '../lib/emojiPalette'
 import { TextOverlayCanvas } from '../components/media/TextOverlayCanvas'
 import type { CaptionPreview } from '../components/media/TextOverlayCanvas'
+import { VideoClipTrimTimeline } from '../components/media/VideoClipTrimTimeline'
 import { EditorBottomTracks } from '../components/microVideoEditor/EditorBottomTracks'
 import { EditorLeftToolbar } from '../components/microVideoEditor/EditorLeftToolbar'
 import { EditorRightPanel } from '../components/microVideoEditor/EditorRightPanel'
@@ -219,6 +220,16 @@ export function NewMicroVideoProjectPage() {
     }
   }
 
+  // Item de video activo (ver RM-36) -- undefined si es una imagen o no hay
+  // ningun item todavia. `activeClipDuration` queda null hasta que el
+  // lienzo sondea la duracion real (ver onMediaDurationLoaded mas abajo).
+  const activeMediaFile = mediaFiles[activeMediaIndex]
+  const activeIsVideoClip = activeMediaFile ? isVideoFile(activeMediaFile) : false
+  const activeClipDuration = activeMediaFile ? clipDurationsByFile.get(activeMediaFile) ?? null : null
+  const activeMediaAdjustment = mediaAdjustments[activeMediaIndex]
+  const activeClipStart = activeMediaAdjustment?.clip_start ?? 0
+  const activeClipEnd = activeMediaAdjustment?.clip_end ?? activeClipDuration ?? 0
+
   const captionPreview: CaptionPreview | undefined = mediaUrl
     ? {
         x: captionX,
@@ -255,7 +266,7 @@ export function NewMicroVideoProjectPage() {
           {mediaUrl ? (
             <TextOverlayCanvas
               mediaUrl={mediaUrl}
-              mediaKind={mediaFiles[activeMediaIndex] && isVideoFile(mediaFiles[activeMediaIndex]) ? 'video' : 'image'}
+              mediaKind={activeIsVideoClip ? 'video' : 'image'}
               overlays={textOverlays}
               selectedId={selectedOverlayId}
               onSelect={(id) => {
@@ -281,6 +292,8 @@ export function NewMicroVideoProjectPage() {
                 if (!activeFile) return
                 setClipDurationsByFile((prev) => new Map(prev).set(activeFile, duration))
               }}
+              clipStart={activeClipStart}
+              clipEnd={activeMediaAdjustment?.clip_end}
               emojiOverlays={emojiOverlays}
               emojiImageUrls={emojiImageUrls}
               selectedEmojiId={selectedEmojiOverlayId}
@@ -336,14 +349,6 @@ export function NewMicroVideoProjectPage() {
               return prev
             })
           }}
-          onMediaClipRangeChange={(start, end) =>
-            setMediaAdjustments((prev) =>
-              prev.map((a, i) => (i === activeMediaIndex ? { ...a, clip_start: start, clip_end: end } : a)),
-            )
-          }
-          activeClipDuration={
-            mediaFiles[activeMediaIndex] ? clipDurationsByFile.get(mediaFiles[activeMediaIndex]) ?? null : null
-          }
           hasImage={Boolean(mediaUrl)}
           overlays={textOverlays}
           selectedOverlayId={selectedOverlayId}
@@ -379,6 +384,8 @@ export function NewMicroVideoProjectPage() {
           onTargetLangChange={setTargetLang}
           targetDuration={targetDuration}
           onTargetDurationChange={setTargetDuration}
+          narrationVolume={narrationVolume}
+          onNarrationVolumeChange={setNarrationVolume}
           voiceOption={voiceOption}
           onVoiceOptionChange={setVoiceOption}
           voiceFile={voiceFile}
@@ -396,22 +403,35 @@ export function NewMicroVideoProjectPage() {
         />
       </div>
 
-      <EditorBottomTracks
-        narrationText={text}
-        onNarrationClick={() => setActiveTool('narration')}
-        narrationVolume={narrationVolume}
-        onNarrationVolumeChange={setNarrationVolume}
-        hasMusic={backgroundMusic !== null}
-        musicPreviewUrl={musicPreviewUrl}
-        musicKey={backgroundMusic}
-        onMusicClick={() => setActiveTool('music')}
-        onRangeChange={(start, end) => {
-          setMusicStart(start)
-          setMusicEnd(end)
-        }}
-        musicVolume={musicVolume}
-        onMusicVolumeChange={setMusicVolume}
-      />
+      {activeTool === 'media' && activeIsVideoClip && activeClipDuration != null && (
+        <div className="shrink-0 border-t border-border bg-card p-3">
+          <VideoClipTrimTimeline
+            duration={activeClipDuration}
+            start={activeClipStart}
+            end={activeClipEnd}
+            disabled={isSubmitting}
+            onRangeChange={(start, end) =>
+              setMediaAdjustments((prev) =>
+                prev.map((a, i) => (i === activeMediaIndex ? { ...a, clip_start: start, clip_end: end } : a)),
+              )
+            }
+          />
+        </div>
+      )}
+
+      {activeTool === 'music' && (
+        <EditorBottomTracks
+          hasMusic={backgroundMusic !== null}
+          musicPreviewUrl={musicPreviewUrl}
+          musicKey={backgroundMusic}
+          onRangeChange={(start, end) => {
+            setMusicStart(start)
+            setMusicEnd(end)
+          }}
+          musicVolume={musicVolume}
+          onMusicVolumeChange={setMusicVolume}
+        />
+      )}
     </form>
   )
 }

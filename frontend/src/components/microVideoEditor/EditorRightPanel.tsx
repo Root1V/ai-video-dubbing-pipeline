@@ -28,8 +28,6 @@ interface EditorRightPanelProps {
   onMediaZoomChange: (zoom: number) => void
   onMediaFilterPresetChange: (preset: MediaAdjustment['filter_preset']) => void
   onMediaReorder: (fromIndex: number, toIndex: number) => void
-  onMediaClipRangeChange: (start: number, end: number) => void
-  activeClipDuration: number | null
 
   hasImage: boolean
   overlays: TextOverlay[]
@@ -50,6 +48,8 @@ interface EditorRightPanelProps {
   onTargetLangChange: (lang: string) => void
   targetDuration: number | null
   onTargetDurationChange: (duration: number | null) => void
+  narrationVolume: number
+  onNarrationVolumeChange: (volume: number) => void
 
   voiceOption: TtsVoiceOption
   onVoiceOptionChange: (option: TtsVoiceOption) => void
@@ -100,8 +100,6 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
           onZoomChange={props.onMediaZoomChange}
           onFilterPresetChange={props.onMediaFilterPresetChange}
           onReorder={props.onMediaReorder}
-          onClipRangeChange={props.onMediaClipRangeChange}
-          activeClipDuration={props.activeClipDuration}
         />
       )}
 
@@ -135,6 +133,8 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
           onTargetLangChange={props.onTargetLangChange}
           targetDuration={props.targetDuration}
           onTargetDurationChange={props.onTargetDurationChange}
+          narrationVolume={props.narrationVolume}
+          onNarrationVolumeChange={props.onNarrationVolumeChange}
         />
       )}
 

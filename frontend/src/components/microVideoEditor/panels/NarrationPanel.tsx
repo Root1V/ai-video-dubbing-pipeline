@@ -27,6 +27,8 @@ interface NarrationPanelProps {
   onTargetLangChange: (lang: string) => void
   targetDuration: number | null
   onTargetDurationChange: (duration: number | null) => void
+  narrationVolume: number
+  onNarrationVolumeChange: (volume: number) => void
 }
 
 export function NarrationPanel({
@@ -36,6 +38,8 @@ export function NarrationPanel({
   onTargetLangChange,
   targetDuration,
   onTargetDurationChange,
+  narrationVolume,
+  onNarrationVolumeChange,
 }: NarrationPanelProps) {
   return (
     <div className="flex flex-col gap-5">
@@ -92,6 +96,27 @@ export function NarrationPanel({
           Automático: el video dura lo que tarda la narración. Con una duración fija, la narración se
           acelera si es más larga o se mantiene la imagen si es más corta.
         </p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="narration-volume" className="text-sm font-medium">
+          Volumen de la narración
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            id="narration-volume"
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={narrationVolume}
+            onChange={(event) => onNarrationVolumeChange(Number(event.target.value))}
+            className="flex-1 accent-primary"
+          />
+          <span className="w-10 text-right text-xs text-muted-foreground">
+            {Math.round(narrationVolume * 100)}%
+          </span>
+        </div>
       </div>
     </div>
   )

@@ -17,15 +17,6 @@ const FILTER_PRESET_OPTIONS: { value: FilterPreset; label: string }[] = [
   { value: 'dramatic', label: 'Dramático' },
 ]
 
-const MIN_CLIP_SPAN_SECONDS = 0.2
-
-function formatClockTime(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds * 10) / 10)
-  const mins = Math.floor(total / 60)
-  const secs = (total % 60).toFixed(1).padStart(4, '0')
-  return `${mins}:${secs}`
-}
-
 interface MediaPanelProps {
   mediaFiles: File[]
   onFilesAdded: (files: File[]) => void
@@ -41,12 +32,6 @@ interface MediaPanelProps {
   /** Reordena los items (arrastrando desde el icono de agarre) -- el orden
    * del array es el orden en que aparecen en el video final (ver RM-29). */
   onReorder: (fromIndex: number, toIndex: number) => void
-  /** Solo si el item activo es un clip de video (ver RM-36): rango elegido
-   * [start, end) dentro del clip a usar en la linea de tiempo. */
-  onClipRangeChange: (start: number, end: number) => void
-  /** Duracion real del clip activo (sondeada por el lienzo al cargar el
-   * video) -- null mientras no es un video o todavia no cargo metadata. */
-  activeClipDuration: number | null
 }
 
 /** Con mas de un item (ver RM-29, RM-36), el video los recorre EN ESTE
@@ -55,7 +40,9 @@ interface MediaPanelProps {
  * reordenarlas. Cada fila es clickeable (fuera del icono de agarre) para
  * elegirla como el item activo en el lienzo (ver RM-30, ajuste de
  * encuadre): arrastrala en el lienzo para reposicionarla, o usa la barra de
- * Zoom/Filtro/Recorte de aca abajo, que siempre refleja el item activo. */
+ * Zoom/Filtro de aca abajo, que siempre refleja el item activo. Si el item
+ * activo es un clip de video, su recorte de inicio/fin se controla en la
+ * franja horizontal debajo del lienzo (ver VideoClipTrimTimeline), no aca. */
 export function MediaPanel({
   mediaFiles,
   onFilesAdded,
@@ -67,8 +54,6 @@ export function MediaPanel({
   onZoomChange,
   onFilterPresetChange,
   onReorder,
-  onClipRangeChange,
-  activeClipDuration,
 }: MediaPanelProps) {
   const [thumbnails, setThumbnails] = useState<string[]>([])
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -94,10 +79,6 @@ export function MediaPanel({
   }
 
   const activeAdjustment = mediaAdjustments[activeIndex]
-  const activeFile = mediaFiles[activeIndex]
-  const activeIsVideo = activeFile ? isVideoFile(activeFile) : false
-  const clipStart = activeAdjustment?.clip_start ?? 0
-  const clipEnd = activeAdjustment?.clip_end ?? activeClipDuration ?? 0
 
   return (
     <div className="flex flex-col gap-3">
@@ -234,54 +215,6 @@ export function MediaPanel({
               </button>
             ))}
           </div>
-
-          {activeIsVideo && activeClipDuration != null && (
-            <div className="flex flex-col gap-2 border-t border-border pt-3">
-              <div className="flex items-center gap-2">
-                <span className="w-10 text-xs text-muted-foreground">Inicio</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={activeClipDuration}
-                  step={0.05}
-                  value={clipStart}
-                  onChange={(event) => {
-                    const start = Math.min(Number(event.target.value), clipEnd - MIN_CLIP_SPAN_SECONDS)
-                    onClipRangeChange(Math.max(0, start), clipEnd)
-                  }}
-                  disabled={isSubmitting}
-                  className="flex-1 accent-primary"
-                  aria-label={`Inicio del recorte del clip ${activeIndex + 1}`}
-                />
-                <span className="w-14 text-right text-xs text-muted-foreground">
-                  {formatClockTime(clipStart)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-10 text-xs text-muted-foreground">Fin</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={activeClipDuration}
-                  step={0.05}
-                  value={clipEnd}
-                  onChange={(event) => {
-                    const end = Math.max(Number(event.target.value), clipStart + MIN_CLIP_SPAN_SECONDS)
-                    onClipRangeChange(clipStart, Math.min(activeClipDuration, end))
-                  }}
-                  disabled={isSubmitting}
-                  className="flex-1 accent-primary"
-                  aria-label={`Fin del recorte del clip ${activeIndex + 1}`}
-                />
-                <span className="w-14 text-right text-xs text-muted-foreground">
-                  {formatClockTime(clipEnd)}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Duración en el video: {(clipEnd - clipStart).toFixed(1)} s
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>

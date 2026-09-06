@@ -142,8 +142,15 @@ interface TextOverlayCanvasProps {
   mediaAdjustment?: MediaAdjustment
   onMediaPan?: (offsetX: number, offsetY: number) => void
   /** Solo si mediaKind es 'video' (ver RM-36): duracion real del clip,
-   * sondeada al cargar su metadata -- usada por el panel de recorte. */
+   * sondeada al cargar su metadata -- usada por la franja de recorte. */
   onMediaDurationLoaded?: (duration: number) => void
+  /** Solo si mediaKind es 'video' (ver RM-36): rango [clipStart, clipEnd)
+   * elegido en VideoClipTrimTimeline -- el preview reproduce en loop DENTRO
+   * de este rango (no el clip completo) y salta a el apenas cambia, para
+   * que ajustar los limites se vea reflejado de inmediato. undefined en
+   * clipEnd = hasta el final real del clip. */
+  clipStart?: number
+  clipEnd?: number
   /** Emojis superpuestos (ver RM-32) -- misma mecanica de drag que
    * TextOverlay. `emojiImageUrls` son las URLs ya resueltas (blob, via
    * fetchEmojiSampleUrl) por `emoji_id`, precargadas una sola vez para
@@ -174,6 +181,8 @@ export function TextOverlayCanvas({
   mediaAdjustment,
   onMediaPan,
   onMediaDurationLoaded,
+  clipStart,
+  clipEnd,
   emojiOverlays,
   emojiImageUrls,
   selectedEmojiId,
@@ -206,6 +215,33 @@ export function TextOverlayCanvas({
       setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
     }
   }, [mediaUrl, mediaKind])
+
+  // Salta el preview al nuevo limite apenas el usuario ajusta el recorte en
+  // VideoClipTrimTimeline (ver RM-36) -- sin esto, ver el efecto de mover un
+  // limite requeriria esperar a que la reproduccion en loop llegue ahi sola.
+  // Si el FIN es lo unico que cambio, muestra el frame justo antes de el
+  // (para previsualizar donde corta); en cualquier otro caso (cambio el
+  // inicio, o es un clip nuevo) muestra el inicio del recorte -- el primer
+  // frame de un clip recien cargado ya se sincroniza en onLoadedMetadata,
+  // antes de que este efecto corra (metadata todavia no lista).
+  const clipRangeRef = useRef<{ url: string; start: number } | null>(null)
+  useEffect(() => {
+    if (mediaKind !== 'video') {
+      clipRangeRef.current = null
+      return
+    }
+    const video = videoRef.current
+    if (!video || video.readyState < 1) return
+    const rangeStart = clipStart ?? 0
+    const rangeEnd = clipEnd ?? video.duration
+    const prev = clipRangeRef.current
+    clipRangeRef.current = { url: mediaUrl, start: rangeStart }
+    if (prev && prev.url === mediaUrl && rangeStart === prev.start) {
+      video.currentTime = Math.max(rangeStart, rangeEnd - 0.05)
+    } else {
+      video.currentTime = rangeStart
+    }
+  }, [mediaUrl, mediaKind, clipStart, clipEnd])
 
   // Mouse events (no Pointer Events / setPointerCapture) a proposito: Safari
   // tiene un bug conocido y de larga data donde, tras `setPointerCapture`,
@@ -335,7 +371,6 @@ export function TextOverlayCanvas({
           ref={videoRef}
           src={mediaUrl}
           muted
-          loop
           autoPlay
           playsInline
           // Mismo criterio que el `<img>` de abajo: `cursor-grab`, no
@@ -351,6 +386,17 @@ export function TextOverlayCanvas({
             const video = event.currentTarget
             setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
             onMediaDurationLoaded?.(video.duration)
+            video.currentTime = clipStart ?? 0
+          }}
+          // Sin el atributo nativo `loop`: reinicia siempre en 0, no en
+          // clipStart -- el loop dentro del rango elegido se hace a mano
+          // aca, reiniciando en clipStart apenas se alcanza clipEnd.
+          onTimeUpdate={(event) => {
+            const video = event.currentTarget
+            const rangeEnd = clipEnd ?? video.duration
+            if (video.currentTime >= rangeEnd - 0.02) {
+              video.currentTime = clipStart ?? 0
+            }
           }}
           style={backgroundMediaStyle()}
         />
