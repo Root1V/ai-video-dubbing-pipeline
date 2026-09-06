@@ -143,7 +143,8 @@ Commit: `9ec7b81`
 
 ## RM-36 — Videos como input para Micro-Video
 **Why:** pedido explícito del usuario -- hoy Micro-Video (RM-14/RM-29) solo acepta imágenes como material de entrada (con Ken Burns); el usuario quiere poder usar también clips de video ya existentes, no solo fotos.
-**Scope:** subir uno o más videos, además de o en lugar de imágenes, que se incorporen a la línea de tiempo del short video en el orden elegido (mismo criterio de orden/reordenamiento que ya existe para las imágenes). A definir en el plan de implementación: si el audio original de cada clip se descarta (el short video ya tiene su propia narración de fondo) o se puede mezclar; límite de duración por clip y del video total; si el recorte/zoom manual de RM-30 aplica igual a un clip de video que a una imagen.
+**Scope:** subir uno o más videos, además de o en lugar de imágenes, que se incorporan a la línea de tiempo del short video en el orden elegido (mismo criterio de orden/reordenamiento que ya existía para las imágenes). Cada clip ocupa su propia duración real (recortable con un control de inicio/fin en el editor) en vez de una tajada igual; el tiempo restante se reparte entre las imágenes, y el video se extiende (nunca recorta un clip) si los clips solos ya cubren la duración pedida. El audio original de cada clip se descarta siempre (el short video ya tiene su propia narración/música de fondo). El recorte/zoom manual de RM-30 y los filtros de RM-31 aplican igual a un clip que a una imagen. Sin límite explícito de duración por clip o del video total.
+Commits: `4c34917`, `e330a56`
 
 ## RM-37 — Publicar el short video en redes sociales
 **Why:** pedido explícito del usuario -- hoy el video generado se descarga a mano y el usuario lo sube por separado a cada red; publicarlo automáticamente ahorra ese paso repetitivo.
