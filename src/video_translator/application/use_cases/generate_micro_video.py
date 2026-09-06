@@ -481,6 +481,17 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
     color de las palabras que todavia no se dijeron/ya se dijeron; la
     palabra activa se pinta con un override inline por Dialogue (ver
     _build_karaoke_dialogues), no por este estilo.
+
+    "karaoke_background": variante de "karaoke" -- en vez de que la palabra
+    activa cambie de COLOR, se le resalta el FONDO (una caja opaca detras,
+    solo de esa palabra). PrimaryColour tambien fijo en blanco. OutlineColour
+    arranca totalmente transparente (alpha FF) para que las palabras que no
+    estan activas no muestren ninguna caja -- la palabra activa la prende
+    con un override inline (ver _build_karaoke_dialogues). BorderStyle=3
+    (igual que "background"): probado a mano con el ffmpeg-full real que en
+    ese modo la "caja" de OutlineColour se dibuja POR CADA TRAMO de texto
+    con un override propio, no por todo el Dialogue -- eso es lo que
+    permite que solo la palabra activa muestre caja.
     """
     ass_color = _hex_to_ass_color(color)
     if highlight_style == "text_color":
@@ -490,6 +501,9 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
     elif highlight_style == "karaoke":
         colours = "&H00FFFFFF,&H000000FF,&H00000000,&H00000000"
         border_style, outline, shadow = 1, 3, 1
+    elif highlight_style == "karaoke_background":
+        colours = f"&H00FFFFFF,&H000000FF,{_TRANSPARENT_ASS_COLOR},&H00000000"
+        border_style, outline, shadow = 3, 8, 0
     else:
         colours = f"&H00FFFFFF,&H000000FF,{ass_color},{ass_color}"
         border_style, outline, shadow = 3, 2, 0
@@ -502,16 +516,28 @@ def _build_caption_style(highlight_style: str, color: str) -> str:
     )
 
 
-def _build_karaoke_dialogues(segments: list[TranslatedSegment], pos_tag: str, color: str) -> list[str]:
-    """Arma los `Dialogue:` para el estilo "karaoke" (ver RM-25): a
-    diferencia de los otros dos estilos (un Dialogue por caption), esto
-    emite VARIOS Dialogue por caption -- uno por palabra, cada uno
-    mostrando el texto COMPLETO del caption pero con esa palabra envuelta
-    en un override inline de color (el resto queda en PrimaryColour, fijo
-    en blanco por `_build_caption_style`). El timing de cada palabra
-    dentro del caption se estima con `_distribute_duration` (mismo
-    criterio que ya usa `_build_caption_segments` un nivel mas arriba)."""
+def _build_karaoke_dialogues(
+    segments: list[TranslatedSegment], pos_tag: str, color: str, highlight_style: str
+) -> list[str]:
+    """Arma los `Dialogue:` para los estilos "karaoke"/"karaoke_background"
+    (ver RM-25): a diferencia de los otros dos estilos (un Dialogue por
+    caption), esto emite VARIOS Dialogue por caption -- uno por palabra,
+    cada uno mostrando el texto COMPLETO del caption pero con esa palabra
+    envuelta en un override inline (el resto queda con el estilo fijo por
+    `_build_caption_style`). El timing de cada palabra dentro del caption
+    se estima con `_distribute_duration` (mismo criterio que ya usa
+    `_build_caption_segments` un nivel mas arriba).
+
+    "karaoke": la palabra activa cambia de COLOR (`\\c`, ver PrimaryColour).
+    "karaoke_background": la palabra activa prende una caja de fondo
+    (`\\3c`/`\\3a`, ver OutlineColour) en vez de cambiar de color -- el
+    resto de las palabras quedan con la caja apagada (`\\3a&H00FF&`, mismo
+    valor por default que ya fija `_build_caption_style`)."""
     inline_color = _hex_to_ass_inline_color(color)
+    if highlight_style == "karaoke_background":
+        tag_on, tag_off = "\\3c" + inline_color + "\\3a&H00&", "\\3a&HFF&"
+    else:
+        tag_on, tag_off = "\\c" + inline_color, "\\c"
     lines: list[str] = []
     for seg in segments:
         # Mismo criterio que el loop de los otros estilos: despojar llaves
@@ -524,7 +550,7 @@ def _build_karaoke_dialogues(segments: list[TranslatedSegment], pos_tag: str, co
         windows = _distribute_duration(words, seg.start, seg.end - seg.start)
         for active_index, (_, word_start, word_end) in enumerate(windows):
             rendered = [
-                "{\\c" + inline_color + "}" + word + "{\\c}" if i == active_index else word
+                "{" + tag_on + "}" + word + "{" + tag_off + "}" if i == active_index else word
                 for i, word in enumerate(converted_words)
             ]
             text = pos_tag + " ".join(rendered)
@@ -593,8 +619,8 @@ def _write_ass_captions(
         *overlay_dialogues,
     ]
     pos_tag = "{" + _ass_pos_tag(caption_x, caption_y, width, height) + "}"
-    if highlight_style == "karaoke":
-        lines.extend(_build_karaoke_dialogues(segments, pos_tag, color))
+    if highlight_style in ("karaoke", "karaoke_background"):
+        lines.extend(_build_karaoke_dialogues(segments, pos_tag, color, highlight_style))
     else:
         for seg in segments:
             # Se despojan llaves literales ANTES de convertir "**negrita**" a

@@ -250,7 +250,10 @@ class GenerateMicroVideoRequest:
     caption_bg_color: str = "#000000"  # hex "#RRGGBB", ver caption_highlight_style
     # "background" = caja de fondo opaca de ese color detras del texto blanco
     # (comportamiento previo). "text_color" = el texto queda de ese color en
-    # vez de blanco, sin caja (solo contorno para legibilidad).
+    # vez de blanco, sin caja (solo contorno para legibilidad). "karaoke" =
+    # la palabra que se esta narrando cambia de color (ver RM-25).
+    # "karaoke_background" = igual que "karaoke" pero la palabra activa
+    # prende una caja de fondo en vez de cambiar de color.
     caption_highlight_style: str = "background"
     # None = sin musica de fondo (comportamiento previo). Si se fija, se
     # mezcla en volumen bajo debajo de la narracion (nunca debe taparla) y

@@ -6,8 +6,13 @@ const HIGHLIGHT_STYLE_OPTIONS: { value: CaptionHighlightStyle; label: string; de
   { value: 'text_color', label: 'Color de texto', description: 'El texto toma el color, sin caja' },
   {
     value: 'karaoke',
-    label: 'Karaoke (palabra por palabra)',
-    description: 'Se resalta solo la palabra que se está narrando',
+    label: 'Karaoke (color por palabra)',
+    description: 'La palabra que se está narrando cambia de color',
+  },
+  {
+    value: 'karaoke_background',
+    label: 'Karaoke (fondo por palabra)',
+    description: 'La palabra que se está narrando resalta con un fondo de color, sin cambiar de color',
   },
 ]
 
@@ -56,6 +61,7 @@ export function SubtitlesPanel({
         <label htmlFor="caption-bg-color" className="text-xs text-muted-foreground">
           {highlightStyle === 'text_color' && 'Color del texto de los captions.'}
           {highlightStyle === 'karaoke' && 'Color de la palabra resaltada en cada momento.'}
+          {highlightStyle === 'karaoke_background' && 'Color del fondo de la palabra resaltada en cada momento.'}
           {highlightStyle === 'background' && 'Color de la caja de fondo -- el texto es siempre blanco.'}
         </label>
       </div>

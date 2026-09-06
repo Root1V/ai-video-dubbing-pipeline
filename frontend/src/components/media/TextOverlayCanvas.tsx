@@ -402,20 +402,29 @@ export function TextOverlayCanvas({
             top: `${captionPreview.y * 100}%`,
             ...(captionPreview.highlightStyle === 'text_color'
               ? { color: captionPreview.bgColor, textShadow: '0 0 3px rgba(0,0,0,0.9)' }
-              : captionPreview.highlightStyle === 'karaoke'
+              : captionPreview.highlightStyle === 'karaoke' || captionPreview.highlightStyle === 'karaoke_background'
                 ? { color: '#FFFFFF', textShadow: '0 0 3px rgba(0,0,0,0.9)' }
                 : { color: '#FFFFFF', backgroundColor: captionPreview.bgColor }),
           }}
         >
-          {captionPreview.highlightStyle === 'karaoke' ? (
+          {captionPreview.highlightStyle === 'karaoke' || captionPreview.highlightStyle === 'karaoke_background' ? (
             // Preview estatico (no hay reproduccion real en el editor):
             // aproxima "se resalta la palabra que se esta narrando"
-            // resaltando la PRIMERA palabra del texto de ejemplo (ver RM-25).
+            // resaltando la PRIMERA palabra del texto de ejemplo (ver RM-25)
+            // -- con un cambio de color o una caja de fondo, segun el estilo.
             (() => {
               const [firstWord, ...rest] = captionPreview.text.split(' ')
               return (
                 <>
-                  <span style={{ color: captionPreview.bgColor }}>{firstWord}</span>
+                  <span
+                    style={
+                      captionPreview.highlightStyle === 'karaoke_background'
+                        ? { backgroundColor: captionPreview.bgColor, borderRadius: 4, padding: '0 0.2em' }
+                        : { color: captionPreview.bgColor }
+                    }
+                  >
+                    {firstWord}
+                  </span>
                   {rest.length > 0 ? ` ${rest.join(' ')}` : ''}
                 </>
               )

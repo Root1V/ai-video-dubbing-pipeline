@@ -106,8 +106,8 @@ def create_project(
     # hace falta o mantiene la imagen el tiempo restante (ver docs/roadmap.md).
     target_duration_seconds: float | None = Form(None),
     caption_bg_color: str = Form("#000000"),
-    # "background" (caja de fondo de ese color) o "text_color" (el texto
-    # queda de ese color, sin caja) -- ver GenerateMicroVideoRequest.
+    # "background" / "text_color" / "karaoke" / "karaoke_background" -- ver
+    # GenerateMicroVideoRequest.caption_highlight_style.
     caption_highlight_style: str = Form("background"),
     # id (UUID) de una fila de MusicTrack (ver RM-26), o None/omitido = sin
     # musica de fondo.

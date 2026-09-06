@@ -205,7 +205,7 @@ export interface CreateMicroVideoProjectInput {
   emoji_overlays?: EmojiOverlay[]
 }
 
-export type CaptionHighlightStyle = 'background' | 'text_color' | 'karaoke'
+export type CaptionHighlightStyle = 'background' | 'text_color' | 'karaoke' | 'karaoke_background'
 
 /** Un texto libre superpuesto al micro-video, posicionado a mano por el
  * usuario (ver RM-28). `x`/`y` son fracciones 0-1 del ancho/alto del video
