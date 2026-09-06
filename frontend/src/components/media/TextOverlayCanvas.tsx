@@ -170,10 +170,22 @@ export function TextOverlayCanvas({
   onMoveEmoji,
 }: TextOverlayCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     setNaturalSize(null)
+    // Si la imagen (un blob: URL, sin red de por medio) ya esta decodificada
+    // para cuando este efecto corre, el evento `load` nativo puede haberse
+    // disparado antes de que React llegue a atar el handler `onLoad` de mas
+    // abajo -- sin este chequeo, `naturalSize` queda en null para siempre en
+    // ese caso. Confirmado en Safari: hace que el zoom/pan no tengan ningun
+    // efecto, porque `backgroundImageStyle` cae al fallback que los ignora
+    // (ver mas abajo) cuando `naturalSize` es null.
+    const img = imgRef.current
+    if (img && img.complete && img.naturalWidth > 0) {
+      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
+    }
   }, [imageUrl])
 
   // Mouse events (no Pointer Events / setPointerCapture) a proposito: Safari
@@ -300,9 +312,17 @@ export function TextOverlayCanvas({
       style={{ aspectRatio: '9 / 16', containerType: 'inline-size' }}
     >
       <img
+        ref={imgRef}
         src={imageUrl}
         alt=""
-        className={cn('h-full w-full object-cover', onImagePan && 'cursor-move')}
+        // `draggable={false}` (el atributo HTML) no alcanza en Safari: sigue
+        // iniciando su propio gesto nativo de "arrastrar la imagen como
+        // archivo" en vez de dispararnos mousedown/mousemove normales, salvo
+        // que ademas se le apague `-webkit-user-drag` por CSS.
+        className={cn(
+          'h-full w-full object-cover [-webkit-user-drag:none]',
+          onImagePan && 'cursor-move',
+        )}
         draggable={false}
         onMouseDown={onImagePan ? handleImagePointerDown : undefined}
         onLoad={(event) =>
