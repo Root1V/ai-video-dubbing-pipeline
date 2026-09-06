@@ -309,6 +309,56 @@ class FFmpegMediaProcessor:
         self._run(cmd, error_cls=MuxingError)
         return output_path
 
+    def render_clip_video(
+        self,
+        video_path: Path,
+        output_path: Path,
+        duration_seconds: float,
+        start_seconds: float = 0.0,
+        width: int = 1080,
+        height: int = 1920,
+        offset_x: float = 0.5,
+        offset_y: float = 0.5,
+        zoom: float = 1.0,
+        filter_preset: str = "none",
+    ) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Mismo prefijo de encuadre (scale/scale/crop) que render_image_video
+        # (ver RM-30) -- filtros por frame, funcionan identico sobre un
+        # stream de video real. fps=30/setsar=1 normalizan cualquier clip de
+        # camara (24/25/60fps, pixeles no cuadrados) al MISMO formato que ya
+        # sale de render_image_video, requisito del demuxer concat con
+        # "-c copy" en concatenate_videos. Sin "-loop 1"/"zoompan": el clip
+        # ya trae sus propios frames, zoompan con d=N los duplicaria/
+        # congelaria en vez de hacer un Ken Burns.
+        color_filter = _IMAGE_FILTER_PRESETS.get(filter_preset, "")
+        vf = (
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"scale=iw*{zoom}:ih*{zoom},"
+            f"crop={width}:{height}:x='(in_w-{width})*{offset_x}':y='(in_h-{height})*{offset_y}',"
+            f"fps=30,setsar=1,"
+            f"{color_filter + ',' if color_filter else ''}format=yuv420p"
+        )
+        # "-ss" DESPUES de "-i" (output seek, frame-preciso) -- mismo criterio
+        # que extract_music_range: el reparto de duracion en
+        # GenerateMicroVideoUseCase asume que el segmento emitido dura
+        # exactamente duration_seconds, y el seek de entrada solo llega al
+        # keyframe mas cercano. Siempre mudo ("-an"): el audio del clip se
+        # descarta, la pista final se mezcla despues sobre el video ya
+        # concatenado.
+        cmd = [
+            self._ffmpeg, "-y",
+            "-i", str(video_path),
+            "-ss", str(max(0.0, start_seconds)),
+            "-t", str(max(0.1, duration_seconds)),
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-an",
+            str(output_path),
+        ]
+        self._run(cmd, error_cls=MuxingError)
+        return output_path
+
     def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         # El demuxer concat necesita una lista de archivos -- se escribe junto

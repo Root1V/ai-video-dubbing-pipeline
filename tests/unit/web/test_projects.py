@@ -561,7 +561,7 @@ def test_create_micro_video_project_requires_text(
     assert resp.status_code == 422
 
 
-def test_create_micro_video_project_requires_image_file(
+def test_create_micro_video_project_requires_a_media_file(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -818,7 +818,7 @@ def test_create_micro_video_project_with_music_range_and_text_overlays(
     assert config["text_overlays"] == overlays
 
 
-def test_create_micro_video_project_with_additional_images(
+def test_create_micro_video_project_with_additional_media(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -834,20 +834,78 @@ def test_create_micro_video_project_with_additional_images(
         },
         files=[
             ("file", ("photo.jpg", b"fake-image-bytes", "image/jpeg")),
-            ("additional_images", ("photo2.jpg", b"fake-image-bytes-2", "image/jpeg")),
-            ("additional_images", ("photo3.jpg", b"fake-image-bytes-3", "image/jpeg")),
+            ("additional_media", ("photo2.jpg", b"fake-image-bytes-2", "image/jpeg")),
+            ("additional_media", ("photo3.jpg", b"fake-image-bytes-3", "image/jpeg")),
         ],
         headers=headers,
     )
 
     assert resp.status_code == 201
     config = resp.json()["config"]
-    assert len(config["additional_image_paths"]) == 2
-    assert config["additional_image_paths"][0].endswith("photo2.jpg")
-    assert config["additional_image_paths"][1].endswith("photo3.jpg")
+    assert len(config["additional_media_paths"]) == 2
+    assert config["additional_media_paths"][0].endswith("photo2.jpg")
+    assert config["additional_media_paths"][1].endswith("photo3.jpg")
 
 
-def test_create_micro_video_project_defaults_additional_images_to_empty(
+def test_create_micro_video_project_with_additional_media_mixing_images_and_videos(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+        },
+        files=[
+            ("file", ("photo.jpg", b"fake-image-bytes", "image/jpeg")),
+            ("additional_media", ("clip.mp4", b"fake-video-bytes", "video/mp4")),
+            ("additional_media", ("photo3.jpg", b"fake-image-bytes-3", "image/jpeg")),
+        ],
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    config = resp.json()["config"]
+    # El orden del array ES el orden de la linea de tiempo -- se preserva
+    # entre imagenes y clips de video sin distincion (ver RM-36).
+    assert config["additional_media_paths"][0].endswith("clip.mp4")
+    assert config["additional_media_paths"][1].endswith("photo3.jpg")
+    assert "media_1_clip.mp4" in config["additional_media_paths"][0]
+
+
+def test_create_micro_video_project_with_clip_trim_in_media_adjustments(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    make_user(email="alice@example.com", password="hunter2")
+    headers = _auth_headers(client, "alice@example.com", "hunter2")
+    adjustments = [{}, {"clip_start": 2.0, "clip_end": 5.0}]
+
+    resp = client.post(
+        "/api/projects",
+        data={
+            "name": "Mi micro-video",
+            "service_type": "micro_video",
+            "output_mode": "subtitles_only",
+            "text": "Un texto cualquiera.",
+            "media_adjustments": json.dumps(adjustments),
+        },
+        files=[
+            ("file", ("photo.jpg", b"fake-image-bytes", "image/jpeg")),
+            ("additional_media", ("clip.mp4", b"fake-video-bytes", "video/mp4")),
+        ],
+        headers=headers,
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["config"]["media_adjustments"] == adjustments
+
+
+def test_create_micro_video_project_defaults_additional_media_to_empty(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -866,10 +924,10 @@ def test_create_micro_video_project_defaults_additional_images_to_empty(
     )
 
     assert resp.status_code == 201
-    assert resp.json()["config"]["additional_image_paths"] == []
+    assert resp.json()["config"]["additional_media_paths"] == []
 
 
-def test_create_micro_video_project_defaults_image_adjustments_to_empty(
+def test_create_micro_video_project_defaults_media_adjustments_to_empty(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -888,10 +946,10 @@ def test_create_micro_video_project_defaults_image_adjustments_to_empty(
     )
 
     assert resp.status_code == 201
-    assert resp.json()["config"]["image_adjustments"] == []
+    assert resp.json()["config"]["media_adjustments"] == []
 
 
-def test_create_micro_video_project_with_image_adjustments(
+def test_create_micro_video_project_with_media_adjustments(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -905,17 +963,17 @@ def test_create_micro_video_project_with_image_adjustments(
             "service_type": "micro_video",
             "output_mode": "subtitles_only",
             "text": "Un texto cualquiera.",
-            "image_adjustments": json.dumps(adjustments),
+            "media_adjustments": json.dumps(adjustments),
         },
         files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
         headers=headers,
     )
 
     assert resp.status_code == 201
-    assert resp.json()["config"]["image_adjustments"] == adjustments
+    assert resp.json()["config"]["media_adjustments"] == adjustments
 
 
-def test_create_micro_video_project_rejects_invalid_image_adjustments_json(
+def test_create_micro_video_project_rejects_invalid_media_adjustments_json(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -928,7 +986,7 @@ def test_create_micro_video_project_rejects_invalid_image_adjustments_json(
             "service_type": "micro_video",
             "output_mode": "subtitles_only",
             "text": "Un texto cualquiera.",
-            "image_adjustments": "not-json",
+            "media_adjustments": "not-json",
         },
         files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
         headers=headers,
@@ -937,7 +995,7 @@ def test_create_micro_video_project_rejects_invalid_image_adjustments_json(
     assert resp.status_code == 422
 
 
-def test_create_micro_video_project_rejects_image_adjustments_not_a_list(
+def test_create_micro_video_project_rejects_media_adjustments_not_a_list(
     client: TestClient, make_user: Callable[..., User]
 ) -> None:
     make_user(email="alice@example.com", password="hunter2")
@@ -950,7 +1008,7 @@ def test_create_micro_video_project_rejects_image_adjustments_not_a_list(
             "service_type": "micro_video",
             "output_mode": "subtitles_only",
             "text": "Un texto cualquiera.",
-            "image_adjustments": json.dumps({"offset_x": 0.5}),
+            "media_adjustments": json.dumps({"offset_x": 0.5}),
         },
         files={"file": ("photo.jpg", b"fake-image-bytes", "image/jpeg")},
         headers=headers,

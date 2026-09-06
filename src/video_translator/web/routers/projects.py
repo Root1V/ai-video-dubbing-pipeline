@@ -72,12 +72,13 @@ def create_project(
     output_mode: str = Form(...),
     # Opcional solo para el servicio "tts": ahi el archivo es una voz de
     # referencia OPCIONAL, no el contenido principal (que es `text`). Para
-    # "micro_video" es la imagen (obligatoria). Para el resto de servicios
-    # sigue siendo obligatorio (se valida abajo).
+    # "micro_video" es la imagen o clip de video (obligatorio, ver RM-36).
+    # Para el resto de servicios sigue siendo obligatorio (se valida abajo).
     file: UploadFile | None = File(None),
-    # Solo para "micro_video": imagenes adicionales, mas alla de la primera
-    # (`file`) -- ver RM-29. El video las recorre en orden.
-    additional_images: list[UploadFile] = File([]),
+    # Solo para "micro_video": imagenes/clips de video adicionales, mas alla
+    # del primero (`file`) -- ver RM-29, RM-36. El orden de este array ES el
+    # orden en el que el video recorre el material.
+    additional_media: list[UploadFile] = File([]),
     # Solo para "micro_video" cuando voice_option es "own": la voz de
     # referencia va aparte porque `file` ya esta ocupado por la imagen.
     voice_file: UploadFile | None = File(None),
@@ -130,10 +131,11 @@ def create_project(
     # Lista JSON de overlays de texto posicionables (ver RM-28,
     # domain.models.TextOverlay) -- mismo patron que `glossary`.
     text_overlays: str = Form("[]"),
-    # Lista JSON de encuadres por imagen (ver RM-30, domain.models.MicroVideoImage),
-    # paralela a [file, *additional_images] por indice -- mismo patron que
-    # `text_overlays`.
-    image_adjustments: str = Form("[]"),
+    # Lista JSON de encuadres por item (ver RM-30, domain.models.MicroVideoMediaItem),
+    # paralela a [file, *additional_media] por indice -- mismo patron que
+    # `text_overlays`. En un item de video puede incluir tambien clip_start/
+    # clip_end (ver RM-36).
+    media_adjustments: str = Form("[]"),
     # Lista JSON de emojis posicionables (ver RM-32, domain.models.EmojiOverlay)
     # -- mismo patron que `text_overlays`.
     emoji_overlays: str = Form("[]"),
@@ -168,17 +170,17 @@ def create_project(
         )
 
     try:
-        image_adjustments_list = json.loads(image_adjustments)
+        media_adjustments_list = json.loads(media_adjustments)
     except json.JSONDecodeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_adjustments no es JSON valido."
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="media_adjustments no es JSON valido."
         ) from exc
-    if not isinstance(image_adjustments_list, list) or not all(
-        isinstance(item, dict) for item in image_adjustments_list
+    if not isinstance(media_adjustments_list, list) or not all(
+        isinstance(item, dict) for item in media_adjustments_list
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="image_adjustments debe ser una lista de objetos.",
+            detail="media_adjustments debe ser una lista de objetos.",
         )
 
     try:
@@ -218,7 +220,7 @@ def create_project(
         if file is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="file (la imagen) es requerido para el servicio de micro-video.",
+                detail="file (la imagen o el video) es requerido para el servicio de micro-video.",
             )
         if voice_option == "own" and voice_file is None:
             raise HTTPException(
@@ -279,15 +281,15 @@ def create_project(
             voice_path = storage.save_upload(file, project.id, settings)
             project.config = {**project.config, "speaker_reference_wav": str(voice_path)}
     elif is_micro_video and file is not None:
-        # file (validado arriba) es la imagen -- el texto de narracion no
-        # tiene un "archivo principal" propio, va en config (mismo criterio
-        # que context_prompt: texto libre, sin limite de tamano relevante
-        # para este caso de uso).
+        # file (validado arriba) es la imagen o el clip de video (ver RM-36)
+        # -- el texto de narracion no tiene un "archivo principal" propio, va
+        # en config (mismo criterio que context_prompt: texto libre, sin
+        # limite de tamano relevante para este caso de uso).
         project.input_video_path = str(storage.save_upload(file, project.id, settings))
-        additional_image_paths = [
-            str(storage.save_indexed_upload(img, i + 1, project.id, settings))
-            for i, img in enumerate(additional_images)
-            if img.filename
+        additional_media_paths = [
+            str(storage.save_indexed_upload(item, i + 1, project.id, settings))
+            for i, item in enumerate(additional_media)
+            if item.filename
         ]
         project.config = {
             **project.config,
@@ -305,8 +307,8 @@ def create_project(
             "caption_x": caption_x,
             "caption_y": caption_y,
             "text_overlays": text_overlays_list,
-            "additional_image_paths": additional_image_paths,
-            "image_adjustments": image_adjustments_list,
+            "additional_media_paths": additional_media_paths,
+            "media_adjustments": media_adjustments_list,
             "emoji_overlays": emoji_overlays_list,
         }
         if voice_option == "own" and voice_file is not None:

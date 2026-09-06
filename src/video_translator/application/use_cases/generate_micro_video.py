@@ -21,6 +21,7 @@ from video_translator.domain.models import (
     EmojiOverlay,
     GenerateMicroVideoRequest,
     GenerateMicroVideoResult,
+    MicroVideoMediaItem,
     TextOverlay,
     TranslatedSegment,
 )
@@ -31,6 +32,14 @@ logger = get_logger(__name__)
 
 DEFAULT_MAX_CHUNK_CHARS = 500
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+# Subconjunto de video de transcribe_media.SUPPORTED_EXTENSIONS (ver RM-36) --
+# los mismos contenedores, sin los formatos de solo audio.
+SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".webm"}
+SUPPORTED_MEDIA_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS | SUPPORTED_VIDEO_EXTENSIONS
+# Piso de duracion de un segmento de imagen cuando los clips de video solos
+# ya cubren toda la duracion pedida (ver execute) -- un segmento de 0s
+# produce un mp4 de un frame que el demuxer concat no maneja bien.
+MIN_IMAGE_SEGMENT_SECONDS = 1.0
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 # Los fragmentos de TTS (hasta DEFAULT_MAX_CHUNK_CHARS) son del tamano
@@ -148,6 +157,13 @@ def _text_style_ass_params(overlay: TextOverlay) -> tuple[str, str, int, int, st
     return fill, _BLACK_ASS_OUTLINE, 3, 1, ""
 
 
+def _is_video_item(item: MicroVideoMediaItem) -> bool:
+    """Un item es un clip de video (no una imagen con Ken Burns) segun su
+    extension -- misma fuente de verdad que _validate_request, sin un campo
+    `kind` aparte que pudiera contradecirla."""
+    return item.path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
+
+
 def _apply_gradient_colors(text: str, start_hex: str, end_hex: str) -> str:
     """Interpola color por caracter entre start_hex y end_hex (ver RM-33,
     TextOverlay.text_style="gradient") -- ASS/libass no tiene un tag de
@@ -252,6 +268,35 @@ class GenerateMicroVideoUseCase:
                 cursor = target
             video_duration = target
 
+        # RM-36: un clip de video ocupa SU PROPIA duracion real en la linea de
+        # tiempo (recortada si el usuario eligio un rango en el editor), nunca
+        # una tajada igual -- un clip cortado a la mitad para "encajar"
+        # pierde su sentido. El tiempo que queda se reparte en partes iguales
+        # solo entre las IMAGENES (misma regla que RM-29, aplicada al
+        # remanente). Si los clips solos ya cubren la duracion pedida, el
+        # video se ESTIRA para que ninguno se recorte, y las imagenes caen al
+        # piso de MIN_IMAGE_SEGMENT_SECONDS.
+        clip_durations: dict[int, float] = {}
+        for i, item in enumerate(request.media_items):
+            if _is_video_item(item):
+                # Siempre se sondea el archivo real: ademas de resolver
+                # clip_end=None, acota un clip_end mas alla del final real
+                # (que dejaria el segmento mas corto de lo que asume este
+                # reparto).
+                real_end = self._media.get_duration_seconds(item.path)
+                end = real_end if item.clip_end is None else min(item.clip_end, real_end)
+                clip_durations[i] = max(0.0, end - item.clip_start)
+
+        num_images = len(request.media_items) - len(clip_durations)
+        clips_total = sum(clip_durations.values())
+        image_duration = 0.0
+        if num_images:
+            image_duration = max(MIN_IMAGE_SEGMENT_SECONDS, (video_duration - clips_total) / num_images)
+        if clip_durations:
+            # Solo se recalcula si hay clips -- sin ellos esto es exactamente
+            # el video_duration de siempre, sin ida y vuelta por punto flotante.
+            video_duration = clips_total + image_duration * num_images
+
         if request.narration_volume != 1.0:
             with timings.stage("narration_volume"):
                 self._media.apply_volume(narration_path, request.narration_volume)
@@ -304,33 +349,50 @@ class GenerateMicroVideoUseCase:
             )
 
         # Cada imagen se renderiza MUDA (audio_path=None) por su propia
-        # porcion de la duracion total, en partes iguales -- ver RM-29. Con
-        # una sola imagen esto se reduce al comportamiento previo (un unico
-        # segmento de toda la duracion). El audio se mezcla DESPUES, sobre el
-        # video ya concatenado, para no depender de donde caen los cortes
-        # entre imagenes.
-        segment_duration = video_duration / len(request.images)
+        # porcion de la duracion restante, en partes iguales -- ver RM-29. Un
+        # clip de video (ver RM-36) se renderiza mudo por SU PROPIA duracion
+        # real (ver clip_durations arriba), no por esta porcion. Con una sola
+        # imagen y ningun clip esto se reduce al comportamiento previo (un
+        # unico segmento de toda la duracion). El audio se mezcla DESPUES,
+        # sobre el video ya concatenado, para no depender de donde caen los
+        # cortes entre items.
         segment_paths: list[Path] = []
-        with timings.stage("image_to_video", num_images=len(request.images)):
-            for i, image in enumerate(request.images):
+        with timings.stage(
+            "media_to_video", num_items=len(request.media_items), num_clips=len(clip_durations)
+        ):
+            for i, item in enumerate(request.media_items):
                 segment_path = workdir / f"segment_{i:03d}.mp4"
-                self._media.render_image_video(
-                    image.path,
-                    None,
-                    segment_path,
-                    duration_seconds=segment_duration,
-                    width=VIDEO_WIDTH,
-                    height=VIDEO_HEIGHT,
-                    offset_x=image.offset_x,
-                    offset_y=image.offset_y,
-                    zoom=image.zoom,
-                    filter_preset=image.filter_preset,
-                )
+                if i in clip_durations:
+                    self._media.render_clip_video(
+                        item.path,
+                        segment_path,
+                        duration_seconds=clip_durations[i],
+                        start_seconds=item.clip_start,
+                        width=VIDEO_WIDTH,
+                        height=VIDEO_HEIGHT,
+                        offset_x=item.offset_x,
+                        offset_y=item.offset_y,
+                        zoom=item.zoom,
+                        filter_preset=item.filter_preset,
+                    )
+                else:
+                    self._media.render_image_video(
+                        item.path,
+                        None,
+                        segment_path,
+                        duration_seconds=image_duration,
+                        width=VIDEO_WIDTH,
+                        height=VIDEO_HEIGHT,
+                        offset_x=item.offset_x,
+                        offset_y=item.offset_y,
+                        zoom=item.zoom,
+                        filter_preset=item.filter_preset,
+                    )
                 segment_paths.append(segment_path)
 
         if len(segment_paths) > 1:
             silent_path = workdir / "background_silent.mp4"
-            with timings.stage("image_concat"):
+            with timings.stage("media_concat"):
                 self._media.concatenate_videos(segment_paths, silent_path)
         else:
             silent_path = segment_paths[0]
@@ -378,18 +440,28 @@ class GenerateMicroVideoUseCase:
     def _validate_request(request: GenerateMicroVideoRequest) -> None:
         if not request.text.strip():
             raise VideoTranslatorError("El texto a narrar esta vacio.")
-        if not request.images:
-            raise InvalidVideoFileError("Se necesita al menos una imagen.")
-        for image in request.images:
-            if not image.path.exists():
-                raise InvalidVideoFileError(f"No existe el archivo: {image.path}")
-            if image.path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        if not request.media_items:
+            raise InvalidVideoFileError("Se necesita al menos una imagen o un video.")
+        for item in request.media_items:
+            if not item.path.exists():
+                raise InvalidVideoFileError(f"No existe el archivo: {item.path}")
+            if item.path.suffix.lower() not in SUPPORTED_MEDIA_EXTENSIONS:
                 raise InvalidVideoFileError(
-                    f"Extension de imagen no soportada '{image.path.suffix}'. "
-                    f"Soportadas: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
+                    f"Extension no soportada '{item.path.suffix}'. "
+                    f"Soportadas: {sorted(SUPPORTED_MEDIA_EXTENSIONS)}"
                 )
-            if image.zoom < 1.0:
-                raise InvalidVideoFileError(f"zoom invalido ({image.zoom}): debe ser >= 1.0.")
+            if item.zoom < 1.0:
+                raise InvalidVideoFileError(f"zoom invalido ({item.zoom}): debe ser >= 1.0.")
+            if _is_video_item(item):
+                if item.clip_start < 0:
+                    raise InvalidVideoFileError(
+                        f"clip_start invalido ({item.clip_start}): debe ser >= 0."
+                    )
+                if item.clip_end is not None and item.clip_end <= item.clip_start:
+                    raise InvalidVideoFileError(
+                        f"Rango invalido del clip ({item.clip_start}-{item.clip_end}): "
+                        "clip_end debe ser mayor que clip_start."
+                    )
 
 
 def _distribute_duration(pieces: list[str], start: float, duration: float) -> list[tuple[str, float, float]]:

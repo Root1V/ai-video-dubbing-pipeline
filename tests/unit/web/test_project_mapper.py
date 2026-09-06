@@ -302,7 +302,7 @@ def test_build_micro_video_use_case_and_request_maps_fields(
     use_case, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert use_case is fake_use_case
-    assert [img.path for img in request.images] == [Path(project.input_video_path)]
+    assert [img.path for img in request.media_items] == [Path(project.input_video_path)]
     assert request.text == "Un texto cualquiera."
     assert request.output_dir == Path(project.output_dir)
     assert request.output_dir.is_dir()
@@ -545,7 +545,7 @@ def test_build_micro_video_use_case_and_request_defaults_to_only_primary_image(
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert [img.path for img in request.images] == [Path(project.input_video_path)]
+    assert [img.path for img in request.media_items] == [Path(project.input_video_path)]
 
 
 def test_build_micro_video_use_case_and_request_maps_additional_images(
@@ -553,12 +553,12 @@ def test_build_micro_video_use_case_and_request_maps_additional_images(
 ) -> None:
     extra1 = str(tmp_path / "extra1.jpg")
     extra2 = str(tmp_path / "extra2.jpg")
-    project = _make_micro_video_project(tmp_path, additional_image_paths=[extra1, extra2])
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[extra1, extra2])
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert [img.path for img in request.images] == [Path(project.input_video_path), Path(extra1), Path(extra2)]
+    assert [img.path for img in request.media_items] == [Path(project.input_video_path), Path(extra1), Path(extra2)]
 
 
 def test_build_micro_video_use_case_and_request_defaults_image_frame_without_adjustments(
@@ -569,10 +569,10 @@ def test_build_micro_video_use_case_and_request_defaults_image_frame_without_adj
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert request.images[0].offset_x == pytest.approx(0.5)
-    assert request.images[0].offset_y == pytest.approx(0.5)
-    assert request.images[0].zoom == pytest.approx(1.0)
-    assert request.images[0].filter_preset == "none"
+    assert request.media_items[0].offset_x == pytest.approx(0.5)
+    assert request.media_items[0].offset_y == pytest.approx(0.5)
+    assert request.media_items[0].zoom == pytest.approx(1.0)
+    assert request.media_items[0].filter_preset == "none"
 
 
 def test_build_micro_video_use_case_and_request_maps_image_filter_preset(
@@ -580,16 +580,16 @@ def test_build_micro_video_use_case_and_request_maps_image_filter_preset(
 ) -> None:
     extra = str(tmp_path / "extra.jpg")
     adjustments = [{"filter_preset": "sepia"}, {"filter_preset": "dramatic"}]
-    project = _make_micro_video_project(tmp_path, additional_image_paths=[extra], image_adjustments=adjustments)
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[extra], media_adjustments=adjustments)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert request.images[0].filter_preset == "sepia"
-    assert request.images[1].filter_preset == "dramatic"
+    assert request.media_items[0].filter_preset == "sepia"
+    assert request.media_items[1].filter_preset == "dramatic"
 
 
-def test_build_micro_video_use_case_and_request_maps_image_adjustments(
+def test_build_micro_video_use_case_and_request_maps_media_adjustments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     extra = str(tmp_path / "extra.jpg")
@@ -597,17 +597,17 @@ def test_build_micro_video_use_case_and_request_maps_image_adjustments(
         {"offset_x": 0.2, "offset_y": 0.8, "zoom": 1.5},
         {"offset_x": 0.9, "offset_y": 0.1, "zoom": 2.0},
     ]
-    project = _make_micro_video_project(tmp_path, additional_image_paths=[extra], image_adjustments=adjustments)
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[extra], media_adjustments=adjustments)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert request.images[0].offset_x == pytest.approx(0.2)
-    assert request.images[0].offset_y == pytest.approx(0.8)
-    assert request.images[0].zoom == pytest.approx(1.5)
-    assert request.images[1].offset_x == pytest.approx(0.9)
-    assert request.images[1].offset_y == pytest.approx(0.1)
-    assert request.images[1].zoom == pytest.approx(2.0)
+    assert request.media_items[0].offset_x == pytest.approx(0.2)
+    assert request.media_items[0].offset_y == pytest.approx(0.8)
+    assert request.media_items[0].zoom == pytest.approx(1.5)
+    assert request.media_items[1].offset_x == pytest.approx(0.9)
+    assert request.media_items[1].offset_y == pytest.approx(0.1)
+    assert request.media_items[1].zoom == pytest.approx(2.0)
 
 
 def test_build_micro_video_use_case_and_request_fills_missing_adjustment_with_defaults(
@@ -617,11 +617,46 @@ def test_build_micro_video_use_case_and_request_fills_missing_adjustment_with_de
     # Solo hay ajuste para la primera imagen -- la segunda (indice desalineado,
     # p.ej. imagen agregada despues sin haberla ajustado) usa los defaults.
     adjustments = [{"offset_x": 0.2, "offset_y": 0.8, "zoom": 1.5}]
-    project = _make_micro_video_project(tmp_path, additional_image_paths=[extra], image_adjustments=adjustments)
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[extra], media_adjustments=adjustments)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
-    assert request.images[1].offset_x == pytest.approx(0.5)
-    assert request.images[1].offset_y == pytest.approx(0.5)
-    assert request.images[1].zoom == pytest.approx(1.0)
+    assert request.media_items[1].offset_x == pytest.approx(0.5)
+    assert request.media_items[1].offset_y == pytest.approx(0.5)
+    assert request.media_items[1].zoom == pytest.approx(1.0)
+
+
+def test_build_micro_video_use_case_and_request_maps_mixed_image_and_clip_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    clip = str(tmp_path / "clip.mp4")
+    adjustments = [{}, {"clip_start": 2.0, "clip_end": 5.0}]
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[clip], media_adjustments=adjustments)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert [item.path for item in request.media_items] == [Path(project.input_video_path), Path(clip)]
+    assert request.media_items[1].clip_start == pytest.approx(2.0)
+    assert request.media_items[1].clip_end == pytest.approx(5.0)
+
+
+def test_build_micro_video_use_case_and_request_falls_back_to_legacy_image_config_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    # Proyecto anterior a RM-36 (o un reintento via /resume de uno que fallo
+    # antes de este cambio): las claves siguen siendo las viejas
+    # "additional_image_paths"/"image_adjustments", no las nuevas.
+    extra = str(tmp_path / "extra.jpg")
+    project = _make_micro_video_project(
+        tmp_path,
+        additional_image_paths=[extra],
+        image_adjustments=[{}, {"zoom": 1.5}],
+    )
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert [item.path for item in request.media_items] == [Path(project.input_video_path), Path(extra)]
+    assert request.media_items[1].zoom == pytest.approx(1.5)

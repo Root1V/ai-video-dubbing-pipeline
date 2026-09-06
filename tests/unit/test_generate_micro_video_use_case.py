@@ -14,7 +14,7 @@ from video_translator.domain.exceptions import InvalidVideoFileError, VideoTrans
 from video_translator.domain.models import (
     EmojiOverlay,
     GenerateMicroVideoRequest,
-    MicroVideoImage,
+    MicroVideoMediaItem,
     TextOverlay,
 )
 
@@ -24,8 +24,9 @@ class FakeMediaProcessor:
     MediaProcessor. get_duration_seconds devuelve una duracion fija por
     caracter para que el timing de los segmentos sea verificable."""
 
-    def __init__(self):
+    def __init__(self, clip_durations: dict[str, float] | None = None):
         self.render_calls: list[dict] = []
+        self.clip_render_calls: list[dict] = []
         self.caption_calls: list[dict] = []
         self.emoji_calls: list[dict] = []
         self.fit_calls: list[dict] = []
@@ -34,9 +35,13 @@ class FakeMediaProcessor:
         self.volume_calls: list[dict] = []
         self.mux_calls: list[dict] = []
         self.concat_calls: list[dict] = []
+        # Duracion "real" por NOMBRE de archivo, para los clips de video (ver
+        # RM-36) -- los fragmentos de narracion siguen durando 1.0s fijo, que
+        # es lo que hace deterministas los tests de timing preexistentes.
+        self._clip_durations = clip_durations or {}
 
     def get_duration_seconds(self, media_path: Path) -> float:
-        return 1.0
+        return self._clip_durations.get(media_path.name, 1.0)
 
     def extract_audio(self, video_path: Path, output_wav: Path) -> Path:
         raise NotImplementedError("no usado por GenerateMicroVideoUseCase")
@@ -97,6 +102,29 @@ class FakeMediaProcessor:
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"fake-segment-video")
+        return output_path
+
+    def render_clip_video(
+        self, video_path: Path, output_path: Path, duration_seconds: float, start_seconds: float = 0.0,
+        width: int = 1080, height: int = 1920,
+        offset_x: float = 0.5, offset_y: float = 0.5, zoom: float = 1.0,
+        filter_preset: str = "none",
+    ) -> Path:
+        self.clip_render_calls.append(
+            {
+                "video_path": video_path,
+                "duration_seconds": duration_seconds,
+                "start_seconds": start_seconds,
+                "width": width,
+                "height": height,
+                "offset_x": offset_x,
+                "offset_y": offset_y,
+                "zoom": zoom,
+                "filter_preset": filter_preset,
+            }
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake-clip-segment-video")
         return output_path
 
     def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:
@@ -190,6 +218,12 @@ def _make_image(tmp_path: Path) -> Path:
     return image_path
 
 
+def _make_clip(tmp_path: Path, name: str = "clip.mp4") -> Path:
+    clip_path = tmp_path / name
+    clip_path.write_bytes(b"fake-clip-bytes")
+    return clip_path
+
+
 _DIALOGUE_RE = re.compile(
     r"^Dialogue: \d+,(?P<start>[\d:.]+),(?P<end>[\d:.]+),Default,,0,0,0,,(?P<text>.*)$"
 )
@@ -228,7 +262,7 @@ def test_execute_produces_video_using_default_voice(tmp_path: Path):
     synthesizer = FakeSpeechSynthesizer()
     use_case = _make_use_case(media=media, synthesizer=synthesizer)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola mundo.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola mundo.", output_dir=tmp_path / "out")
 
     result = use_case.execute(request)
 
@@ -246,7 +280,7 @@ def test_execute_uses_own_speaker_reference_when_provided(tmp_path: Path):
     image_path = _make_image(tmp_path)
     own_voice = tmp_path / "my_voice.wav"
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola mundo.", output_dir=tmp_path / "out", speaker_reference_wav=own_voice
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola mundo.", output_dir=tmp_path / "out", speaker_reference_wav=own_voice
     )
 
     use_case.execute(request)
@@ -258,7 +292,7 @@ def test_execute_writes_ass_captions_with_video_resolution(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -275,7 +309,7 @@ def test_execute_writes_captions_matching_narration_chunks(tmp_path: Path):
     use_case = _make_use_case(media=media, max_chunk_chars=20)
     image_path = _make_image(tmp_path)
     long_text = "Primera oracion corta. Segunda oracion tambien corta. Tercera oracion mas."
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text=long_text, output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text=long_text, output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -300,7 +334,7 @@ def test_execute_splits_a_single_narration_chunk_into_several_short_captions(tmp
         "Esta es una oracion bastante larga que deberia partirse en varios "
         "captions cortos en vez de mostrarse entera de una sola vez."
     )
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text=long_text, output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text=long_text, output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -320,7 +354,7 @@ def test_execute_does_not_mix_music_by_default(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -338,7 +372,7 @@ def test_execute_mixes_background_music_when_requested(tmp_path: Path):
     music_path = tmp_path / "track.mp3"
     music_path.write_bytes(b"fake-music-bytes")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=5.0,
@@ -363,7 +397,7 @@ def test_execute_renders_at_vertical_resolution(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -375,7 +409,7 @@ def test_execute_uses_default_frame_when_image_has_no_adjustment(tmp_path: Path)
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -390,9 +424,9 @@ def test_execute_passes_each_image_own_filter_preset(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_paths = _make_images(tmp_path, 2)
     request = GenerateMicroVideoRequest(
-        images=[
-            MicroVideoImage(path=image_paths[0], filter_preset="sepia"),
-            MicroVideoImage(path=image_paths[1], filter_preset="dramatic"),
+        media_items=[
+            MicroVideoMediaItem(path=image_paths[0], filter_preset="sepia"),
+            MicroVideoMediaItem(path=image_paths[1], filter_preset="dramatic"),
         ],
         text="Hola.",
         output_dir=tmp_path / "out",
@@ -409,9 +443,9 @@ def test_execute_passes_each_image_own_offset_and_zoom(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_paths = _make_images(tmp_path, 2)
     request = GenerateMicroVideoRequest(
-        images=[
-            MicroVideoImage(path=image_paths[0], offset_x=0.2, offset_y=0.8, zoom=1.5),
-            MicroVideoImage(path=image_paths[1], offset_x=0.9, offset_y=0.1, zoom=2.0),
+        media_items=[
+            MicroVideoMediaItem(path=image_paths[0], offset_x=0.2, offset_y=0.8, zoom=1.5),
+            MicroVideoMediaItem(path=image_paths[1], offset_x=0.9, offset_y=0.1, zoom=2.0),
         ],
         text="Hola.",
         output_dir=tmp_path / "out",
@@ -431,7 +465,7 @@ def test_execute_rejects_zoom_below_one(tmp_path: Path):
     use_case = _make_use_case()
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path, zoom=0.5)], text="Hola.", output_dir=tmp_path / "out"
+        media_items=[MicroVideoMediaItem(path=image_path, zoom=0.5)], text="Hola.", output_dir=tmp_path / "out"
     )
 
     with pytest.raises(InvalidVideoFileError):
@@ -444,7 +478,7 @@ def test_execute_strips_bold_markers_from_narration_but_keeps_them_for_captions(
     use_case = _make_use_case(media=media, synthesizer=synthesizer)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Esto **es lo mejor** de la industria.", output_dir=tmp_path / "out"
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Esto **es lo mejor** de la industria.", output_dir=tmp_path / "out"
     )
 
     use_case.execute(request)
@@ -464,7 +498,7 @@ def test_execute_writes_chosen_caption_background_color(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", caption_bg_color="#FF0000"
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", caption_bg_color="#FF0000"
     )
 
     use_case.execute(request)
@@ -484,7 +518,7 @@ def test_execute_writes_chosen_caption_text_color_for_background_style(tmp_path:
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         caption_bg_color="#FF0000",
@@ -509,7 +543,7 @@ def test_execute_writes_text_color_highlight_style_without_a_box(tmp_path: Path)
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         caption_bg_color="#00FF00",
@@ -532,7 +566,7 @@ def test_execute_writes_karaoke_highlight_style_fixed_white_primary_colour(tmp_p
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         caption_bg_color="#00FF00",
@@ -555,7 +589,7 @@ def test_execute_writes_one_karaoke_dialogue_per_word(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Uno dos tres.",
         output_dir=tmp_path / "out",
         caption_bg_color="#00FF00",
@@ -584,7 +618,7 @@ def test_execute_writes_karaoke_background_style_fixed_white_primary_colour(tmp_
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         caption_bg_color="#00FF00",
@@ -610,7 +644,7 @@ def test_execute_writes_one_karaoke_background_dialogue_per_word(tmp_path: Path)
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Uno dos tres.",
         output_dir=tmp_path / "out",
         caption_bg_color="#00FF00",
@@ -641,7 +675,7 @@ def test_execute_writes_chosen_caption_text_color_for_karaoke_background_style(t
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Uno dos.",
         output_dir=tmp_path / "out",
         caption_bg_color="#00FF00",
@@ -670,7 +704,7 @@ def test_execute_holds_the_image_when_narration_is_shorter_than_target_duration(
     use_case = _make_use_case(media=media)  # cada fragmento dura 1.0s (FakeMediaProcessor)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", target_duration_seconds=10.0
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", target_duration_seconds=10.0
     )
 
     result = use_case.execute(request)
@@ -688,7 +722,7 @@ def test_execute_speeds_up_narration_when_longer_than_target_duration(tmp_path: 
     image_path = _make_image(tmp_path)
     long_text = "Primera oracion corta. Segunda oracion tambien corta. Tercera oracion mas."
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text=long_text, output_dir=tmp_path / "out", target_duration_seconds=1.5
+        media_items=[MicroVideoMediaItem(path=image_path)], text=long_text, output_dir=tmp_path / "out", target_duration_seconds=1.5
     )
 
     result = use_case.execute(request)
@@ -706,7 +740,7 @@ def test_execute_speeds_up_narration_when_longer_than_target_duration(tmp_path: 
 def test_execute_rejects_empty_text(tmp_path: Path):
     use_case = _make_use_case()
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="   ", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="   ", output_dir=tmp_path / "out")
 
     with pytest.raises(VideoTranslatorError):
         use_case.execute(request)
@@ -715,18 +749,18 @@ def test_execute_rejects_empty_text(tmp_path: Path):
 def test_execute_rejects_missing_image(tmp_path: Path):
     use_case = _make_use_case()
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=tmp_path / "does_not_exist.jpg")], text="Hola.", output_dir=tmp_path / "out"
+        media_items=[MicroVideoMediaItem(path=tmp_path / "does_not_exist.jpg")], text="Hola.", output_dir=tmp_path / "out"
     )
 
     with pytest.raises(InvalidVideoFileError):
         use_case.execute(request)
 
 
-def test_execute_rejects_unsupported_image_extension(tmp_path: Path):
+def test_execute_rejects_unsupported_media_extension(tmp_path: Path):
     use_case = _make_use_case()
-    bad_image = tmp_path / "clip.mp4"
-    bad_image.write_bytes(b"not-an-image")
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=bad_image)], text="Hola.", output_dir=tmp_path / "out")
+    bad_file = tmp_path / "photo.gif"
+    bad_file.write_bytes(b"not-a-supported-format")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=bad_file)], text="Hola.", output_dir=tmp_path / "out")
 
     with pytest.raises(InvalidVideoFileError):
         use_case.execute(request)
@@ -736,7 +770,7 @@ def test_execute_without_overlays_adds_no_overlay_style_or_dialogue(tmp_path: Pa
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -748,7 +782,7 @@ def test_execute_without_emoji_overlays_does_not_call_overlay_emojis(tmp_path: P
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     result = use_case.execute(request)
 
@@ -764,7 +798,7 @@ def test_execute_passes_resolved_emoji_placements(tmp_path: Path):
     image_path = _make_image(tmp_path)
     emoji = EmojiOverlay(emoji_id="fuego", x=0.25, y=0.75, size=0.2, fade=True)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         emoji_overlays=[emoji],
@@ -791,7 +825,7 @@ def test_execute_omits_unrecognized_emoji_id(tmp_path: Path):
     image_path = _make_image(tmp_path)
     emoji = EmojiOverlay(emoji_id="no-existe-este-emoji", x=0.5, y=0.5)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         emoji_overlays=[emoji],
@@ -819,7 +853,7 @@ def test_execute_writes_overlay_position_bold_color_and_font(tmp_path: Path):
         color="#00FF00",
     )
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         text_overlays=[overlay],
@@ -847,7 +881,7 @@ def test_execute_writes_default_outline_and_shadow_for_flat_style(tmp_path: Path
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(text="Hola", x=0.5, y=0.5)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -868,7 +902,7 @@ def test_execute_writes_hard_shadow_and_thick_outline_styles(tmp_path: Path):
         TextOverlay(text="Contorno", x=0.5, y=0.6, text_style="thick_outline"),
     ]
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=overlays
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=overlays
     )
 
     use_case.execute(request)
@@ -886,7 +920,7 @@ def test_execute_writes_long_shadow_style(tmp_path: Path):
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(text="Largo", x=0.5, y=0.5, text_style="long_shadow")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -924,7 +958,7 @@ def test_execute_writes_hollow_style_with_transparent_fill(tmp_path: Path):
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(text="Hollow", x=0.5, y=0.5, text_style="hollow", color="#00FF00")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -946,7 +980,7 @@ def test_execute_writes_neon_glow_style_with_blur_and_accent_outline(tmp_path: P
         text="Neon", x=0.5, y=0.5, text_style="neon_glow", color="#FFFFFF", accent_color="#FF00FF"
     )
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -967,7 +1001,7 @@ def test_execute_writes_colored_outline_style(tmp_path: Path):
         text="Outline", x=0.5, y=0.5, text_style="colored_outline", color="#FFFFFF", accent_color="#00CCFF"
     )
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -983,7 +1017,7 @@ def test_execute_passes_fonts_dir_to_render_ass_captions(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -999,7 +1033,7 @@ def test_execute_writes_unrecognized_text_style_as_flat(tmp_path: Path):
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(text="Hola", x=0.5, y=0.5, text_style="no-existe-este-estilo")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -1017,7 +1051,7 @@ def test_execute_writes_gradient_colors_per_character(tmp_path: Path):
         text="AB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", accent_color="#0000FF"
     )
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -1037,7 +1071,7 @@ def test_execute_preserves_line_break_in_gradient_text(tmp_path: Path):
         text="A\nB", x=0.5, y=0.5, text_style="gradient", color="#FF0000", accent_color="#0000FF"
     )
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", text_overlays=[overlay]
     )
 
     use_case.execute(request)
@@ -1055,7 +1089,7 @@ def test_execute_writes_overlay_fade_when_requested(tmp_path: Path):
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(text="Con fade", x=0.5, y=0.1, fade=True)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=5.0,  # suficientemente largo para no clampear el fade de 500ms
@@ -1077,7 +1111,7 @@ def test_execute_clamps_overlay_fade_duration_for_short_videos(tmp_path: Path):
     # chunk): sin clamp, un fade de 500ms in + 500ms out excederia el video.
     overlay = TextOverlay(text="Corto", x=0.5, y=0.1, fade=True)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         text_overlays=[overlay],
@@ -1096,7 +1130,7 @@ def test_execute_escapes_overlay_braces_and_preserves_line_breaks(tmp_path: Path
     image_path = _make_image(tmp_path)
     overlay = TextOverlay(text="Linea 1\nLinea {2}", x=0.5, y=0.5)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         text_overlays=[overlay],
@@ -1116,7 +1150,7 @@ def test_execute_does_not_extract_music_range_when_using_full_track(tmp_path: Pa
     music_path = tmp_path / "track.mp3"
     music_path.write_bytes(b"fake-music-bytes")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=5.0,
@@ -1136,7 +1170,7 @@ def test_execute_extracts_music_range_before_mixing_when_requested(tmp_path: Pat
     music_path = tmp_path / "track.mp3"
     music_path.write_bytes(b"fake-music-bytes")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=5.0,
@@ -1160,7 +1194,7 @@ def test_execute_does_not_apply_narration_volume_by_default(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -1172,7 +1206,7 @@ def test_execute_applies_narration_volume_when_requested(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", narration_volume=0.5
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", narration_volume=0.5
     )
 
     use_case.execute(request)
@@ -1187,7 +1221,7 @@ def test_execute_applies_narration_volume_even_without_background_music(tmp_path
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", narration_volume=1.5
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", narration_volume=1.5
     )
 
     use_case.execute(request)
@@ -1204,7 +1238,7 @@ def test_execute_passes_background_music_volume_to_mix(tmp_path: Path):
     music_path = tmp_path / "track.mp3"
     music_path.write_bytes(b"fake-music-bytes")
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)],
+        media_items=[MicroVideoMediaItem(path=image_path)],
         text="Hola.",
         output_dir=tmp_path / "out",
         background_music_path=music_path,
@@ -1220,7 +1254,7 @@ def test_execute_writes_captions_at_default_position(tmp_path: Path):
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -1234,7 +1268,7 @@ def test_execute_writes_captions_at_custom_position(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out", caption_x=0.25, caption_y=0.5
+        media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out", caption_x=0.25, caption_y=0.5
     )
 
     use_case.execute(request)
@@ -1256,7 +1290,7 @@ def test_execute_single_image_renders_one_silent_segment_and_skips_concat(tmp_pa
     media = FakeMediaProcessor()
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
-    request = GenerateMicroVideoRequest(images=[MicroVideoImage(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[MicroVideoMediaItem(path=image_path)], text="Hola.", output_dir=tmp_path / "out")
 
     use_case.execute(request)
 
@@ -1272,7 +1306,7 @@ def test_execute_splits_duration_equally_across_multiple_images(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_paths = _make_images(tmp_path, 2)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=p) for p in image_paths],
+        media_items=[MicroVideoMediaItem(path=p) for p in image_paths],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=10.0,
@@ -1293,7 +1327,7 @@ def test_execute_concatenates_segments_in_order_for_multiple_images(tmp_path: Pa
     use_case = _make_use_case(media=media)
     image_paths = _make_images(tmp_path, 3)
     request = GenerateMicroVideoRequest(
-        images=[MicroVideoImage(path=p) for p in image_paths],
+        media_items=[MicroVideoMediaItem(path=p) for p in image_paths],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=9.0,
@@ -1310,7 +1344,245 @@ def test_execute_concatenates_segments_in_order_for_multiple_images(tmp_path: Pa
 
 def test_execute_rejects_empty_image_list(tmp_path: Path):
     use_case = _make_use_case()
-    request = GenerateMicroVideoRequest(images=[], text="Hola.", output_dir=tmp_path / "out")
+    request = GenerateMicroVideoRequest(media_items=[], text="Hola.", output_dir=tmp_path / "out")
 
     with pytest.raises(InvalidVideoFileError):
         use_case.execute(request)
+
+
+# --- RM-36: clips de video como items del micro-video -----------------------
+
+
+def test_execute_renders_a_video_clip_with_its_own_duration(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 4.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path), MicroVideoMediaItem(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=10.0,
+    )
+
+    use_case.execute(request)
+
+    assert len(media.clip_render_calls) == 1
+    assert media.clip_render_calls[0]["duration_seconds"] == pytest.approx(4.0)
+    assert len(media.render_calls) == 1
+    assert media.render_calls[0]["duration_seconds"] == pytest.approx(6.0)
+
+
+def test_execute_splits_only_the_remaining_time_among_images(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 4.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    image_paths = _make_images(tmp_path, 2)
+    request = GenerateMicroVideoRequest(
+        media_items=[
+            MicroVideoMediaItem(path=clip_path),
+            MicroVideoMediaItem(path=image_paths[0]),
+            MicroVideoMediaItem(path=image_paths[1]),
+        ],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=10.0,
+    )
+
+    use_case.execute(request)
+
+    assert len(media.render_calls) == 2
+    for call in media.render_calls:
+        assert call["duration_seconds"] == pytest.approx(3.0)  # (10 - 4) / 2
+
+
+def test_execute_uses_the_trimmed_clip_duration_for_the_split(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 10.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[
+            MicroVideoMediaItem(path=clip_path, clip_start=2.0, clip_end=5.0),
+            MicroVideoMediaItem(path=image_path),
+        ],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=10.0,
+    )
+
+    use_case.execute(request)
+
+    assert media.clip_render_calls[0]["duration_seconds"] == pytest.approx(3.0)
+    assert media.clip_render_calls[0]["start_seconds"] == pytest.approx(2.0)
+    assert media.render_calls[0]["duration_seconds"] == pytest.approx(7.0)  # 10 - 3
+
+
+def test_execute_clamps_clip_end_to_the_real_clip_duration(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 3.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[
+            MicroVideoMediaItem(path=clip_path, clip_end=99.0),
+            MicroVideoMediaItem(path=image_path),
+        ],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=10.0,
+    )
+
+    use_case.execute(request)
+
+    assert media.clip_render_calls[0]["duration_seconds"] == pytest.approx(3.0)
+
+
+def test_execute_extends_the_video_when_clips_exceed_the_target_duration(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 12.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path), MicroVideoMediaItem(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=5.0,
+    )
+
+    result = use_case.execute(request)
+
+    # La imagen cae al piso (MIN_IMAGE_SEGMENT_SECONDS=1.0), el video se
+    # extiende para no recortar el clip.
+    assert media.render_calls[0]["duration_seconds"] == pytest.approx(1.0)
+    assert result.duration_seconds == pytest.approx(13.0)
+
+
+def test_execute_extending_the_video_propagates_to_music_and_captions(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 12.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    image_path = _make_image(tmp_path)
+    music_path = tmp_path / "track.mp3"
+    music_path.write_bytes(b"fake-music-bytes")
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path), MicroVideoMediaItem(path=image_path)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=5.0,
+        background_music_path=music_path,
+    )
+
+    use_case.execute(request)
+
+    assert media.music_calls[0]["duration_seconds"] == pytest.approx(13.0)
+    dialogues = _read_ass_dialogues(media.caption_calls[0]["ass_path"])
+    assert dialogues[-1][1] <= 13.0 + 0.05
+
+
+def test_execute_with_only_clips_renders_no_image_segments(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip_0.mp4": 4.0, "clip_1.mp4": 6.0})
+    use_case = _make_use_case(media=media)
+    clip_paths = [_make_clip(tmp_path, "clip_0.mp4"), _make_clip(tmp_path, "clip_1.mp4")]
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=p) for p in clip_paths],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    result = use_case.execute(request)
+
+    assert media.render_calls == []
+    assert len(media.clip_render_calls) == 2
+    assert result.duration_seconds == pytest.approx(10.0)
+
+
+def test_execute_concatenates_mixed_image_and_clip_segments_in_order(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 3.0})
+    use_case = _make_use_case(media=media)
+    image_paths = _make_images(tmp_path, 2)
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[
+            MicroVideoMediaItem(path=image_paths[0]),
+            MicroVideoMediaItem(path=clip_path),
+            MicroVideoMediaItem(path=image_paths[1]),
+        ],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=9.0,
+    )
+
+    use_case.execute(request)
+
+    concatenated = media.concat_calls[0]["video_paths"]
+    assert [p.name for p in concatenated] == ["segment_000.mp4", "segment_001.mp4", "segment_002.mp4"]
+    assert len(media.render_calls) == 2  # indices 0 y 2
+    assert len(media.clip_render_calls) == 1  # indice 1
+
+
+def test_execute_passes_clip_framing_and_filter_preset(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 4.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[
+            MicroVideoMediaItem(
+                path=clip_path, offset_x=0.2, offset_y=0.8, zoom=1.5, filter_preset="sepia"
+            )
+        ],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    use_case.execute(request)
+
+    call = media.clip_render_calls[0]
+    assert call["offset_x"] == 0.2
+    assert call["offset_y"] == 0.8
+    assert call["zoom"] == 1.5
+    assert call["filter_preset"] == "sepia"
+
+
+def test_execute_rejects_clip_end_not_after_clip_start(tmp_path: Path):
+    use_case = _make_use_case()
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, clip_start=5.0, clip_end=5.0)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    with pytest.raises(InvalidVideoFileError):
+        use_case.execute(request)
+
+
+def test_execute_rejects_negative_clip_start(tmp_path: Path):
+    use_case = _make_use_case()
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, clip_start=-1.0)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    with pytest.raises(InvalidVideoFileError):
+        use_case.execute(request)
+
+
+def test_execute_ignores_trim_set_on_an_image_item(tmp_path: Path):
+    media = FakeMediaProcessor()
+    use_case = _make_use_case(media=media)
+    image_path = _make_image(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=image_path, clip_start=2.0, clip_end=3.0)],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+        target_duration_seconds=10.0,
+    )
+
+    use_case.execute(request)
+
+    # Sin clips de video, el reparto es el de siempre -- el recorte en un
+    # item de imagen se ignora silenciosamente.
+    assert media.render_calls[0]["duration_seconds"] == pytest.approx(10.0)

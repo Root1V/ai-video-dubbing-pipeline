@@ -120,6 +120,44 @@ class MediaProcessor(Protocol):
         valor no reconocido no aplican ningun filtro."""
         ...
 
+    def render_clip_video(
+        self,
+        video_path: Path,
+        output_path: Path,
+        duration_seconds: float,
+        start_seconds: float = 0.0,
+        width: int = 1080,
+        height: int = 1920,
+        offset_x: float = 0.5,
+        offset_y: float = 0.5,
+        zoom: float = 1.0,
+        filter_preset: str = "none",
+    ) -> Path:
+        """Normaliza un clip de video existente (ver RM-36) al MISMO formato de
+        salida que produce `render_image_video`, para que `concatenate_videos`
+        pueda seguir haciendo stream copy sin recodificar: libx264, yuv420p,
+        `width`x`height`, 30fps, SAR 1:1, sin audio. `start_seconds` +
+        `duration_seconds` recortan el rango elegido por el usuario en el
+        editor (mismo criterio que `extract_music_range` para la musica de
+        fondo). `offset_x`/`offset_y`/`zoom` (RM-30) y `filter_preset` (RM-31)
+        se aplican igual que en una imagen -- son filtros por frame,
+        funcionan identico sobre un stream real.
+
+        A diferencia de `render_image_video`, NO usa `-loop 1`, `-tune
+        stillimage` ni `zoompan`: el clip ya trae sus propios frames.
+        `zoompan` con `d=N` trata cada frame de ENTRADA como fuente de N
+        frames de salida -- sobre video real duplica/congela frames en vez
+        de hacer un Ken Burns. El clip ya se mueve solo, no necesita el
+        efecto.
+
+        `fps=30` y `setsar=1` son obligatorios, no cosmeticos: el demuxer
+        concat con `-c copy` exige que todos los segmentos compartan frame
+        rate y sample aspect ratio, y un clip de camara puede venir a
+        24/25/60fps y/o con pixeles no cuadrados. Las imagenes ya salen a
+        30fps y SAR 1:1. Siempre MUDO (`-an`): el audio final se mezcla
+        despues sobre el video ya concatenado (ver GenerateMicroVideoUseCase)."""
+        ...
+
     def concatenate_videos(self, video_paths: list[Path], output_path: Path) -> Path:
         """Concatena videos con el MISMO codec (p.ej. varios clips mudos de
         `render_image_video`, ver RM-29) via el demuxer concat de ffmpeg --

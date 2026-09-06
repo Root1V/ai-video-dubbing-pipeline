@@ -31,7 +31,7 @@ from video_translator.container import (
 from video_translator.domain.models import (
     EmojiOverlay,
     GenerateMicroVideoRequest,
-    MicroVideoImage,
+    MicroVideoMediaItem,
     OutputMode,
     SynthesizeTextRequest,
     TextOverlay,
@@ -104,20 +104,25 @@ def _parse_emoji_overlays(raw_overlays: object) -> list[EmojiOverlay]:
     return overlays
 
 
-def _parse_image_adjustments(raw_adjustments: object, image_paths: list[Path]) -> list[MicroVideoImage]:
-    """Combina `image_paths` (ya resuelto: imagen principal + adicionales,
-    ver RM-29) con la lista JSON guardada en `config['image_adjustments']`
-    (ver RM-30, `routers/projects.py::create_project`), por indice -- si
-    falta el ajuste de un indice (longitud desalineada, o el proyecto es
-    anterior a RM-30 y no tiene esta clave) usa los defaults del dataclass
-    (recorte centrado, sin zoom manual, sin filtro de color -- ver RM-31)."""
+def _parse_media_items(raw_adjustments: object, media_paths: list[Path]) -> list[MicroVideoMediaItem]:
+    """Combina `media_paths` (ya resuelto: item principal + adicionales,
+    ver RM-29/RM-36 -- imagenes o clips de video) con la lista JSON guardada
+    en `config['media_adjustments']` (ver RM-30, `routers/projects.py::create_project`),
+    por indice -- si falta el ajuste de un indice (longitud desalineada, o el
+    proyecto es anterior a RM-30 y no tiene esta clave) usa los defaults del
+    dataclass (recorte centrado, sin zoom manual, sin filtro de color -- ver
+    RM-31 -- y sin recorte de clip -- ver RM-36)."""
     adjustments = raw_adjustments if isinstance(raw_adjustments, list) else []
-    images = []
-    for i, path in enumerate(image_paths):
+    items = []
+    for i, path in enumerate(media_paths):
         item = adjustments[i] if i < len(adjustments) and isinstance(adjustments[i], dict) else {}
-        kwargs = {key: item[key] for key in ("offset_x", "offset_y", "zoom", "filter_preset") if key in item}
-        images.append(MicroVideoImage(path=path, **kwargs))
-    return images
+        kwargs = {
+            key: item[key]
+            for key in ("offset_x", "offset_y", "zoom", "filter_preset", "clip_start", "clip_end")
+            if key in item
+        }
+        items.append(MicroVideoMediaItem(path=path, **kwargs))
+    return items
 
 
 def build_use_case_and_request(
@@ -250,11 +255,12 @@ def build_micro_video_use_case_and_request(
     db: Session,
 ) -> tuple[GenerateMicroVideoUseCase, GenerateMicroVideoRequest]:
     """Version delgada para el servicio de micro-video (`ServiceType.MICRO_VIDEO`):
-    a diferencia de TTS, aca `input_video_path` es la imagen subida (el
-    "archivo de entrada" del proyecto), no el texto -- el texto de narracion
-    vive en `config['narration_text']` (ver `routers/projects.py::create_project`).
-    La voz de referencia se resuelve igual que en TTS. `db` es necesaria para
-    resolver la pista de musica elegida (RM-26, catalogo en BD)."""
+    a diferencia de TTS, aca `input_video_path` es la imagen o el clip de
+    video subido (el "archivo de entrada" del proyecto, ver RM-36), no el
+    texto -- el texto de narracion vive en `config['narration_text']` (ver
+    `routers/projects.py::create_project`). La voz de referencia se resuelve
+    igual que en TTS. `db` es necesaria para resolver la pista de musica
+    elegida (RM-26, catalogo en BD)."""
     settings = load_settings()
 
     output_dir = Path(project.output_dir)
@@ -274,10 +280,17 @@ def build_micro_video_use_case_and_request(
     target_duration = config.get("target_duration_seconds")
     background_music_track = config.get("background_music")
     background_music_end = config.get("background_music_end")
-    additional_image_paths = config.get("additional_image_paths") or []
-    image_paths = [Path(project.input_video_path), *[Path(p) for p in additional_image_paths]]
+    # Fallback a las claves legacy (pre-RM-36) para no perder los items
+    # adicionales de un proyecto fallido pre-existente si se reintenta via
+    # /resume (build_micro_video_use_case_and_request reconstruye la request
+    # completa desde `config` en cada corrida).
+    additional_media_paths = config.get("additional_media_paths") or config.get("additional_image_paths") or []
+    media_paths = [Path(project.input_video_path), *[Path(p) for p in additional_media_paths]]
+    media_adjustments = config.get("media_adjustments")
+    if media_adjustments is None:
+        media_adjustments = config.get("image_adjustments")
     request = GenerateMicroVideoRequest(
-        images=_parse_image_adjustments(config.get("image_adjustments"), image_paths),
+        media_items=_parse_media_items(media_adjustments, media_paths),
         text=config.get("narration_text", ""),
         output_dir=output_dir,
         language=config.get("target_lang", "es"),

@@ -192,23 +192,32 @@ class TextOverlay:
 
 
 @dataclass(slots=True)
-class MicroVideoImage:
-    """Una imagen del micro-video con el encuadre elegido por el usuario en
-    el editor (ver RM-30). `offset_x`/`offset_y` son fracciones 0-1 de
-    cuanto se desplaza la ventana de recorte (0 = borde superior/izquierdo
-    visible, 1 = borde inferior/derecho visible); `zoom` >= 1.0 acerca la
-    imagen antes de recortarla. Los defaults reproducen el comportamiento
-    previo a RM-30 (recorte centrado, sin zoom manual adicional).
-    `filter_preset` (ver RM-31) es un estilo de color preestablecido --
-    "none" (default), "sepia", "bw", "cool", "warm" o "dramatic"; sin
-    validacion estricta (mismo criterio que `caption_highlight_style`), un
-    valor no reconocido simplemente no aplica ningun filtro."""
+class MicroVideoMediaItem:
+    """Una imagen o clip de video del micro-video con el encuadre elegido
+    por el usuario en el editor (ver RM-30). `offset_x`/`offset_y` son
+    fracciones 0-1 de cuanto se desplaza la ventana de recorte (0 = borde
+    superior/izquierdo visible, 1 = borde inferior/derecho visible);
+    `zoom` >= 1.0 acerca la imagen/clip antes de recortarlo. Los defaults
+    reproducen el comportamiento previo a RM-30 (recorte centrado, sin
+    zoom manual adicional). `filter_preset` (ver RM-31) es un estilo de
+    color preestablecido -- "none" (default), "sepia", "bw", "cool",
+    "warm" o "dramatic"; sin validacion estricta (mismo criterio que
+    `caption_highlight_style`), un valor no reconocido simplemente no
+    aplica ningun filtro.
+
+    `clip_start`/`clip_end` (ver RM-36) solo tienen efecto cuando `path`
+    es un clip de video (extension en SUPPORTED_VIDEO_EXTENSIONS): son el
+    rango [clip_start, clip_end) del clip a usar en la linea de tiempo.
+    `clip_end=None` = hasta el final real del archivo. Se ignoran en un
+    item de imagen -- mismo criterio de tolerancia que `filter_preset`."""
 
     path: Path
     offset_x: float = 0.5
     offset_y: float = 0.5
     zoom: float = 1.0
     filter_preset: str = "none"
+    clip_start: float = 0.0
+    clip_end: float | None = None
 
 
 @dataclass(slots=True)
@@ -234,11 +243,15 @@ class GenerateMicroVideoRequest:
     vertical narrado con captions), entrada principal de
     ``GenerateMicroVideoUseCase``."""
 
-    # Al menos una imagen (validado en _validate_request). Si hay mas de una
-    # (ver RM-29), el video las recorre en orden, cada una con su propio
-    # efecto Ken Burns, repartiendo la duracion final del video en partes
-    # iguales entre todas.
-    images: list[MicroVideoImage]
+    # Al menos un item, imagen o clip de video (validado en
+    # _validate_request). Si hay mas de uno (ver RM-29, RM-36), el video
+    # los recorre en orden. Cada clip de video ocupa su propia duracion
+    # real (recortada por clip_start/clip_end si aplica) en la linea de
+    # tiempo; el tiempo restante se reparte en partes iguales solo entre
+    # las imagenes, cada una con su propio efecto Ken Burns. Si los clips
+    # solos ya cubren o superan la duracion pedida, el video se extiende
+    # (nunca se recorta un clip a la fuerza) -- ver GenerateMicroVideoUseCase.
+    media_items: list[MicroVideoMediaItem]
     text: str
     output_dir: Path
     language: str = "es"
