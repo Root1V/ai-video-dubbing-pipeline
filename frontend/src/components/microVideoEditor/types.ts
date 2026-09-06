@@ -1,1 +1,1 @@
-export type EditorTool = 'image' | 'text' | 'emoji' | 'narration' | 'voice' | 'music' | 'subtitles'
+export type EditorTool = 'media' | 'text' | 'emoji' | 'narration' | 'voice' | 'music' | 'subtitles'

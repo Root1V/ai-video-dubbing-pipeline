@@ -145,7 +145,7 @@ export function ProjectDetailPage() {
     : isTts
       ? ['text_to_speech', 'audio_concatenation']
       : isMicroVideo
-        ? ['text_to_speech', 'audio_concatenation', 'caption_writing', 'image_to_video', 'caption_burn']
+        ? ['text_to_speech', 'audio_concatenation', 'caption_writing', 'media_to_video', 'caption_burn']
         : getExpectedStageNames(project.output_mode, Boolean(project.config.diarize), hasSourceUrl)
   // Solo doblaje/subtitulos con output_mode distinto de "subtitles_only"
   // producen un video real -- subtitles_only nunca renderiza (solo .srt).

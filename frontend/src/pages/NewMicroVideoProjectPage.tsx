@@ -15,15 +15,16 @@ import { EditorTopBar } from '../components/microVideoEditor/EditorTopBar'
 import type { EditorTool } from '../components/microVideoEditor/types'
 import { Alert } from '../components/ui/Alert'
 import { getErrorMessage } from '../lib/errors'
+import { isVideoFile } from '../lib/mediaKind'
 import type {
   CaptionHighlightStyle,
   EmojiOverlay,
-  ImageAdjustment,
+  MediaAdjustment,
   TextOverlay,
   TtsVoiceOption,
 } from '../types/project'
 
-function makeImageAdjustment(): ImageAdjustment {
+function makeMediaAdjustment(): MediaAdjustment {
   return { offset_x: 0.5, offset_y: 0.5, zoom: 1.0, filter_preset: 'none' }
 }
 
@@ -60,9 +61,14 @@ export function NewMicroVideoProjectPage() {
   const [name, setName] = useState('')
   const [text, setText] = useState('')
   const [targetLang, setTargetLang] = useState('es')
-  const [imageFiles, setImageFiles] = useState<File[]>([])
-  const [imageAdjustments, setImageAdjustments] = useState<ImageAdjustment[]>([])
-  const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const [mediaFiles, setMediaFiles] = useState<File[]>([])
+  const [mediaAdjustments, setMediaAdjustments] = useState<MediaAdjustment[]>([])
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0)
+  // Duracion real de cada clip de video (ver RM-36), sondeada por el
+  // lienzo al cargar su metadata -- por REFERENCIA de archivo (no por
+  // indice, que cambia al reordenar/quitar items). Las imagenes nunca
+  // tienen entrada.
+  const [clipDurationsByFile, setClipDurationsByFile] = useState<Map<File, number>>(new Map())
   const [voiceOption, setVoiceOption] = useState<TtsVoiceOption>('public_female')
   const [voiceFile, setVoiceFile] = useState<File | null>(null)
   const [targetDuration, setTargetDuration] = useState<number | null>(null)
@@ -78,8 +84,8 @@ export function NewMicroVideoProjectPage() {
   const [emojiOverlays, setEmojiOverlays] = useState<EmojiOverlay[]>([])
   const [selectedEmojiOverlayId, setSelectedEmojiOverlayId] = useState<string | null>(null)
   const [emojiImageUrls, setEmojiImageUrls] = useState<Record<string, string>>({})
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [activeTool, setActiveTool] = useState<EditorTool>('image')
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null)
+  const [activeTool, setActiveTool] = useState<EditorTool>('media')
   const [narrationVolume, setNarrationVolume] = useState(1.0)
   const [musicVolume, setMusicVolume] = useState(0.12)
   const [captionX, setCaptionX] = useState(0.5)
@@ -95,18 +101,18 @@ export function NewMicroVideoProjectPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   useEffect(() => {
-    // El lienzo muestra la imagen ACTIVA (elegida en ImagePanel, ver RM-30)
+    // El lienzo muestra el item ACTIVO (elegido en MediaPanel, ver RM-30)
     // como referencia para posicionar overlays/subtitulos (que son
-    // globales, no por-imagen -- ver RM-29) y para ajustar su encuadre.
-    const activeImage = imageFiles[activeImageIndex]
-    if (!activeImage) {
-      setImageUrl(null)
+    // globales, no por-item -- ver RM-29) y para ajustar su encuadre.
+    const activeMedia = mediaFiles[activeMediaIndex]
+    if (!activeMedia) {
+      setMediaUrl(null)
       return
     }
-    const url = URL.createObjectURL(activeImage)
-    setImageUrl(url)
+    const url = URL.createObjectURL(activeMedia)
+    setMediaUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [imageFiles, activeImageIndex])
+  }, [mediaFiles, activeMediaIndex])
 
   useEffect(() => {
     setMusicStart(0)
@@ -162,8 +168,8 @@ export function NewMicroVideoProjectPage() {
       setError('Ingresa un nombre para el proyecto.')
       return
     }
-    if (imageFiles.length === 0) {
-      setError('Sube al menos una imagen para animar.')
+    if (mediaFiles.length === 0) {
+      setError('Sube al menos una imagen o un video.')
       return
     }
     if (!text.trim()) {
@@ -184,7 +190,7 @@ export function NewMicroVideoProjectPage() {
         {
           name: name.trim(),
           text: text.trim(),
-          imageFiles,
+          mediaFiles,
           target_lang: targetLang,
           voice_option: voiceOption,
           voiceFile: voiceFile ?? undefined,
@@ -200,7 +206,7 @@ export function NewMicroVideoProjectPage() {
           text_overlays: textOverlays,
           caption_x: captionX,
           caption_y: captionY,
-          image_adjustments: imageAdjustments,
+          media_adjustments: mediaAdjustments,
           emoji_overlays: emojiOverlays,
         },
         setUploadProgress,
@@ -213,7 +219,7 @@ export function NewMicroVideoProjectPage() {
     }
   }
 
-  const captionPreview: CaptionPreview | undefined = imageUrl
+  const captionPreview: CaptionPreview | undefined = mediaUrl
     ? {
         x: captionX,
         y: captionY,
@@ -246,9 +252,10 @@ export function NewMicroVideoProjectPage() {
         <EditorLeftToolbar activeTool={activeTool} onSelect={setActiveTool} />
 
         <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
-          {imageUrl ? (
+          {mediaUrl ? (
             <TextOverlayCanvas
-              imageUrl={imageUrl}
+              mediaUrl={mediaUrl}
+              mediaKind={mediaFiles[activeMediaIndex] && isVideoFile(mediaFiles[activeMediaIndex]) ? 'video' : 'image'}
               overlays={textOverlays}
               selectedId={selectedOverlayId}
               onSelect={(id) => {
@@ -263,12 +270,17 @@ export function NewMicroVideoProjectPage() {
                 setCaptionX(x)
                 setCaptionY(y)
               }}
-              imageAdjustment={imageAdjustments[activeImageIndex]}
-              onImagePan={(offsetX, offsetY) =>
-                setImageAdjustments((prev) =>
-                  prev.map((a, i) => (i === activeImageIndex ? { ...a, offset_x: offsetX, offset_y: offsetY } : a)),
+              mediaAdjustment={mediaAdjustments[activeMediaIndex]}
+              onMediaPan={(offsetX, offsetY) =>
+                setMediaAdjustments((prev) =>
+                  prev.map((a, i) => (i === activeMediaIndex ? { ...a, offset_x: offsetX, offset_y: offsetY } : a)),
                 )
               }
+              onMediaDurationLoaded={(duration) => {
+                const activeFile = mediaFiles[activeMediaIndex]
+                if (!activeFile) return
+                setClipDurationsByFile((prev) => new Map(prev).set(activeFile, duration))
+              }}
               emojiOverlays={emojiOverlays}
               emojiImageUrls={emojiImageUrls}
               selectedEmojiId={selectedEmojiOverlayId}
@@ -282,7 +294,7 @@ export function NewMicroVideoProjectPage() {
             />
           ) : (
             <p className="max-w-xs text-center text-sm text-muted-foreground">
-              Sube una imagen desde la herramienta "Imagen" (a la izquierda) para empezar a editar.
+              Sube una imagen o un video desde la herramienta "Media" (a la izquierda) para empezar a editar.
             </p>
           )}
         </div>
@@ -290,41 +302,49 @@ export function NewMicroVideoProjectPage() {
         <EditorRightPanel
           activeTool={activeTool}
           isSubmitting={isSubmitting}
-          imageFiles={imageFiles}
-          onImageFilesAdded={(files) => {
-            setImageFiles((prev) => [...prev, ...files])
-            setImageAdjustments((prev) => [...prev, ...files.map(() => makeImageAdjustment())])
+          mediaFiles={mediaFiles}
+          onMediaFilesAdded={(files) => {
+            setMediaFiles((prev) => [...prev, ...files])
+            setMediaAdjustments((prev) => [...prev, ...files.map(() => makeMediaAdjustment())])
           }}
-          onImageRemoveAt={(index) => {
-            setImageFiles((prev) => prev.filter((_, i) => i !== index))
-            setImageAdjustments((prev) => prev.filter((_, i) => i !== index))
-            setActiveImageIndex((prev) => {
+          onMediaRemoveAt={(index) => {
+            setMediaFiles((prev) => prev.filter((_, i) => i !== index))
+            setMediaAdjustments((prev) => prev.filter((_, i) => i !== index))
+            setActiveMediaIndex((prev) => {
               if (prev === index) return 0
               return prev > index ? prev - 1 : prev
             })
           }}
-          activeImageIndex={activeImageIndex}
-          onSelectActiveImage={setActiveImageIndex}
-          imageAdjustments={imageAdjustments}
-          onImageZoomChange={(zoom) =>
-            setImageAdjustments((prev) => prev.map((a, i) => (i === activeImageIndex ? { ...a, zoom } : a)))
+          activeMediaIndex={activeMediaIndex}
+          onSelectActiveMedia={setActiveMediaIndex}
+          mediaAdjustments={mediaAdjustments}
+          onMediaZoomChange={(zoom) =>
+            setMediaAdjustments((prev) => prev.map((a, i) => (i === activeMediaIndex ? { ...a, zoom } : a)))
           }
-          onImageFilterPresetChange={(filter_preset) =>
-            setImageAdjustments((prev) =>
-              prev.map((a, i) => (i === activeImageIndex ? { ...a, filter_preset } : a)),
+          onMediaFilterPresetChange={(filter_preset) =>
+            setMediaAdjustments((prev) =>
+              prev.map((a, i) => (i === activeMediaIndex ? { ...a, filter_preset } : a)),
             )
           }
-          onImageReorder={(from, to) => {
-            setImageFiles((prev) => moveItem(prev, from, to))
-            setImageAdjustments((prev) => moveItem(prev, from, to))
-            setActiveImageIndex((prev) => {
+          onMediaReorder={(from, to) => {
+            setMediaFiles((prev) => moveItem(prev, from, to))
+            setMediaAdjustments((prev) => moveItem(prev, from, to))
+            setActiveMediaIndex((prev) => {
               if (prev === from) return to
               if (from < prev && to >= prev) return prev - 1
               if (from > prev && to <= prev) return prev + 1
               return prev
             })
           }}
-          hasImage={Boolean(imageUrl)}
+          onMediaClipRangeChange={(start, end) =>
+            setMediaAdjustments((prev) =>
+              prev.map((a, i) => (i === activeMediaIndex ? { ...a, clip_start: start, clip_end: end } : a)),
+            )
+          }
+          activeClipDuration={
+            mediaFiles[activeMediaIndex] ? clipDurationsByFile.get(mediaFiles[activeMediaIndex]) ?? null : null
+          }
+          hasImage={Boolean(mediaUrl)}
           overlays={textOverlays}
           selectedOverlayId={selectedOverlayId}
           onAddOverlay={() => {

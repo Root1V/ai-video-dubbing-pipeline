@@ -1,4 +1,4 @@
-import { ImagePanel } from './panels/ImagePanel'
+import { MediaPanel } from './panels/MediaPanel'
 import { TextPanel } from './panels/TextPanel'
 import { EmojiPanel } from './panels/EmojiPanel'
 import { NarrationPanel } from './panels/NarrationPanel'
@@ -9,7 +9,7 @@ import type { EditorTool } from './types'
 import type {
   CaptionHighlightStyle,
   EmojiOverlay,
-  ImageAdjustment,
+  MediaAdjustment,
   TextOverlay,
   TtsVoiceOption,
 } from '../../types/project'
@@ -19,15 +19,17 @@ interface EditorRightPanelProps {
   activeTool: EditorTool
   isSubmitting: boolean
 
-  imageFiles: File[]
-  onImageFilesAdded: (files: File[]) => void
-  onImageRemoveAt: (index: number) => void
-  activeImageIndex: number
-  onSelectActiveImage: (index: number) => void
-  imageAdjustments: ImageAdjustment[]
-  onImageZoomChange: (zoom: number) => void
-  onImageFilterPresetChange: (preset: ImageAdjustment['filter_preset']) => void
-  onImageReorder: (fromIndex: number, toIndex: number) => void
+  mediaFiles: File[]
+  onMediaFilesAdded: (files: File[]) => void
+  onMediaRemoveAt: (index: number) => void
+  activeMediaIndex: number
+  onSelectActiveMedia: (index: number) => void
+  mediaAdjustments: MediaAdjustment[]
+  onMediaZoomChange: (zoom: number) => void
+  onMediaFilterPresetChange: (preset: MediaAdjustment['filter_preset']) => void
+  onMediaReorder: (fromIndex: number, toIndex: number) => void
+  onMediaClipRangeChange: (start: number, end: number) => void
+  activeClipDuration: number | null
 
   hasImage: boolean
   overlays: TextOverlay[]
@@ -68,7 +70,7 @@ interface EditorRightPanelProps {
 }
 
 const TOOL_TITLES: Record<EditorTool, string> = {
-  image: 'Imagen',
+  media: 'Imagen o video',
   text: 'Texto',
   emoji: 'Emoji',
   narration: 'Narración',
@@ -86,18 +88,20 @@ export function EditorRightPanel(props: EditorRightPanelProps) {
     <aside className="flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-card p-4">
       <h2 className="text-sm font-semibold text-muted-foreground">{TOOL_TITLES[props.activeTool]}</h2>
 
-      {props.activeTool === 'image' && (
-        <ImagePanel
-          imageFiles={props.imageFiles}
-          onFilesAdded={props.onImageFilesAdded}
-          onRemoveAt={props.onImageRemoveAt}
+      {props.activeTool === 'media' && (
+        <MediaPanel
+          mediaFiles={props.mediaFiles}
+          onFilesAdded={props.onMediaFilesAdded}
+          onRemoveAt={props.onMediaRemoveAt}
           isSubmitting={props.isSubmitting}
-          activeIndex={props.activeImageIndex}
-          onSelectActive={props.onSelectActiveImage}
-          imageAdjustments={props.imageAdjustments}
-          onZoomChange={props.onImageZoomChange}
-          onFilterPresetChange={props.onImageFilterPresetChange}
-          onReorder={props.onImageReorder}
+          activeIndex={props.activeMediaIndex}
+          onSelectActive={props.onSelectActiveMedia}
+          mediaAdjustments={props.mediaAdjustments}
+          onZoomChange={props.onMediaZoomChange}
+          onFilterPresetChange={props.onMediaFilterPresetChange}
+          onReorder={props.onMediaReorder}
+          onClipRangeChange={props.onMediaClipRangeChange}
+          activeClipDuration={props.activeClipDuration}
         />
       )}
 

@@ -44,7 +44,7 @@ export const STAGE_LABELS: Record<string, string> = {
   rendering_soft_subtitles: 'Adjuntando subtítulos',
   rendering_burn_subtitles: 'Incrustando subtítulos',
   caption_writing: 'Generación de captions',
-  image_to_video: 'Renderizado del video (Ken Burns)',
+  media_to_video: 'Renderizado del video (imágenes y clips)',
   caption_burn: 'Incrustando captions',
 }
 

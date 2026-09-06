@@ -4,7 +4,7 @@ import type {
   CaptionHighlightStyle,
   EmojiOverlay,
   FilterPreset,
-  ImageAdjustment,
+  MediaAdjustment,
   TextOverlay,
 } from '../../types/project'
 import { cn } from '../../lib/cn'
@@ -122,7 +122,10 @@ export interface CaptionPreview {
 }
 
 interface TextOverlayCanvasProps {
-  imageUrl: string
+  mediaUrl: string
+  /** 'video' cuando el item activo es un clip de video (ver RM-36) -- de lo
+   * contrario se renderiza como imagen (comportamiento previo). */
+  mediaKind?: 'image' | 'video'
   overlays: TextOverlay[]
   selectedId: string | null
   onSelect: (id: string) => void
@@ -133,11 +136,14 @@ interface TextOverlayCanvasProps {
    * mostrar nada (p.ej. sin narracion todavia). */
   captionPreview?: CaptionPreview
   onCaptionMove?: (x: number, y: number) => void
-  /** Encuadre (pan/zoom) de la imagen de fondo actualmente activa (ver
-   * RM-30) -- undefined = sin ajuste (recorte centrado, comportamiento
-   * previo). `onImagePan` habilita arrastrar la imagen para reposicionarla. */
-  imageAdjustment?: ImageAdjustment
-  onImagePan?: (offsetX: number, offsetY: number) => void
+  /** Encuadre (pan/zoom) del item de fondo actualmente activo (ver RM-30)
+   * -- undefined = sin ajuste (recorte centrado, comportamiento previo).
+   * `onMediaPan` habilita arrastrar el item para reposicionarlo. */
+  mediaAdjustment?: MediaAdjustment
+  onMediaPan?: (offsetX: number, offsetY: number) => void
+  /** Solo si mediaKind es 'video' (ver RM-36): duracion real del clip,
+   * sondeada al cargar su metadata -- usada por el panel de recorte. */
+  onMediaDurationLoaded?: (duration: number) => void
   /** Emojis superpuestos (ver RM-32) -- misma mecanica de drag que
    * TextOverlay. `emojiImageUrls` son las URLs ya resueltas (blob, via
    * fetchEmojiSampleUrl) por `emoji_id`, precargadas una sola vez para
@@ -157,15 +163,17 @@ interface TextOverlayCanvasProps {
  * RM-28 en docs/roadmap.md). `x`/`y` de cada overlay son fracciones 0-1 del
  * ancho/alto, asi que la posicion no depende del tamano en pantalla. */
 export function TextOverlayCanvas({
-  imageUrl,
+  mediaUrl,
+  mediaKind = 'image',
   overlays,
   selectedId,
   onSelect,
   onMove,
   captionPreview,
   onCaptionMove,
-  imageAdjustment,
-  onImagePan,
+  mediaAdjustment,
+  onMediaPan,
+  onMediaDurationLoaded,
   emojiOverlays,
   emojiImageUrls,
   selectedEmojiId,
@@ -174,22 +182,30 @@ export function TextOverlayCanvas({
 }: TextOverlayCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     setNaturalSize(null)
-    // Si la imagen (un blob: URL, sin red de por medio) ya esta decodificada
-    // para cuando este efecto corre, el evento `load` nativo puede haberse
-    // disparado antes de que React llegue a atar el handler `onLoad` de mas
-    // abajo -- sin este chequeo, `naturalSize` queda en null para siempre en
-    // ese caso. Confirmado en Safari: hace que el zoom/pan no tengan ningun
-    // efecto, porque `backgroundImageStyle` cae al fallback que los ignora
+    // Si el elemento (un blob: URL, sin red de por medio) ya esta decodificado
+    // para cuando este efecto corre, el evento `load`/`loadedmetadata` nativo
+    // puede haberse disparado antes de que React llegue a atar el handler de
+    // mas abajo -- sin este chequeo, `naturalSize` queda en null para siempre
+    // en ese caso. Confirmado en Safari: hace que el zoom/pan no tengan ningun
+    // efecto, porque `backgroundMediaStyle` cae al fallback que los ignora
     // (ver mas abajo) cuando `naturalSize` es null.
+    if (mediaKind === 'video') {
+      const video = videoRef.current
+      if (video && video.readyState >= 1 && video.videoWidth > 0) {
+        setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
+      }
+      return
+    }
     const img = imgRef.current
     if (img && img.complete && img.naturalWidth > 0) {
       setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
     }
-  }, [imageUrl])
+  }, [mediaUrl, mediaKind])
 
   // Mouse events (no Pointer Events / setPointerCapture) a proposito: Safari
   // tiene un bug conocido y de larga data donde, tras `setPointerCapture`,
@@ -232,24 +248,24 @@ export function TextOverlayCanvas({
   // imagen, igual que un editor de recorte de foto estandar.
   // Mouse events, mismo motivo que handlePointerDown de arriba (bug de
   // Safari con setPointerCapture).
-  function handleImagePointerDown(event: ReactMouseEvent<HTMLImageElement>) {
-    const pan = onImagePan
-    if (!pan || !imageAdjustment) return
+  function handleMediaPointerDown(event: ReactMouseEvent<HTMLElement>) {
+    const pan = onMediaPan
+    if (!pan || !mediaAdjustment) return
     event.preventDefault()
     const container = containerRef.current
     if (!container) return
     let lastX = event.clientX
     let lastY = event.clientY
-    let offsetX = imageAdjustment.offset_x
-    let offsetY = imageAdjustment.offset_y
-    // El sobrante (cuanto mas grande es la imagen ya escalada que el marco)
-    // se calcula UNA vez al empezar a arrastrar -- no cambia durante el
-    // gesto (zoom no cambia mientras se arrastra). Dividir por el sobrante
-    // en PIXELES (no por el ancho del contenedor) es lo que hace que el
-    // arrastre siga al cursor 1 a 1 -- si un eje no tiene sobrante (p.ej.
-    // recien al hacer zoom aparece sobrante vertical que antes era cero),
-    // antes se quedaba trabado sin poder moverse en ese eje.
-    const { excessX, excessY } = computeExcess(naturalSize, imageAdjustment.zoom)
+    let offsetX = mediaAdjustment.offset_x
+    let offsetY = mediaAdjustment.offset_y
+    // El sobrante (cuanto mas grande es la imagen/clip ya escalado que el
+    // marco) se calcula UNA vez al empezar a arrastrar -- no cambia durante
+    // el gesto (zoom no cambia mientras se arrastra). Dividir por el
+    // sobrante en PIXELES (no por el ancho del contenedor) es lo que hace
+    // que el arrastre siga al cursor 1 a 1 -- si un eje no tiene sobrante
+    // (p.ej. recien al hacer zoom aparece sobrante vertical que antes era
+    // cero), antes se quedaba trabado sin poder moverse en ese eje.
+    const { excessX, excessY } = computeExcess(naturalSize, mediaAdjustment.zoom)
 
     function handleMouseMove(moveEvent: MouseEvent) {
       if (!container) return
@@ -279,9 +295,9 @@ export function TextOverlayCanvas({
   // sobrante real a cada eje al hacer zoom (ver `computeExcess`), asi que
   // el arrastre funciona en cualquier direccion una vez zoomeado, no solo
   // en el eje que ya tenia sobrante por la relacion de aspecto original.
-  function backgroundImageStyle(): CSSProperties | undefined {
-    if (!imageAdjustment) return undefined
-    const { offset_x: offsetX, offset_y: offsetY, zoom, filter_preset: filterPreset } = imageAdjustment
+  function backgroundMediaStyle(): CSSProperties | undefined {
+    if (!mediaAdjustment) return undefined
+    const { offset_x: offsetX, offset_y: offsetY, zoom, filter_preset: filterPreset } = mediaAdjustment
     if (!naturalSize) {
       // Mientras se carga la imagen y no conocemos su tamano natural: misma
       // aproximacion simple de antes, para no saltar visualmente apenas carga.
@@ -314,33 +330,59 @@ export function TextOverlayCanvas({
       className="relative mx-auto h-full max-h-full max-w-full select-none overflow-hidden rounded-2xl border border-border bg-secondary/30 shadow-lg"
       style={{ aspectRatio: '9 / 16', containerType: 'inline-size' }}
     >
-      <img
-        ref={imgRef}
-        src={imageUrl}
-        alt=""
-        // `draggable={false}` (el atributo HTML) no alcanza en Safari: sigue
-        // iniciando su propio gesto nativo de "arrastrar la imagen como
-        // archivo" en vez de dispararnos mousedown/mousemove normales, salvo
-        // que ademas se le apague `-webkit-user-drag` por CSS.
-        // `cursor-grab`, no `cursor-move`: macOS no tiene un glyph nativo
-        // para el cursor "move" y Safari cae al de flecha normal en vez de
-        // dibujar algo generico -- "grab" (mano abierta) si tiene glyph
-        // propio en macOS y se ve bien en los tres navegadores.
-        className={cn(
-          'h-full w-full object-cover [-webkit-user-drag:none]',
-          onImagePan && 'cursor-grab active:cursor-grabbing',
-        )}
-        draggable={false}
-        onMouseDown={onImagePan ? handleImagePointerDown : undefined}
-        onLoad={(event) =>
-          setNaturalSize({
-            width: event.currentTarget.naturalWidth,
-            height: event.currentTarget.naturalHeight,
-          })
-        }
-        style={backgroundImageStyle()}
-      />
-      {imageAdjustment?.filter_preset === 'dramatic' && (
+      {mediaKind === 'video' ? (
+        <video
+          ref={videoRef}
+          src={mediaUrl}
+          muted
+          loop
+          autoPlay
+          playsInline
+          // Mismo criterio que el `<img>` de abajo: `cursor-grab`, no
+          // `cursor-move` (sin glyph nativo en macOS); mousedown en mouse
+          // events puros (bug de Safari con setPointerCapture, ver arriba).
+          className={cn(
+            'h-full w-full object-cover',
+            onMediaPan && 'cursor-grab active:cursor-grabbing',
+          )}
+          draggable={false}
+          onMouseDown={onMediaPan ? handleMediaPointerDown : undefined}
+          onLoadedMetadata={(event) => {
+            const video = event.currentTarget
+            setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
+            onMediaDurationLoaded?.(video.duration)
+          }}
+          style={backgroundMediaStyle()}
+        />
+      ) : (
+        <img
+          ref={imgRef}
+          src={mediaUrl}
+          alt=""
+          // `draggable={false}` (el atributo HTML) no alcanza en Safari: sigue
+          // iniciando su propio gesto nativo de "arrastrar la imagen como
+          // archivo" en vez de dispararnos mousedown/mousemove normales, salvo
+          // que ademas se le apague `-webkit-user-drag` por CSS.
+          // `cursor-grab`, no `cursor-move`: macOS no tiene un glyph nativo
+          // para el cursor "move" y Safari cae al de flecha normal en vez de
+          // dibujar algo generico -- "grab" (mano abierta) si tiene glyph
+          // propio en macOS y se ve bien en los tres navegadores.
+          className={cn(
+            'h-full w-full object-cover [-webkit-user-drag:none]',
+            onMediaPan && 'cursor-grab active:cursor-grabbing',
+          )}
+          draggable={false}
+          onMouseDown={onMediaPan ? handleMediaPointerDown : undefined}
+          onLoad={(event) =>
+            setNaturalSize({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            })
+          }
+          style={backgroundMediaStyle()}
+        />
+      )}
+      {mediaAdjustment?.filter_preset === 'dramatic' && (
         <div
           className="pointer-events-none absolute inset-0"
           style={{ background: 'radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 100%)' }}

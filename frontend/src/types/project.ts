@@ -163,9 +163,10 @@ export interface CreateTtsProjectInput {
 export interface CreateMicroVideoProjectInput {
   name: string
   text: string
-  /** Al menos una imagen -- si hay varias, el video las recorre en orden,
-   * cada una con su propio efecto Ken Burns (ver RM-29). */
-  imageFiles: File[]
+  /** Al menos un item, imagen o clip de video -- si hay varios, el video los
+   * recorre en orden (ver RM-29, RM-36). Cada clip ocupa su propia duracion
+   * real (recortada); las imagenes se reparten el tiempo restante. */
+  mediaFiles: File[]
   /** Idioma en el que se narra el texto. */
   target_lang?: string
   /** "public_female" (voz de locutora, por defecto) / "public_male" (voz de
@@ -202,9 +203,10 @@ export interface CreateMicroVideoProjectInput {
    * igual que un overlay de texto. */
   caption_x?: number
   caption_y?: number
-  /** Encuadre (pan/zoom) elegido por el usuario para cada imagen, paralelo a
-   * `imageFiles` -- mismo orden, mismo índice (ver RM-30). */
-  image_adjustments?: ImageAdjustment[]
+  /** Encuadre (pan/zoom) elegido por el usuario para cada item, paralelo a
+   * `mediaFiles` -- mismo orden, mismo índice (ver RM-30). En un item de
+   * video puede incluir además `clip_start`/`clip_end` (ver RM-36). */
+  media_adjustments?: MediaAdjustment[]
   /** Emojis superpuestos posicionables en el editor (ver RM-32). */
   emoji_overlays?: EmojiOverlay[]
 }
@@ -259,18 +261,24 @@ export interface EmojiOverlay {
   fade: boolean
 }
 
-/** Encuadre (pan/zoom) de una imagen del micro-video, elegido a mano por el
- * usuario en el editor (ver RM-30). `offset_x`/`offset_y` son fracciones
- * 0-1 de cuánto se desplaza la ventana de recorte (0 = borde
- * superior/izquierdo visible, 1 = borde inferior/derecho visible); `zoom`
- * >= 1.0 acerca la imagen antes de recortarla. Defaults (0.5, 0.5, 1.0)
- * reproducen el recorte centrado sin zoom manual (comportamiento previo). */
-export interface ImageAdjustment {
+/** Encuadre (pan/zoom) de una imagen o clip de video del micro-video,
+ * elegido a mano por el usuario en el editor (ver RM-30). `offset_x`/
+ * `offset_y` son fracciones 0-1 de cuánto se desplaza la ventana de recorte
+ * (0 = borde superior/izquierdo visible, 1 = borde inferior/derecho
+ * visible); `zoom` >= 1.0 acerca la imagen/clip antes de recortarlo.
+ * Defaults (0.5, 0.5, 1.0) reproducen el recorte centrado sin zoom manual
+ * (comportamiento previo). */
+export interface MediaAdjustment {
   offset_x: number
   offset_y: number
   zoom: number
-  /** Estilo de color preestablecido (ver RM-31) -- 'none' = imagen original. */
+  /** Estilo de color preestablecido (ver RM-31) -- 'none' = imagen/clip original. */
   filter_preset: FilterPreset
+  /** Solo para items de VIDEO (ver RM-36): rango [clip_start, clip_end) del
+   * clip a usar en la línea de tiempo. `clip_end` undefined = hasta el final
+   * real del clip. Ignorados en un item de imagen. */
+  clip_start?: number
+  clip_end?: number
 }
 
 /** Estilos de color preestablecidos para imágenes del micro-video (ver

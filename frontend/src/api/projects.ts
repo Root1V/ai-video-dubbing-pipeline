@@ -223,10 +223,11 @@ export async function createMicroVideoProject(
   // Sin significado para micro-video (no hay traduccion/doblaje) -- solo
   // satisface la columna NOT NULL, mismo patron que TTS/transcripcion.
   formData.set('output_mode', 'subtitles_only')
-  // `file` es la imagen (obligatoria) -- a diferencia de TTS, aca no es una
-  // voz de referencia opcional.
-  formData.set('file', input.imageFiles[0])
-  input.imageFiles.slice(1).forEach((f) => formData.append('additional_images', f))
+  // `file` es la imagen o el clip de video (obligatorio, ver RM-36) -- a
+  // diferencia de TTS, aca no es una voz de referencia opcional. El orden
+  // de `additional_media` ES el orden de la linea de tiempo.
+  formData.set('file', input.mediaFiles[0])
+  input.mediaFiles.slice(1).forEach((f) => formData.append('additional_media', f))
   formData.set('text', input.text)
   formData.set('target_lang', input.target_lang ?? 'es')
   formData.set('voice_option', input.voice_option)
@@ -279,15 +280,19 @@ export async function createMicroVideoProject(
       ),
     )
   }
-  if (input.image_adjustments && input.image_adjustments.length > 0) {
+  if (input.media_adjustments && input.media_adjustments.length > 0) {
     formData.set(
-      'image_adjustments',
+      'media_adjustments',
       JSON.stringify(
-        input.image_adjustments.map((adjustment) => ({
+        input.media_adjustments.map((adjustment) => ({
           offset_x: adjustment.offset_x,
           offset_y: adjustment.offset_y,
           zoom: adjustment.zoom,
           filter_preset: adjustment.filter_preset,
+          // Solo en clips de video (ver RM-36) -- en un proyecto de puras
+          // imagenes el payload queda identico al de antes.
+          ...(adjustment.clip_start != null ? { clip_start: adjustment.clip_start } : {}),
+          ...(adjustment.clip_end != null ? { clip_end: adjustment.clip_end } : {}),
         })),
       ),
     )

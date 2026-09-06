@@ -4,7 +4,7 @@ import { cn } from '../../lib/cn'
 import type { EditorTool } from './types'
 
 const TOOLS: { id: EditorTool; label: string; icon: LucideIcon }[] = [
-  { id: 'image', label: 'Imagen', icon: ImageIcon },
+  { id: 'media', label: 'Media', icon: ImageIcon },
   { id: 'text', label: 'Texto', icon: Type },
   { id: 'emoji', label: 'Emoji', icon: Smile },
   { id: 'narration', label: 'Narración', icon: Mic },
