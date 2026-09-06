@@ -1,4 +1,4 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type {
   CaptionHighlightStyle,
@@ -176,17 +176,23 @@ export function TextOverlayCanvas({
     setNaturalSize(null)
   }, [imageUrl])
 
+  // Mouse events (no Pointer Events / setPointerCapture) a proposito: Safari
+  // tiene un bug conocido y de larga data donde, tras `setPointerCapture`,
+  // `pointermove`/`pointerup` dejan de dispararse en cuanto el cursor sale
+  // del elemento capturado -- incluso con los listeners puestos en `window`
+  // (ver https://github.com/w3c/pointerevents/issues/407) -- lo que rompia
+  // por completo arrastrar overlays/imagen en Safari. Mouse events puros no
+  // tienen ese problema y son mas que suficientes: esta interaccion es de
+  // escritorio (mouse), no necesita soporte multi-touch.
   function handlePointerDown(
-    event: ReactPointerEvent<HTMLElement>,
+    event: ReactMouseEvent<HTMLElement>,
     onDrag: (x: number, y: number) => void,
   ) {
     event.preventDefault()
     const container = containerRef.current
     if (!container) return
-    const target = event.currentTarget
-    target.setPointerCapture(event.pointerId)
 
-    function handlePointerMove(moveEvent: PointerEvent) {
+    function handleMouseMove(moveEvent: MouseEvent) {
       if (!container) return
       const rect = container.getBoundingClientRect()
       const x = Math.min(1, Math.max(0, (moveEvent.clientX - rect.left) / rect.width))
@@ -194,13 +200,13 @@ export function TextOverlayCanvas({
       onDrag(x, y)
     }
 
-    function handlePointerUp() {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
+    function handleMouseUp() {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
     }
 
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
   }
 
   // A diferencia de handlePointerDown (mapea la posicion ABSOLUTA del
@@ -209,14 +215,14 @@ export function TextOverlayCanvas({
   // cursor. Se acumula el DELTA de movimiento y se resta del offset actual
   // -- arrastrar hacia la derecha revela mas del lado izquierdo de la
   // imagen, igual que un editor de recorte de foto estandar.
-  function handleImagePointerDown(event: ReactPointerEvent<HTMLImageElement>) {
+  // Mouse events, mismo motivo que handlePointerDown de arriba (bug de
+  // Safari con setPointerCapture).
+  function handleImagePointerDown(event: ReactMouseEvent<HTMLImageElement>) {
     const pan = onImagePan
     if (!pan || !imageAdjustment) return
     event.preventDefault()
     const container = containerRef.current
     if (!container) return
-    const target = event.currentTarget
-    target.setPointerCapture(event.pointerId)
     let lastX = event.clientX
     let lastY = event.clientY
     let offsetX = imageAdjustment.offset_x
@@ -230,7 +236,7 @@ export function TextOverlayCanvas({
     // antes se quedaba trabado sin poder moverse en ese eje.
     const { excessX, excessY } = computeExcess(naturalSize, imageAdjustment.zoom)
 
-    function handlePointerMove(moveEvent: PointerEvent) {
+    function handleMouseMove(moveEvent: MouseEvent) {
       if (!container) return
       const rect = container.getBoundingClientRect()
       const dx = moveEvent.clientX - lastX
@@ -242,13 +248,13 @@ export function TextOverlayCanvas({
       pan?.(offsetX, offsetY)
     }
 
-    function handlePointerUp() {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
+    function handleMouseUp() {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
     }
 
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
   }
 
   // Reproduce a mano el mismo orden de operaciones que
@@ -298,7 +304,7 @@ export function TextOverlayCanvas({
         alt=""
         className={cn('h-full w-full object-cover', onImagePan && 'cursor-move')}
         draggable={false}
-        onPointerDown={onImagePan ? handleImagePointerDown : undefined}
+        onMouseDown={onImagePan ? handleImagePointerDown : undefined}
         onLoad={(event) =>
           setNaturalSize({
             width: event.currentTarget.naturalWidth,
@@ -316,7 +322,7 @@ export function TextOverlayCanvas({
       {overlays.map((overlay) => (
         <div
           key={overlay.id}
-          onPointerDown={(event) => {
+          onMouseDown={(event) => {
             onSelect(overlay.id)
             handlePointerDown(event, (x, y) => onMove(overlay.id, x, y))
           }}
@@ -347,7 +353,7 @@ export function TextOverlayCanvas({
             src={src}
             alt=""
             draggable={false}
-            onPointerDown={(event) => {
+            onMouseDown={(event) => {
               onSelectEmoji?.(overlay.id)
               handlePointerDown(event, (x, y) => onMoveEmoji?.(overlay.id, x, y))
             }}
@@ -365,7 +371,7 @@ export function TextOverlayCanvas({
       })}
       {captionPreview && (
         <div
-          onPointerDown={(event) => handlePointerDown(event, (x, y) => onCaptionMove?.(x, y))}
+          onMouseDown={(event) => handlePointerDown(event, (x, y) => onCaptionMove?.(x, y))}
           className="absolute max-w-[85%] -translate-x-1/2 -translate-y-1/2 cursor-move whitespace-pre-wrap rounded px-2 py-1 text-center text-sm font-semibold"
           style={{
             left: `${captionPreview.x * 100}%`,
