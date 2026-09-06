@@ -136,6 +136,11 @@ Commits: `725121b`, `05c9724`, `37c8c21`
 **Why:** pedido explícito del usuario -- un servicio de audio orientado a episodios largos (guion/conversación), no solo la síntesis de un texto suelto que ya cubre RM-02.
 **Scope:** nuevo servicio (paralelo a `tts`/`micro_video`) que convierte un guion largo en un episodio de audio narrado, reusando la selección de voz ya existente (pública o clonación propia, ver RM-02/`SpeechSynthesizer`) -- no se reinventa la síntesis ni la clonación, solo se les da un formato de entrada/salida pensado para podcasts. Sin definir todavía: si el guion admite múltiples voces/hablantes en un mismo episodio (conversación) o es de un solo narrador -- a resolver en el plan de implementación.
 
+## RM-35 — Logo e icono de marca definitivos
+**Why:** el ícono usado hasta ahora en el sidebar, el login y el favicon era un genérico ("sparkle" de lucide-react dentro de un cuadrado violeta), no el logo real de la marca.
+**Scope:** logo (PNG con transparencia, provisto por el usuario) reemplaza el ícono de `Sidebar.tsx` y `LoginPage.tsx` -- sin el cuadrado de fondo violeta que tenía el sparkle, porque el logo ya trae su propio color (degradado violeta-celeste). Dos copias del archivo original en `frontend/public/` (nunca se toca/mueve el original del usuario): `logo.png` (512px, para la UI) y `favicon.png` (128px, para la pestaña del navegador) -- se elimina el `favicon.svg` por defecto de Vite que quedó sin uso.
+Commit: `(pendiente)`
+
 ## RM-15 — Gestión de usuarios
 **Why:** antes los usuarios solo se creaban por script (`create_admin.py`); no había forma de verlos, crearlos, cambiar su rol o desactivarlos desde la UI.
 **Scope:** sección "Administración" en el menú (solo admin): listado, botón "Agregar usuario" (nombre/email/password/rol), cambio de rol y activar/desactivar inline. `GET/POST/PATCH /api/users`, todos protegidos con `require_admin`. Un admin no puede quitarse su propio rol ni desactivarse a sí mismo (bloqueado en backend y reflejado en la UI). Sigue sin auto-registro ni invitaciones por email — crear una cuenta requiere acceso admin, por diseño.

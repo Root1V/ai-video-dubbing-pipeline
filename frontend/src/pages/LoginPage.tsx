@@ -2,7 +2,6 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { Sparkles } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -45,9 +44,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
-          </div>
+          <img src="/logo.png" alt="" className="mb-2 h-12 w-12 object-contain" />
           <CardTitle>Prosodia</CardTitle>
           <p className="text-sm text-muted-foreground">
             Inicia sesión para administrar tus proyectos

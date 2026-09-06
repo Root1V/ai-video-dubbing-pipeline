@@ -7,7 +7,6 @@ import {
   FolderOpen,
   LayoutGrid,
   Music,
-  Sparkles,
   Users,
   Volume2,
 } from 'lucide-react'
@@ -75,9 +74,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-4 py-6 text-sidebar-foreground">
       <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <Sparkles className="h-4 w-4" />
-        </div>
+        <img src="/logo.png" alt="" className="h-8 w-8 object-contain" />
         <span className="text-lg font-semibold">Prosodia</span>
       </div>
 
