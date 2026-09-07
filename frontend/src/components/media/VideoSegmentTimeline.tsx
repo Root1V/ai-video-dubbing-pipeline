@@ -103,24 +103,28 @@ export function VideoSegmentTimeline({
     setFuture([])
   }
 
+  // `onChange` (que dispara un setState del componente PADRE) se llama
+  // aca afuera de cualquier actualizador funcional de setState -- llamarlo
+  // DENTRO de uno (como se hacia antes) actualiza un componente distinto
+  // mientras React todavia esta resolviendo el render de este, lo cual
+  // React marca como invalido (advertencia real, confirmada en la
+  // practica). undo/redo se disparan desde un evento discreto (click o
+  // atajo de teclado), no en cada paso de un drag, asi que leer `past`/
+  // `future` directo del closure (sin forma funcional) es seguro aca.
   function undo() {
-    setPast((p) => {
-      if (p.length === 0) return p
-      const previous = p[p.length - 1]
-      setFuture((f) => [keepRanges, ...f])
-      onChange(previous)
-      return p.slice(0, -1)
-    })
+    if (past.length === 0) return
+    const previous = past[past.length - 1]
+    setPast(past.slice(0, -1))
+    setFuture([keepRanges, ...future])
+    onChange(previous)
   }
 
   function redo() {
-    setFuture((f) => {
-      if (f.length === 0) return f
-      const next = f[0]
-      setPast((p) => [...p, keepRanges])
-      onChange(next)
-      return f.slice(1)
-    })
+    if (future.length === 0) return
+    const next = future[0]
+    setFuture(future.slice(1))
+    setPast([...past, keepRanges])
+    onChange(next)
   }
 
   function commitDelete() {
