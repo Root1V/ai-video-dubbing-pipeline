@@ -78,9 +78,11 @@ function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
  *   sin poder cruzar a sus vecinos -- arrastrarlo hasta tocar el tramo de
  *   al lado "une" las dos partes que un corte hubiera separado.
  * - Modo CORTE (activado con el boton de tijera, cursor de cruz): arrastrar
- *   DENTRO de un tramo marca una seleccion pendiente (contorno punteado)
- *   -- el boton de tacho (o las teclas Delete/Backspace) la convierte en
- *   un corte real, partiendo el tramo, y el modo vuelve solo al estandar.
+ *   DENTRO de un tramo marca una seleccion pendiente (contorno punteado),
+ *   moviendo el preview EN VIVO al punto hasta el cual se va extendiendo
+ *   (para ver que contenido se va a perder, no elegirlo a ciegas) -- el
+ *   boton de tacho (o las teclas Delete/Backspace) la convierte en un
+ *   corte real, partiendo el tramo, y el modo vuelve solo al estandar.
  * - Arrastrar el borde IZQUIERDO del primer tramo o el DERECHO del
  *   ultimo (en cualquier modo): resize del rango exterior (equivalente al
  *   recorte de inicio/fin de RM-36).
@@ -243,16 +245,29 @@ export function VideoSegmentTimeline({
   }
 
   // Modo CORTE: arrastrar dentro de un tramo marca una seleccion pendiente
-  // a eliminar (ver commitDelete).
+  // a eliminar (ver commitDelete). Ademas, mueve el preview al punto HASTA
+  // el cual se esta extendiendo la seleccion (mejora pedida tras probar
+  // RM-40: sin esto, se elegia el tramo a borrar "a ciegas", sin ver que
+  // contenido se iba a perder). Se throttlea a ~20 saltos/seg -- onSeek
+  // dispara un setState en la pagina que re-renderiza el lienzo entero,
+  // y mousemove nativo llega mucho mas seguido que eso durante un arrastre
+  // rapido.
   function handleRangeBodySelect(event: ReactMouseEvent, range: [number, number]) {
     if (disabled) return
     event.preventDefault()
     const [rangeStart, rangeEnd] = range
     const anchor = clamp(fractionAt(event.clientX) * duration, rangeStart, rangeEnd)
     setPendingSelection([anchor, anchor])
+    onSeek(anchor)
+    let lastSeekAt = 0
     startDrag((fraction) => {
       const current = clamp(fraction * duration, rangeStart, rangeEnd)
       setPendingSelection([Math.min(anchor, current), Math.max(anchor, current)])
+      const now = performance.now()
+      if (now - lastSeekAt > 50) {
+        lastSeekAt = now
+        onSeek(current)
+      }
     })
   }
 
