@@ -43,4 +43,4 @@
 | RM-37 | Publicar el short video en redes sociales | todo | Publicar el video generado en TikTok, YouTube, Instagram y Facebook, una por una o todas a la vez. |
 | RM-38 | Generación: banco de imágenes/audios/videos a demanda | todo | Nueva sección para generar material con IA de antemano y reusarlo luego en Micro-Video. |
 | RM-39 | Generación agéntica de short videos | todo | Un agente arma el short video de punta a punta a partir de un objetivo, usando las herramientas ya existentes. |
-| RM-40 | Cortar y eliminar segmentos del video | todo | Quitar varios tramos sueltos de la duración de un clip (inicio, medio, fin) y no solo un único rango, con deshacer tipo Cmd+Z. |
+| RM-40 | Cortar y eliminar segmentos del video | done | Quitar varios tramos sueltos de la duración de un clip (inicio, medio, fin) y no solo un único rango, con deshacer tipo Cmd+Z. |
