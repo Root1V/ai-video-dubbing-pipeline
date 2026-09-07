@@ -7,8 +7,8 @@ import { formatClockTime } from '../../lib/format'
 
 const MIN_SPAN_SECONDS = 0.2
 // Dos tramos que quedan a esta distancia o menos se consideran "unidos" (ver
-// mergeAdjacentRanges) -- evita que arrastrar uno hasta tocar al otro deje
-// un hueco microscopico por errores de redondeo del arrastre.
+// mergeAdjacentRanges) -- evita que estirar un borde hasta tocar al vecino
+// deje un hueco microscopico por errores de redondeo del arrastre.
 const MERGE_EPSILON_SECONDS = 0.05
 
 interface VideoSegmentTimelineProps {
@@ -49,12 +49,12 @@ function subtractRange(ranges: [number, number][], cut: [number, number]): [numb
   return result
 }
 
-/** Fusiona tramos que quedaron tocandose o superpuestos (ver mejora pedida
- * tras probar RM-40: arrastrar un tramo en modo "mano" hasta juntarlo con
- * su vecino "cierra" el hueco que habia quedado entre medio) -- sin esto,
- * dos tramos exactamente contiguos quedarian separados innecesariamente en
- * el modelo de datos (y del lado del backend, como dos sub-segmentos a
- * concatenar en vez de uno solo). */
+/** Fusiona tramos que quedaron tocandose o superpuestos -- al estirar el
+ * borde de un tramo hacia un hueco hasta tocar al vecino, las dos entradas
+ * pasan a ser, en los hechos, un unico tramo continuo (mismo contenido
+ * fuente que si nunca se hubiera cortado ahi) -- sin esto quedarian dos
+ * entradas separadas innecesariamente en el modelo de datos (y del lado
+ * del backend, como dos sub-segmentos a concatenar en vez de uno solo). */
 function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
   const sorted = [...ranges].sort((a, b) => a[0] - b[0])
   const merged: [number, number][] = []
@@ -78,19 +78,20 @@ function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
  * GenerateMicroVideoUseCase, render_clip_video es mudo).
  *
  * Interacciones (mejoradas tras probar la v1 de RM-40):
- * - Modo ESTANDAR (por defecto, cursor de mano): arrastrar DENTRO de un
- *   tramo lo MUEVE a lo largo del clip (que parte de la fuente usa),
- *   sin poder cruzar a sus vecinos -- arrastrarlo hasta tocar el tramo de
- *   al lado "une" las dos partes que un corte hubiera separado.
+ * - Modo ESTANDAR (por defecto): arrastrar CUALQUIER borde de CUALQUIER
+ *   tramo (no solo los exteriores) estira o encoge ese tramo hacia el
+ *   hueco vecino -- clamp para que no pueda cruzar al tramo de al lado.
+ *   Estirarlo hasta tocar al vecino "cierra" el hueco (fusion, ver
+ *   mergeAdjacentRanges) SIN cambiar que contenido de la fuente muestra
+ *   cada tramo -- a diferencia de "mover" el tramo entero (probado y
+ *   descartado: cambiaba que parte de la fuente se ve, haciendo
+ *   reaparecer contenido que el usuario ya habia cortado).
  * - Modo CORTE (activado con el boton de tijera, cursor de cruz): arrastrar
  *   DENTRO de un tramo marca una seleccion pendiente (contorno punteado),
  *   moviendo el preview EN VIVO al punto hasta el cual se va extendiendo
  *   (para ver que contenido se va a perder, no elegirlo a ciegas) -- el
  *   boton de tacho (o las teclas Delete/Backspace) la convierte en un
  *   corte real, partiendo el tramo, y el modo vuelve solo al estandar.
- * - Arrastrar el borde IZQUIERDO del primer tramo o el DERECHO del
- *   ultimo (en cualquier modo): resize del rango exterior (equivalente al
- *   recorte de inicio/fin de RM-36).
  * - Doble clic en cualquier punto de la franja: salta el preview a ese
  *   punto exacto (pausado, para inspeccionar el frame) -- funciona sobre
  *   un tramo conservado o sobre un hueco ya eliminado por igual.
@@ -101,12 +102,9 @@ function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
  * - Un indicador movil (`currentTime`) marca en todo momento donde va la
  *   reproduccion del preview dentro de la duracion total del clip.
  *
- * En esta v1 los bordes INTERIORES (entre un tramo conservado y un hueco)
- * no son arrastrables por separado -- se ajustan moviendo el tramo entero
- * en modo estandar. Mouse events puros (no Pointer Events/
- * setPointerCapture): mismo criterio que TextOverlayCanvas, evita un bug
- * de larga data en Safari que rompe pointermove/pointerup tras capturar
- * el puntero. */
+ * Mouse events puros (no Pointer Events/setPointerCapture): mismo criterio
+ * que TextOverlayCanvas, evita un bug de larga data en Safari que rompe
+ * pointermove/pointerup tras capturar el puntero. */
 export function VideoSegmentTimeline({
   duration,
   keepRanges,
@@ -142,8 +140,8 @@ export function VideoSegmentTimeline({
 
   // Un unico punto de entrada al historial -- SIEMPRE se llama con el
   // estado ANTES del cambio (una vez por gesto: al empezar un arrastre de
-  // borde/tramo, o al confirmar un borrado), nunca en cada paso intermedio
-  // de un drag, para que deshacer un arrastre lo deshaga entero de una.
+  // borde, o al confirmar un borrado), nunca en cada paso intermedio de un
+  // drag, para que deshacer un arrastre lo deshaga entero de una.
   function pushHistory(previous: [number, number][]) {
     setPast((p) => [...p, previous])
     setFuture([])
@@ -225,30 +223,39 @@ export function VideoSegmentTimeline({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- undo/redo/commitDelete cierran sobre keepRanges/past/future/pendingSelection, listados aca
   }, [keepRanges, past, future, pendingSelection])
 
-  function handleStartHandleDown(event: ReactMouseEvent) {
-    if (disabled || keepRanges.length === 0) return
+  // Estira/encoge el borde IZQUIERDO del tramo `index` -- clampeado entre
+  // el fin del tramo anterior (o 0, si es el primero) y su propio fin
+  // menos MIN_SPAN_SECONDS. Al llegar a tocar al vecino, se fusionan (ver
+  // mergeAdjacentRanges) -- ESTO es lo que "cierra" un hueco sin cambiar
+  // que contenido de la fuente muestra cada tramo.
+  function handleLeftEdgeDown(event: ReactMouseEvent, index: number) {
+    if (disabled) return
     event.preventDefault()
     event.stopPropagation()
     pushHistory(keepRanges)
-    const [, firstEnd] = keepRanges[0]
-    const rest = keepRanges.slice(1)
+    const [, end] = keepRanges[index]
+    const lowerBound = index > 0 ? keepRanges[index - 1][1] : 0
     startDrag((fraction) => {
-      const newStart = clamp(fraction * duration, 0, firstEnd - MIN_SPAN_SECONDS)
-      onChange([[newStart, firstEnd], ...rest])
+      const newStart = clamp(fraction * duration, lowerBound, end - MIN_SPAN_SECONDS)
+      const updated = keepRanges.map((r, i): [number, number] => (i === index ? [newStart, end] : r))
+      onChange(mergeAdjacentRanges(updated))
     })
   }
 
-  function handleEndHandleDown(event: ReactMouseEvent) {
-    if (disabled || keepRanges.length === 0) return
+  // Idem, para el borde DERECHO del tramo `index` -- clampeado entre su
+  // propio inicio mas MIN_SPAN_SECONDS y el inicio del tramo siguiente (o
+  // `duration`, si es el ultimo).
+  function handleRightEdgeDown(event: ReactMouseEvent, index: number) {
+    if (disabled) return
     event.preventDefault()
     event.stopPropagation()
     pushHistory(keepRanges)
-    const lastIndex = keepRanges.length - 1
-    const [lastStart] = keepRanges[lastIndex]
-    const head = keepRanges.slice(0, lastIndex)
+    const [start] = keepRanges[index]
+    const upperBound = index < keepRanges.length - 1 ? keepRanges[index + 1][0] : duration
     startDrag((fraction) => {
-      const newEnd = clamp(fraction * duration, lastStart + MIN_SPAN_SECONDS, duration)
-      onChange([...head, [lastStart, newEnd]])
+      const newEnd = clamp(fraction * duration, start + MIN_SPAN_SECONDS, upperBound)
+      const updated = keepRanges.map((r, i): [number, number] => (i === index ? [start, newEnd] : r))
+      onChange(mergeAdjacentRanges(updated))
     })
   }
 
@@ -279,27 +286,6 @@ export function VideoSegmentTimeline({
     })
   }
 
-  // Modo ESTANDAR (default): arrastrar dentro de un tramo lo MUEVE entero
-  // a lo largo del clip -- clamp para que no pueda cruzar a sus vecinos, y
-  // fusiona con el vecino si termina tocandolo (ver mergeAdjacentRanges),
-  // que es lo que "une" dos partes separadas por un corte anterior.
-  function handleRangeBodyMove(event: ReactMouseEvent, index: number) {
-    if (disabled) return
-    event.preventDefault()
-    const [start, end] = keepRanges[index]
-    const span = end - start
-    const prevEnd = index > 0 ? keepRanges[index - 1][1] : 0
-    const nextStart = index < keepRanges.length - 1 ? keepRanges[index + 1][0] : duration
-    const clickOffsetSeconds = fractionAt(event.clientX) * duration - start
-    pushHistory(keepRanges)
-    startDrag((fraction) => {
-      const desiredStart = fraction * duration - clickOffsetSeconds
-      const newStart = clamp(desiredStart, prevEnd, nextStart - span)
-      const moved = keepRanges.map((r, i): [number, number] => (i === index ? [newStart, newStart + span] : r))
-      onChange(mergeAdjacentRanges(moved))
-    })
-  }
-
   function handleTrackDoubleClick(event: ReactMouseEvent) {
     if (disabled) return
     onSeek(fractionAt(event.clientX) * duration)
@@ -316,38 +302,25 @@ export function VideoSegmentTimeline({
           onDoubleClick={handleTrackDoubleClick}
           className="relative h-14 flex-1 select-none rounded-lg bg-muted"
         >
-          {keepRanges.map(([start, end], index) => {
-            const isFirst = index === 0
-            const isLast = index === keepRanges.length - 1
-            return (
+          {keepRanges.map(([start, end], index) => (
+            <div
+              key={`${start}-${end}`}
+              onMouseDown={cutMode ? (event) => handleRangeBodySelect(event, [start, end]) : undefined}
+              className={cn('absolute inset-y-0 rounded-md bg-primary/20', cutMode && 'cursor-crosshair')}
+              style={{ left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` }}
+            >
               <div
-                key={`${start}-${end}`}
-                onMouseDown={(event) =>
-                  cutMode ? handleRangeBodySelect(event, [start, end]) : handleRangeBodyMove(event, index)
-                }
-                className={cn(
-                  'absolute inset-y-0 rounded-md bg-primary/20',
-                  cutMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing',
-                )}
-                style={{ left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` }}
-              >
-                {isFirst && (
-                  <div
-                    onMouseDown={handleStartHandleDown}
-                    className="absolute inset-y-0 left-0 w-2.5 cursor-ew-resize rounded-l-md bg-primary"
-                    aria-label="Inicio del primer tramo conservado"
-                  />
-                )}
-                {isLast && (
-                  <div
-                    onMouseDown={handleEndHandleDown}
-                    className="absolute inset-y-0 right-0 w-2.5 cursor-ew-resize rounded-r-md bg-primary"
-                    aria-label="Fin del último tramo conservado"
-                  />
-                )}
-              </div>
-            )
-          })}
+                onMouseDown={(event) => handleLeftEdgeDown(event, index)}
+                className="absolute inset-y-0 left-0 w-2.5 cursor-ew-resize rounded-l-md bg-primary"
+                aria-label={`Inicio del tramo ${index + 1}`}
+              />
+              <div
+                onMouseDown={(event) => handleRightEdgeDown(event, index)}
+                className="absolute inset-y-0 right-0 w-2.5 cursor-ew-resize rounded-r-md bg-primary"
+                aria-label={`Fin del tramo ${index + 1}`}
+              />
+            </div>
+          ))}
           {pendingSelection && (
             <div
               className="pointer-events-none absolute inset-y-0 rounded-md border-2 border-dashed border-destructive bg-destructive/10"
@@ -375,7 +348,7 @@ export function VideoSegmentTimeline({
         <p className="text-xs text-muted-foreground">
           {cutMode
             ? 'Arrastra dentro de un tramo para elegir que eliminar.'
-            : 'Arrastra un tramo para moverlo (y unir los que quedaron separados), o los bordes para recortar. Doble clic para saltar a un punto.'}{' '}
+            : 'Arrastra los bordes para recortar o para cerrar un hueco (estira un tramo hacia el vecino). Doble clic para saltar a un punto.'}{' '}
           Dura {totalKept.toFixed(1)}s de {formatClockTime(duration)} en total.
         </p>
         <div className="flex shrink-0 items-center gap-1">
