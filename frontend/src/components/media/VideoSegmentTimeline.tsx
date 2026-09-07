@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import { Redo2, Trash2, Undo2 } from 'lucide-react'
+import { Redo2, Scissors, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { cn } from '../../lib/cn'
 import { formatClockTime } from '../../lib/format'
 
 const MIN_SPAN_SECONDS = 0.2
+// Dos tramos que quedan a esta distancia o menos se consideran "unidos" (ver
+// mergeAdjacentRanges) -- evita que arrastrar uno hasta tocar al otro deje
+// un hueco microscopico por errores de redondeo del arrastre.
+const MERGE_EPSILON_SECONDS = 0.05
 
 interface VideoSegmentTimelineProps {
   duration: number
@@ -13,6 +17,9 @@ interface VideoSegmentTimelineProps {
    * (ver RM-40) -- lo que queda afuera de esta lista se descarta. */
   keepRanges: [number, number][]
   onChange: (ranges: [number, number][]) => void
+  /** Doble clic en la franja (ver mejora pedida tras probar RM-40): saltar
+   * el preview a ese punto exacto para inspeccionarlo. */
+  onSeek: (time: number) => void
   disabled?: boolean
 }
 
@@ -37,6 +44,26 @@ function subtractRange(ranges: [number, number][], cut: [number, number]): [numb
   return result
 }
 
+/** Fusiona tramos que quedaron tocandose o superpuestos (ver mejora pedida
+ * tras probar RM-40: arrastrar un tramo en modo "mano" hasta juntarlo con
+ * su vecino "cierra" el hueco que habia quedado entre medio) -- sin esto,
+ * dos tramos exactamente contiguos quedarian separados innecesariamente en
+ * el modelo de datos (y del lado del backend, como dos sub-segmentos a
+ * concatenar en vez de uno solo). */
+function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0])
+  const merged: [number, number][] = []
+  for (const [start, end] of sorted) {
+    const last = merged[merged.length - 1]
+    if (last && start <= last[1] + MERGE_EPSILON_SECONDS) {
+      last[1] = Math.max(last[1], end)
+    } else {
+      merged.push([start, end])
+    }
+  }
+  return merged
+}
+
 /** Franja horizontal para elegir QUE tramos de un clip de video conservar
  * en la linea de tiempo del micro-video (ver RM-40) -- reemplaza el
  * recorte de un unico rango de RM-36: ahora se pueden quitar varios
@@ -45,22 +72,29 @@ function subtractRange(ranges: [number, number][], cut: [number, number]): [numb
  * de onda: el audio del clip se descarta siempre (ver
  * GenerateMicroVideoUseCase, render_clip_video es mudo).
  *
- * Interacciones:
+ * Interacciones (mejoradas tras probar la v1 de RM-40):
+ * - Modo ESTANDAR (por defecto, cursor de mano): arrastrar DENTRO de un
+ *   tramo lo MUEVE a lo largo del clip (que parte de la fuente usa),
+ *   sin poder cruzar a sus vecinos -- arrastrarlo hasta tocar el tramo de
+ *   al lado "une" las dos partes que un corte hubiera separado.
+ * - Modo CORTE (activado con el boton de tijera, cursor de cruz): arrastrar
+ *   DENTRO de un tramo marca una seleccion pendiente (contorno punteado)
+ *   -- el boton de tacho (o las teclas Delete/Backspace) la convierte en
+ *   un corte real, partiendo el tramo, y el modo vuelve solo al estandar.
  * - Arrastrar el borde IZQUIERDO del primer tramo o el DERECHO del
- *   ultimo: resize del rango exterior (equivalente al recorte de
- *   inicio/fin de RM-36).
- * - Arrastrar DENTRO de un tramo conservado (no sobre un borde): marca una
- *   seleccion pendiente (contorno punteado) -- el boton de tacho (o las
- *   teclas Delete/Backspace) la convierte en un corte real, partiendo el
- *   tramo. Arrastrar sobre un hueco ya eliminado no hace nada.
+ *   ultimo (en cualquier modo): resize del rango exterior (equivalente al
+ *   recorte de inicio/fin de RM-36).
+ * - Doble clic en cualquier punto de la franja: salta el preview a ese
+ *   punto exacto (pausado, para inspeccionar el frame) -- funciona sobre
+ *   un tramo conservado o sobre un hueco ya eliminado por igual.
  * - Deshacer/Rehacer (botones + Cmd+Z / Cmd+Shift+Z, o Ctrl en no-Mac):
  *   un historial LOCAL a este componente -- se reinicia solo porque la
  *   pagina lo remonta con `key={activeMediaIndex}` al cambiar de item, no
  *   persiste entre recargas.
  *
  * En esta v1 los bordes INTERIORES (entre un tramo conservado y un hueco)
- * no son arrastrables -- para ajustar un corte ya hecho, se deshace y se
- * vuelve a seleccionar. Mouse events puros (no Pointer Events/
+ * no son arrastrables por separado -- se ajustan moviendo el tramo entero
+ * en modo estandar. Mouse events puros (no Pointer Events/
  * setPointerCapture): mismo criterio que TextOverlayCanvas, evita un bug
  * de larga data en Safari que rompe pointermove/pointerup tras capturar
  * el puntero. */
@@ -68,9 +102,11 @@ export function VideoSegmentTimeline({
   duration,
   keepRanges,
   onChange,
+  onSeek,
   disabled,
 }: VideoSegmentTimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null)
+  const [cutMode, setCutMode] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<[number, number] | null>(null)
   const [past, setPast] = useState<[number, number][][]>([])
   const [future, setFuture] = useState<[number, number][][]>([])
@@ -96,8 +132,8 @@ export function VideoSegmentTimeline({
 
   // Un unico punto de entrada al historial -- SIEMPRE se llama con el
   // estado ANTES del cambio (una vez por gesto: al empezar un arrastre de
-  // borde, o al confirmar un borrado), nunca en cada paso intermedio de un
-  // drag, para que deshacer un arrastre lo deshaga entero de una.
+  // borde/tramo, o al confirmar un borrado), nunca en cada paso intermedio
+  // de un drag, para que deshacer un arrastre lo deshaga entero de una.
   function pushHistory(previous: [number, number][]) {
     setPast((p) => [...p, previous])
     setFuture([])
@@ -144,6 +180,16 @@ export function VideoSegmentTimeline({
     pushHistory(keepRanges)
     onChange(next)
     setPendingSelection(null)
+    // Una vez cortado, vuelve sola al modo estandar (mejora pedida tras
+    // probar RM-40) -- cortar es una accion puntual, no un modo en el que
+    // quedarse trabajado.
+    setCutMode(false)
+  }
+
+  function toggleCutMode() {
+    if (disabled) return
+    setPendingSelection(null)
+    setCutMode((prev) => !prev)
   }
 
   // Cmd+Z / Cmd+Shift+Z (Ctrl en no-Mac) deshace/rehace; Delete/Backspace
@@ -196,7 +242,9 @@ export function VideoSegmentTimeline({
     })
   }
 
-  function handleRangeBodyDown(event: ReactMouseEvent, range: [number, number]) {
+  // Modo CORTE: arrastrar dentro de un tramo marca una seleccion pendiente
+  // a eliminar (ver commitDelete).
+  function handleRangeBodySelect(event: ReactMouseEvent, range: [number, number]) {
     if (disabled) return
     event.preventDefault()
     const [rangeStart, rangeEnd] = range
@@ -208,21 +256,56 @@ export function VideoSegmentTimeline({
     })
   }
 
+  // Modo ESTANDAR (default): arrastrar dentro de un tramo lo MUEVE entero
+  // a lo largo del clip -- clamp para que no pueda cruzar a sus vecinos, y
+  // fusiona con el vecino si termina tocandolo (ver mergeAdjacentRanges),
+  // que es lo que "une" dos partes separadas por un corte anterior.
+  function handleRangeBodyMove(event: ReactMouseEvent, index: number) {
+    if (disabled) return
+    event.preventDefault()
+    const [start, end] = keepRanges[index]
+    const span = end - start
+    const prevEnd = index > 0 ? keepRanges[index - 1][1] : 0
+    const nextStart = index < keepRanges.length - 1 ? keepRanges[index + 1][0] : duration
+    const clickOffsetSeconds = fractionAt(event.clientX) * duration - start
+    pushHistory(keepRanges)
+    startDrag((fraction) => {
+      const desiredStart = fraction * duration - clickOffsetSeconds
+      const newStart = clamp(desiredStart, prevEnd, nextStart - span)
+      const moved = keepRanges.map((r, i): [number, number] => (i === index ? [newStart, newStart + span] : r))
+      onChange(mergeAdjacentRanges(moved))
+    })
+  }
+
+  function handleTrackDoubleClick(event: ReactMouseEvent) {
+    if (disabled) return
+    onSeek(fractionAt(event.clientX) * duration)
+  }
+
   const totalKept = keepRanges.reduce((sum, [start, end]) => sum + (end - start), 0)
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-secondary/30 p-4">
       <div className="flex items-center gap-3">
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{formatClockTime(0)}</span>
-        <div ref={trackRef} className="relative h-14 flex-1 select-none rounded-lg bg-muted">
+        <div
+          ref={trackRef}
+          onDoubleClick={handleTrackDoubleClick}
+          className="relative h-14 flex-1 select-none rounded-lg bg-muted"
+        >
           {keepRanges.map(([start, end], index) => {
             const isFirst = index === 0
             const isLast = index === keepRanges.length - 1
             return (
               <div
                 key={`${start}-${end}`}
-                onMouseDown={(event) => handleRangeBodyDown(event, [start, end])}
-                className="absolute inset-y-0 cursor-crosshair rounded-md bg-primary/20"
+                onMouseDown={(event) =>
+                  cutMode ? handleRangeBodySelect(event, [start, end]) : handleRangeBodyMove(event, index)
+                }
+                className={cn(
+                  'absolute inset-y-0 rounded-md bg-primary/20',
+                  cutMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing',
+                )}
                 style={{ left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` }}
               >
                 {isFirst && (
@@ -256,8 +339,10 @@ export function VideoSegmentTimeline({
       </div>
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          Arrastra los bordes para recortar, o dentro de un tramo para seleccionar y eliminarlo --
-          dura {totalKept.toFixed(1)}s de {formatClockTime(duration)} en total.
+          {cutMode
+            ? 'Arrastra dentro de un tramo para elegir que eliminar.'
+            : 'Arrastra un tramo para moverlo (y unir los que quedaron separados), o los bordes para recortar. Doble clic para saltar a un punto.'}{' '}
+          Dura {totalKept.toFixed(1)}s de {formatClockTime(duration)} en total.
         </p>
         <div className="flex shrink-0 items-center gap-1">
           <Button
@@ -281,6 +366,18 @@ export function VideoSegmentTimeline({
             className="h-8 w-8"
           >
             <Redo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={toggleCutMode}
+            disabled={disabled}
+            aria-label={cutMode ? 'Desactivar herramienta de corte' : 'Activar herramienta de corte'}
+            aria-pressed={cutMode}
+            className={cn('h-8 w-8', cutMode && 'bg-primary/10 text-primary')}
+          >
+            <Scissors className="h-4 w-4" />
           </Button>
           <Button
             type="button"

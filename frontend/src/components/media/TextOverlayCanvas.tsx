@@ -152,6 +152,12 @@ interface TextOverlayCanvasProps {
    * ajustarlos se vea reflejado de inmediato. undefined/vacio = el clip
    * completo. */
   keepRanges?: [number, number][]
+  /** Solo si mediaKind es 'video' (ver RM-40): pedido puntual de salto de
+   * posicion (doble clic en VideoSegmentTimeline) -- `nonce` distinto en
+   * cada pedido para que dos saltos al MISMO segundo tambien disparen el
+   * efecto. Pausa el video exactamente ahi, para inspeccionar ese frame
+   * (funciona igual sobre un tramo conservado o un hueco eliminado). */
+  seekRequest?: { time: number; nonce: number } | null
   /** Emojis superpuestos (ver RM-32) -- misma mecanica de drag que
    * TextOverlay. `emojiImageUrls` son las URLs ya resueltas (blob, via
    * fetchEmojiSampleUrl) por `emoji_id`, precargadas una sola vez para
@@ -183,6 +189,7 @@ export function TextOverlayCanvas({
   onMediaPan,
   onMediaDurationLoaded,
   keepRanges,
+  seekRequest,
   emojiOverlays,
   emojiImageUrls,
   selectedEmojiId,
@@ -251,6 +258,19 @@ export function TextOverlayCanvas({
     const next = ranges.find(([start]) => start > current)
     video.currentTime = next ? next[0] : ranges[0][0]
   }, [mediaUrl, mediaKind, keepRanges])
+
+  // Doble clic en VideoSegmentTimeline (ver RM-40): salta a un punto
+  // exacto y lo deja pausado ahi para inspeccionar ese frame -- funciona
+  // igual sobre un tramo conservado o un hueco eliminado, a diferencia del
+  // efecto de arriba (que activamente EVITA quedarse en un hueco durante
+  // la edicion normal del recorte).
+  useEffect(() => {
+    if (mediaKind !== 'video' || !seekRequest) return
+    const video = videoRef.current
+    if (!video) return
+    video.currentTime = seekRequest.time
+    video.pause()
+  }, [seekRequest, mediaKind])
 
   // Intenta reproducir CON sonido (ver RM-36: el usuario necesita
   // ESCUCHAR el clip para elegir bien donde recortarlo) -- reafirma
@@ -434,12 +454,20 @@ export function TextOverlayCanvas({
                 keepRanges && keepRanges.length > 0 ? keepRanges : [[0, video.duration]]
               const current = video.currentTime
               const activeIndex = ranges.findIndex(([start, end]) => current >= start && current < end)
-              const rangeEnd = activeIndex >= 0 ? ranges[activeIndex][1] : ranges[0][1]
+              // Si el playhead esta en un HUECO (p.ej. tras un doble clic de
+              // inspeccion en VideoSegmentTimeline, ver seekRequest arriba),
+              // no forzar ningun salto -- solo se hace loop DESDE el final
+              // de un tramo conservado, nunca desde un punto ya afuera de
+              // todos ellos (antes comparaba igual contra el fin del primer
+              // tramo, lo que podia disparar un salto no pedido apenas se
+              // pausaba ahi a proposito).
+              if (activeIndex === -1) return
+              const rangeEnd = ranges[activeIndex][1]
               if (current >= rangeEnd - 0.02) {
                 // Salta al INICIO del siguiente tramo (o al primero de la
                 // lista, si este era el ultimo -- loop completo por todos
                 // los tramos conservados).
-                const nextIndex = activeIndex >= 0 && activeIndex < ranges.length - 1 ? activeIndex + 1 : 0
+                const nextIndex = activeIndex < ranges.length - 1 ? activeIndex + 1 : 0
                 video.currentTime = ranges[nextIndex][0]
                 if (video.paused) playWithSound(video)
               }

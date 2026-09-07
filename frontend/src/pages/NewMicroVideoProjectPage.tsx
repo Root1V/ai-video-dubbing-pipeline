@@ -91,6 +91,11 @@ export function NewMicroVideoProjectPage() {
   const [musicVolume, setMusicVolume] = useState(0.12)
   const [captionX, setCaptionX] = useState(0.5)
   const [captionY, setCaptionY] = useState(0.85)
+  // Pedido puntual de salto de posicion en el preview (ver RM-40, doble
+  // clic en VideoSegmentTimeline) -- `nonce` distinto en cada pedido para
+  // que dos saltos al MISMO segundo tambien disparen el efecto en
+  // TextOverlayCanvas.
+  const [seekRequest, setSeekRequest] = useState<{ time: number; nonce: number } | null>(null)
 
   const { data: musicTracks = [] } = useQuery({
     queryKey: ['music-tracks'],
@@ -295,6 +300,7 @@ export function NewMicroVideoProjectPage() {
                 setClipDurationsByFile((prev) => new Map(prev).set(activeFile, duration))
               }}
               keepRanges={activeKeepRanges}
+              seekRequest={seekRequest}
               emojiOverlays={emojiOverlays}
               emojiImageUrls={emojiImageUrls}
               selectedEmojiId={selectedEmojiOverlayId}
@@ -416,6 +422,7 @@ export function NewMicroVideoProjectPage() {
                 prev.map((a, i) => (i === activeMediaIndex ? { ...a, keep_ranges: ranges } : a)),
               )
             }
+            onSeek={(time) => setSeekRequest({ time, nonce: Date.now() })}
           />
         </div>
       )}
