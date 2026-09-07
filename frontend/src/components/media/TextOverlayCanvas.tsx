@@ -158,6 +158,13 @@ interface TextOverlayCanvasProps {
    * efecto. Pausa el video exactamente ahi, para inspeccionar ese frame
    * (funciona igual sobre un tramo conservado o un hueco eliminado). */
   seekRequest?: { time: number; nonce: number } | null
+  /** Solo si mediaKind es 'video' (ver RM-40): reporta la posicion actual
+   * de reproduccion en cada `timeupdate` -- cubre reproduccion normal,
+   * saltos de loop, y cualquier seek manual (doble clic o arrastre de
+   * seleccion en VideoSegmentTimeline, ambos tambien disparan
+   * `timeupdate`), asi que un unico punto de conexion basta para que el
+   * indicador de posicion de la franja quede siempre sincronizado. */
+  onPlayheadChange?: (time: number) => void
   /** Emojis superpuestos (ver RM-32) -- misma mecanica de drag que
    * TextOverlay. `emojiImageUrls` son las URLs ya resueltas (blob, via
    * fetchEmojiSampleUrl) por `emoji_id`, precargadas una sola vez para
@@ -190,6 +197,7 @@ export function TextOverlayCanvas({
   onMediaDurationLoaded,
   keepRanges,
   seekRequest,
+  onPlayheadChange,
   emojiOverlays,
   emojiImageUrls,
   selectedEmojiId,
@@ -270,6 +278,11 @@ export function TextOverlayCanvas({
     if (!video) return
     video.currentTime = seekRequest.time
     video.pause()
+    // No alcanza con esperar el 'timeupdate' que dispara el propio seek --
+    // llega con un pequeño delay variable; esto deja el indicador de
+    // posicion de la franja sincronizado de inmediato.
+    onPlayheadChange?.(seekRequest.time)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onPlayheadChange solo reenvia a setState, estable en la practica; agregarlo re-ejecutaria el seek en cada re-render que le pase una funcion inline nueva, aunque seekRequest no haya cambiado
   }, [seekRequest, mediaKind])
 
   // Intenta reproducir CON sonido (ver RM-36: el usuario necesita
@@ -433,7 +446,9 @@ export function TextOverlayCanvas({
               const video = event.currentTarget
               setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
               onMediaDurationLoaded?.(video.duration)
-              video.currentTime = keepRanges?.[0]?.[0] ?? 0
+              const startAt = keepRanges?.[0]?.[0] ?? 0
+              video.currentTime = startAt
+              onPlayheadChange?.(startAt)
               playWithSound(video)
             }}
             // Sin el atributo nativo `loop`: reinicia siempre en 0, no en el
@@ -450,6 +465,7 @@ export function TextOverlayCanvas({
             // intercalados en el loop).
             onTimeUpdate={(event) => {
               const video = event.currentTarget
+              onPlayheadChange?.(video.currentTime)
               const ranges: [number, number][] =
                 keepRanges && keepRanges.length > 0 ? keepRanges : [[0, video.duration]]
               const current = video.currentTime

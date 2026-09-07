@@ -96,6 +96,9 @@ export function NewMicroVideoProjectPage() {
   // que dos saltos al MISMO segundo tambien disparen el efecto en
   // TextOverlayCanvas.
   const [seekRequest, setSeekRequest] = useState<{ time: number; nonce: number } | null>(null)
+  // Posicion actual de reproduccion del clip de video activo (ver RM-40) --
+  // usada para dibujar el indicador movil en VideoSegmentTimeline.
+  const [playheadTime, setPlayheadTime] = useState(0)
 
   const { data: musicTracks = [] } = useQuery({
     queryKey: ['music-tracks'],
@@ -301,6 +304,7 @@ export function NewMicroVideoProjectPage() {
               }}
               keepRanges={activeKeepRanges}
               seekRequest={seekRequest}
+              onPlayheadChange={setPlayheadTime}
               emojiOverlays={emojiOverlays}
               emojiImageUrls={emojiImageUrls}
               selectedEmojiId={selectedEmojiOverlayId}
@@ -416,6 +420,7 @@ export function NewMicroVideoProjectPage() {
             key={activeMediaIndex}
             duration={activeClipDuration}
             keepRanges={activeKeepRanges}
+            currentTime={playheadTime}
             disabled={isSubmitting}
             onChange={(ranges) =>
               setMediaAdjustments((prev) =>

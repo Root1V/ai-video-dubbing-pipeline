@@ -20,6 +20,11 @@ interface VideoSegmentTimelineProps {
   /** Doble clic en la franja (ver mejora pedida tras probar RM-40): saltar
    * el preview a ese punto exacto para inspeccionarlo. */
   onSeek: (time: number) => void
+  /** Posicion actual de reproduccion del preview (ver mejora pedida tras
+   * probar RM-40) -- dibuja un indicador movil sobre la franja para saber
+   * en que parte de TODO el clip (no solo de los tramos conservados) va la
+   * reproduccion. */
+  currentTime: number
   disabled?: boolean
 }
 
@@ -93,6 +98,8 @@ function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
  *   un historial LOCAL a este componente -- se reinicia solo porque la
  *   pagina lo remonta con `key={activeMediaIndex}` al cambiar de item, no
  *   persiste entre recargas.
+ * - Un indicador movil (`currentTime`) marca en todo momento donde va la
+ *   reproduccion del preview dentro de la duracion total del clip.
  *
  * En esta v1 los bordes INTERIORES (entre un tramo conservado y un hueco)
  * no son arrastrables por separado -- se ajustan moviendo el tramo entero
@@ -105,6 +112,7 @@ export function VideoSegmentTimeline({
   keepRanges,
   onChange,
   onSeek,
+  currentTime,
   disabled,
 }: VideoSegmentTimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -349,6 +357,17 @@ export function VideoSegmentTimeline({
               }}
             />
           )}
+          {/* Indicador movil de la posicion actual de reproduccion (ver
+           * mejora pedida tras probar RM-40) -- sobre TODA la duracion del
+           * clip, no solo los tramos conservados, para ubicarse siempre
+           * aunque el preview este pausado en un hueco (ver seekRequest en
+           * TextOverlayCanvas). */}
+          <div
+            className="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-foreground"
+            style={{ left: `${clamp((currentTime / duration) * 100, 0, 100)}%` }}
+          >
+            <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-foreground" />
+          </div>
         </div>
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{formatClockTime(duration)}</span>
       </div>
