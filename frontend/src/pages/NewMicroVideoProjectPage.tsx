@@ -8,7 +8,7 @@ import { fetchEmojiSampleUrl, fetchMusicSampleUrl } from '../api/samples'
 import { EMOJI_PALETTE } from '../lib/emojiPalette'
 import { TextOverlayCanvas } from '../components/media/TextOverlayCanvas'
 import type { CaptionPreview } from '../components/media/TextOverlayCanvas'
-import { VideoClipTrimTimeline } from '../components/media/VideoClipTrimTimeline'
+import { VideoSegmentTimeline } from '../components/media/VideoSegmentTimeline'
 import { EditorBottomTracks } from '../components/microVideoEditor/EditorBottomTracks'
 import { EditorLeftToolbar } from '../components/microVideoEditor/EditorLeftToolbar'
 import { EditorRightPanel } from '../components/microVideoEditor/EditorRightPanel'
@@ -227,8 +227,10 @@ export function NewMicroVideoProjectPage() {
   const activeIsVideoClip = activeMediaFile ? isVideoFile(activeMediaFile) : false
   const activeClipDuration = activeMediaFile ? clipDurationsByFile.get(activeMediaFile) ?? null : null
   const activeMediaAdjustment = mediaAdjustments[activeMediaIndex]
-  const activeClipStart = activeMediaAdjustment?.clip_start ?? 0
-  const activeClipEnd = activeMediaAdjustment?.clip_end ?? activeClipDuration ?? 0
+  // Tramo(s) conservados del clip activo (ver RM-40) -- sin ajuste todavia
+  // (o duracion aun no sondeada), el clip completo es el unico tramo.
+  const activeKeepRanges: [number, number][] =
+    activeMediaAdjustment?.keep_ranges ?? (activeClipDuration != null ? [[0, activeClipDuration]] : [])
 
   const captionPreview: CaptionPreview | undefined = mediaUrl
     ? {
@@ -292,8 +294,7 @@ export function NewMicroVideoProjectPage() {
                 if (!activeFile) return
                 setClipDurationsByFile((prev) => new Map(prev).set(activeFile, duration))
               }}
-              clipStart={activeClipStart}
-              clipEnd={activeMediaAdjustment?.clip_end}
+              keepRanges={activeKeepRanges}
               emojiOverlays={emojiOverlays}
               emojiImageUrls={emojiImageUrls}
               selectedEmojiId={selectedEmojiOverlayId}
@@ -405,14 +406,14 @@ export function NewMicroVideoProjectPage() {
 
       {activeTool === 'media' && activeIsVideoClip && activeClipDuration != null && (
         <div className="shrink-0 border-t border-border bg-card p-3">
-          <VideoClipTrimTimeline
+          <VideoSegmentTimeline
+            key={activeMediaIndex}
             duration={activeClipDuration}
-            start={activeClipStart}
-            end={activeClipEnd}
+            keepRanges={activeKeepRanges}
             disabled={isSubmitting}
-            onRangeChange={(start, end) =>
+            onChange={(ranges) =>
               setMediaAdjustments((prev) =>
-                prev.map((a, i) => (i === activeMediaIndex ? { ...a, clip_start: start, clip_end: end } : a)),
+                prev.map((a, i) => (i === activeMediaIndex ? { ...a, keep_ranges: ranges } : a)),
               )
             }
           />

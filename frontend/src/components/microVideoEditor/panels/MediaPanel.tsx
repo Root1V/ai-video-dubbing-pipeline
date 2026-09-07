@@ -41,8 +41,8 @@ interface MediaPanelProps {
  * elegirla como el item activo en el lienzo (ver RM-30, ajuste de
  * encuadre): arrastrala en el lienzo para reposicionarla, o usa la barra de
  * Zoom/Filtro de aca abajo, que siempre refleja el item activo. Si el item
- * activo es un clip de video, su recorte de inicio/fin se controla en la
- * franja horizontal debajo del lienzo (ver VideoClipTrimTimeline), no aca. */
+ * activo es un clip de video, que tramos conservar/eliminar se controla en
+ * la franja horizontal debajo del lienzo (ver VideoSegmentTimeline), no aca. */
 export function MediaPanel({
   mediaFiles,
   onFilesAdded,

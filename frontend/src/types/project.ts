@@ -205,7 +205,7 @@ export interface CreateMicroVideoProjectInput {
   caption_y?: number
   /** Encuadre (pan/zoom) elegido por el usuario para cada item, paralelo a
    * `mediaFiles` -- mismo orden, mismo índice (ver RM-30). En un item de
-   * video puede incluir además `clip_start`/`clip_end` (ver RM-36). */
+   * video puede incluir además `keep_ranges` (ver RM-36/RM-40). */
   media_adjustments?: MediaAdjustment[]
   /** Emojis superpuestos posicionables en el editor (ver RM-32). */
   emoji_overlays?: EmojiOverlay[]
@@ -274,11 +274,15 @@ export interface MediaAdjustment {
   zoom: number
   /** Estilo de color preestablecido (ver RM-31) -- 'none' = imagen/clip original. */
   filter_preset: FilterPreset
-  /** Solo para items de VIDEO (ver RM-36): rango [clip_start, clip_end) del
-   * clip a usar en la línea de tiempo. `clip_end` undefined = hasta el final
-   * real del clip. Ignorados en un item de imagen. */
-  clip_start?: number
-  clip_end?: number
+  /** Solo para items de VIDEO (ver RM-36/RM-40): tramo(s) [start, end) del
+   * clip a conservar en la línea de tiempo, en orden cronológico y sin
+   * solaparse -- lo que queda afuera de estos rangos se descarta (p.ej. un
+   * tramo del medio que el usuario decidió cortar). undefined = el clip
+   * completo. El frontend siempre conoce la duración real una vez cargada
+   * la metadata, así que nunca manda un `end` abierto -- eso solo lo
+   * acepta el backend por robustez/compatibilidad con datos previos.
+   * Ignorados en un item de imagen. */
+  keep_ranges?: [number, number][]
 }
 
 /** Estilos de color preestablecidos para imágenes del micro-video (ver

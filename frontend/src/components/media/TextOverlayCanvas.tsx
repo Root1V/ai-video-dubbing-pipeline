@@ -145,13 +145,13 @@ interface TextOverlayCanvasProps {
   /** Solo si mediaKind es 'video' (ver RM-36): duracion real del clip,
    * sondeada al cargar su metadata -- usada por la franja de recorte. */
   onMediaDurationLoaded?: (duration: number) => void
-  /** Solo si mediaKind es 'video' (ver RM-36): rango [clipStart, clipEnd)
-   * elegido en VideoClipTrimTimeline -- el preview reproduce en loop DENTRO
-   * de este rango (no el clip completo) y salta a el apenas cambia, para
-   * que ajustar los limites se vea reflejado de inmediato. undefined en
-   * clipEnd = hasta el final real del clip. */
-  clipStart?: number
-  clipEnd?: number
+  /** Solo si mediaKind es 'video' (ver RM-36/RM-40): tramo(s) conservados
+   * del clip, elegidos en VideoSegmentTimeline -- el preview reproduce en
+   * loop SOLO por estos rangos (saltando los huecos eliminados entre
+   * medio) y salta al limite correspondiente apenas cambian, para que
+   * ajustarlos se vea reflejado de inmediato. undefined/vacio = el clip
+   * completo. */
+  keepRanges?: [number, number][]
   /** Emojis superpuestos (ver RM-32) -- misma mecanica de drag que
    * TextOverlay. `emojiImageUrls` son las URLs ya resueltas (blob, via
    * fetchEmojiSampleUrl) por `emoji_id`, precargadas una sola vez para
@@ -182,8 +182,7 @@ export function TextOverlayCanvas({
   mediaAdjustment,
   onMediaPan,
   onMediaDurationLoaded,
-  clipStart,
-  clipEnd,
+  keepRanges,
   emojiOverlays,
   emojiImageUrls,
   selectedEmojiId,
@@ -222,32 +221,36 @@ export function TextOverlayCanvas({
     }
   }, [mediaUrl, mediaKind])
 
-  // Salta el preview al nuevo limite apenas el usuario ajusta el recorte en
-  // VideoClipTrimTimeline (ver RM-36) -- sin esto, ver el efecto de mover un
-  // limite requeriria esperar a que la reproduccion en loop llegue ahi sola.
-  // Si el FIN es lo unico que cambio, muestra el frame justo antes de el
-  // (para previsualizar donde corta); en cualquier otro caso (cambio el
-  // inicio, o es un clip nuevo) muestra el inicio del recorte -- el primer
-  // frame de un clip recien cargado ya se sincroniza en onLoadedMetadata,
-  // antes de que este efecto corra (metadata todavia no lista).
-  const clipRangeRef = useRef<{ url: string; start: number } | null>(null)
+  // Salta el preview al limite correspondiente apenas el usuario ajusta los
+  // tramos conservados en VideoSegmentTimeline (ver RM-40) -- sin esto, ver
+  // el efecto de un corte requeriria esperar a que la reproduccion en loop
+  // llegue ahi sola. Si el playhead actual todavia cae DENTRO de algun
+  // tramo conservado, no lo toca (deja que el usuario siga viendo lo mismo
+  // mientras arrastra un borde lejano); si cayo en un hueco recien cortado
+  // o quedo fuera de rango, salta al inicio del primer tramo que empiece
+  // despues, o al primero de la lista si no hay ninguno -- el primer frame
+  // de un clip recien cargado ya se sincroniza en onLoadedMetadata, antes
+  // de que este efecto corra (metadata todavia no lista).
+  const keepRangesRef = useRef<{ url: string; serialized: string } | null>(null)
   useEffect(() => {
     if (mediaKind !== 'video') {
-      clipRangeRef.current = null
+      keepRangesRef.current = null
       return
     }
     const video = videoRef.current
     if (!video || video.readyState < 1) return
-    const rangeStart = clipStart ?? 0
-    const rangeEnd = clipEnd ?? video.duration
-    const prev = clipRangeRef.current
-    clipRangeRef.current = { url: mediaUrl, start: rangeStart }
-    if (prev && prev.url === mediaUrl && rangeStart === prev.start) {
-      video.currentTime = Math.max(rangeStart, rangeEnd - 0.05)
-    } else {
-      video.currentTime = rangeStart
-    }
-  }, [mediaUrl, mediaKind, clipStart, clipEnd])
+    const ranges: [number, number][] =
+      keepRanges && keepRanges.length > 0 ? keepRanges : [[0, video.duration]]
+    const serialized = JSON.stringify(ranges)
+    const prev = keepRangesRef.current
+    keepRangesRef.current = { url: mediaUrl, serialized }
+    if (prev && prev.url === mediaUrl && prev.serialized === serialized) return
+    const current = video.currentTime
+    const stillValid = ranges.some(([start, end]) => current >= start && current < end)
+    if (stillValid) return
+    const next = ranges.find(([start]) => start > current)
+    video.currentTime = next ? next[0] : ranges[0][0]
+  }, [mediaUrl, mediaKind, keepRanges])
 
   // Intenta reproducir CON sonido (ver RM-36: el usuario necesita
   // ESCUCHAR el clip para elegir bien donde recortarlo) -- reafirma
@@ -410,34 +413,44 @@ export function TextOverlayCanvas({
               const video = event.currentTarget
               setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
               onMediaDurationLoaded?.(video.duration)
-              video.currentTime = clipStart ?? 0
+              video.currentTime = keepRanges?.[0]?.[0] ?? 0
               playWithSound(video)
             }}
-            // Sin el atributo nativo `loop`: reinicia siempre en 0, no en
-            // clipStart -- el loop dentro del rango elegido se hace a mano
-            // aca, reiniciando en clipStart apenas se alcanza clipEnd. Hace
-            // falta llamar play() de nuevo despues de reposicionar: cuando
-            // clipEnd coincide con el final real del clip (caso por
-            // defecto, sin recorte), el propio navegador puede alcanzar el
-            // final ANTES que este chequeo (timeupdate no dispara con
-            // frecuencia exacta) y pausar de forma nativa -- sin el play()
-            // de aca, el clip quedaba congelado en el frame 0 despues de
-            // completar una vuelta (bug real, confirmado con eventos
-            // 'pause' nativos intercalados en el loop).
+            // Sin el atributo nativo `loop`: reinicia siempre en 0, no en el
+            // inicio del primer tramo conservado -- el loop DENTRO de los
+            // tramos elegidos (ver RM-40, salteando los huecos eliminados)
+            // se hace a mano aca. Hace falta llamar play() de nuevo despues
+            // de reposicionar: cuando el ultimo tramo llega hasta el final
+            // real del clip (caso por defecto, sin recorte), el propio
+            // navegador puede alcanzar el final ANTES que este chequeo
+            // (timeupdate no dispara con frecuencia exacta) y pausar de
+            // forma nativa -- sin el play() de aca, el clip quedaba
+            // congelado en el primer frame despues de completar una vuelta
+            // (bug real, confirmado con eventos 'pause' nativos
+            // intercalados en el loop).
             onTimeUpdate={(event) => {
               const video = event.currentTarget
-              const rangeEnd = clipEnd ?? video.duration
-              if (video.currentTime >= rangeEnd - 0.02) {
-                video.currentTime = clipStart ?? 0
+              const ranges: [number, number][] =
+                keepRanges && keepRanges.length > 0 ? keepRanges : [[0, video.duration]]
+              const current = video.currentTime
+              const activeIndex = ranges.findIndex(([start, end]) => current >= start && current < end)
+              const rangeEnd = activeIndex >= 0 ? ranges[activeIndex][1] : ranges[0][1]
+              if (current >= rangeEnd - 0.02) {
+                // Salta al INICIO del siguiente tramo (o al primero de la
+                // lista, si este era el ultimo -- loop completo por todos
+                // los tramos conservados).
+                const nextIndex = activeIndex >= 0 && activeIndex < ranges.length - 1 ? activeIndex + 1 : 0
+                video.currentTime = ranges[nextIndex][0]
                 if (video.paused) playWithSound(video)
               }
             }}
-            // Red de seguridad para el mismo caso (clipEnd == duracion
-            // real): si el navegador llega a "ended" ANTES que el chequeo
-            // de arriba lo capture, esto reinicia el loop igual.
+            // Red de seguridad para el mismo caso (el ultimo tramo llega
+            // hasta la duracion real): si el navegador llega a "ended"
+            // ANTES que el chequeo de arriba lo capture, esto reinicia el
+            // loop igual.
             onEnded={(event) => {
               const video = event.currentTarget
-              video.currentTime = clipStart ?? 0
+              video.currentTime = keepRanges?.[0]?.[0] ?? 0
               playWithSound(video)
             }}
             style={backgroundMediaStyle()}

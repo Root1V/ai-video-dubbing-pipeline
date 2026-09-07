@@ -289,10 +289,11 @@ export async function createMicroVideoProject(
           offset_y: adjustment.offset_y,
           zoom: adjustment.zoom,
           filter_preset: adjustment.filter_preset,
-          // Solo en clips de video (ver RM-36) -- en un proyecto de puras
-          // imagenes el payload queda identico al de antes.
-          ...(adjustment.clip_start != null ? { clip_start: adjustment.clip_start } : {}),
-          ...(adjustment.clip_end != null ? { clip_end: adjustment.clip_end } : {}),
+          // Solo en clips de video (ver RM-36/RM-40) -- en un proyecto de
+          // puras imagenes el payload queda identico al de antes.
+          ...(adjustment.keep_ranges && adjustment.keep_ranges.length > 0
+            ? { keep_ranges: adjustment.keep_ranges }
+            : {}),
         })),
       ),
     )
