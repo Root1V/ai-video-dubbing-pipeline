@@ -111,16 +111,25 @@ def _parse_media_items(raw_adjustments: object, media_paths: list[Path]) -> list
     por indice -- si falta el ajuste de un indice (longitud desalineada, o el
     proyecto es anterior a RM-30 y no tiene esta clave) usa los defaults del
     dataclass (recorte centrado, sin zoom manual, sin filtro de color -- ver
-    RM-31 -- y sin recorte de clip -- ver RM-36)."""
+    RM-31 -- y sin recorte de clip -- ver RM-36/RM-40)."""
     adjustments = raw_adjustments if isinstance(raw_adjustments, list) else []
     items = []
     for i, path in enumerate(media_paths):
         item = adjustments[i] if i < len(adjustments) and isinstance(adjustments[i], dict) else {}
         kwargs = {
             key: item[key]
-            for key in ("offset_x", "offset_y", "zoom", "filter_preset", "clip_start", "clip_end")
+            for key in ("offset_x", "offset_y", "zoom", "filter_preset")
             if key in item
         }
+        if "keep_ranges" in item:
+            kwargs["keep_ranges"] = [
+                (float(r[0]), float(r[1]) if r[1] is not None else None) for r in item["keep_ranges"]
+            ]
+        elif "clip_start" in item or "clip_end" in item:
+            # Fallback para un proyecto armado con la version anterior a
+            # RM-40 (un unico clip_start/clip_end) -- se sigue pudiendo
+            # reanudar via /resume sin perder el recorte ya elegido.
+            kwargs["keep_ranges"] = [(item.get("clip_start", 0.0), item.get("clip_end"))]
         items.append(MicroVideoMediaItem(path=path, **kwargs))
     return items
 

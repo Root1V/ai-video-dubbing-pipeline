@@ -1403,7 +1403,7 @@ def test_execute_uses_the_trimmed_clip_duration_for_the_split(tmp_path: Path):
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
         media_items=[
-            MicroVideoMediaItem(path=clip_path, clip_start=2.0, clip_end=5.0),
+            MicroVideoMediaItem(path=clip_path, keep_ranges=[(2.0, 5.0)]),
             MicroVideoMediaItem(path=image_path),
         ],
         text="Hola.",
@@ -1425,7 +1425,7 @@ def test_execute_clamps_clip_end_to_the_real_clip_duration(tmp_path: Path):
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
         media_items=[
-            MicroVideoMediaItem(path=clip_path, clip_end=99.0),
+            MicroVideoMediaItem(path=clip_path, keep_ranges=[(0.0, 99.0)]),
             MicroVideoMediaItem(path=image_path),
         ],
         text="Hola.",
@@ -1548,7 +1548,7 @@ def test_execute_rejects_clip_end_not_after_clip_start(tmp_path: Path):
     use_case = _make_use_case()
     clip_path = _make_clip(tmp_path)
     request = GenerateMicroVideoRequest(
-        media_items=[MicroVideoMediaItem(path=clip_path, clip_start=5.0, clip_end=5.0)],
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(5.0, 5.0)])],
         text="Hola.",
         output_dir=tmp_path / "out",
     )
@@ -1561,7 +1561,7 @@ def test_execute_rejects_negative_clip_start(tmp_path: Path):
     use_case = _make_use_case()
     clip_path = _make_clip(tmp_path)
     request = GenerateMicroVideoRequest(
-        media_items=[MicroVideoMediaItem(path=clip_path, clip_start=-1.0)],
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(-1.0, 5.0)])],
         text="Hola.",
         output_dir=tmp_path / "out",
     )
@@ -1575,7 +1575,7 @@ def test_execute_ignores_trim_set_on_an_image_item(tmp_path: Path):
     use_case = _make_use_case(media=media)
     image_path = _make_image(tmp_path)
     request = GenerateMicroVideoRequest(
-        media_items=[MicroVideoMediaItem(path=image_path, clip_start=2.0, clip_end=3.0)],
+        media_items=[MicroVideoMediaItem(path=image_path, keep_ranges=[(2.0, 3.0)])],
         text="Hola.",
         output_dir=tmp_path / "out",
         target_duration_seconds=10.0,
@@ -1586,3 +1586,132 @@ def test_execute_ignores_trim_set_on_an_image_item(tmp_path: Path):
     # Sin clips de video, el reparto es el de siempre -- el recorte en un
     # item de imagen se ignora silenciosamente.
     assert media.render_calls[0]["duration_seconds"] == pytest.approx(10.0)
+
+
+# --- RM-40: cortar y eliminar varios tramos sueltos de un clip --------------
+
+
+def test_execute_sums_duration_across_multiple_kept_ranges(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 10.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(0.0, 2.0), (5.0, 8.0)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    result = use_case.execute(request)
+
+    # (2-0) + (8-5) = 5s -- el hueco [2,5) quedo afuera de la duracion total.
+    assert result.duration_seconds == pytest.approx(5.0)
+
+
+def test_execute_renders_multiple_kept_ranges_as_separate_sub_segments_then_concats(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 10.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(0.0, 2.0), (5.0, 8.0)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    use_case.execute(request)
+
+    # Cada rango conservado se renderiza como su propio sub-segmento...
+    assert len(media.clip_render_calls) == 2
+    assert media.clip_render_calls[0]["start_seconds"] == pytest.approx(0.0)
+    assert media.clip_render_calls[0]["duration_seconds"] == pytest.approx(2.0)
+    assert media.clip_render_calls[1]["start_seconds"] == pytest.approx(5.0)
+    assert media.clip_render_calls[1]["duration_seconds"] == pytest.approx(3.0)
+    # ...y se concatenan entre si en un unico segmento para ese item, ANTES
+    # del (inexistente aca, porque es el unico item) concat general.
+    assert len(media.concat_calls) == 1
+    sub_concat_names = [p.name for p in media.concat_calls[0]["video_paths"]]
+    assert sub_concat_names == ["segment_000_part00.mp4", "segment_000_part01.mp4"]
+
+
+def test_execute_single_kept_range_does_not_trigger_a_sub_concat(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 10.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(1.0, 4.0)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    use_case.execute(request)
+
+    assert len(media.clip_render_calls) == 1
+    assert media.concat_calls == []
+
+
+def test_execute_rejects_empty_keep_ranges_list(tmp_path: Path):
+    use_case = _make_use_case()
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    with pytest.raises(InvalidVideoFileError):
+        use_case.execute(request)
+
+
+def test_execute_rejects_overlapping_keep_ranges(tmp_path: Path):
+    use_case = _make_use_case()
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(0.0, 5.0), (3.0, 8.0)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    with pytest.raises(InvalidVideoFileError):
+        use_case.execute(request)
+
+
+def test_execute_rejects_non_ascending_keep_ranges(tmp_path: Path):
+    use_case = _make_use_case()
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(5.0, 8.0), (0.0, 2.0)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    with pytest.raises(InvalidVideoFileError):
+        use_case.execute(request)
+
+
+def test_execute_rejects_open_end_not_on_last_range(tmp_path: Path):
+    use_case = _make_use_case()
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(0.0, None), (5.0, 8.0)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    with pytest.raises(InvalidVideoFileError):
+        use_case.execute(request)
+
+
+def test_execute_allows_open_end_on_the_last_range(tmp_path: Path):
+    media = FakeMediaProcessor(clip_durations={"clip.mp4": 10.0})
+    use_case = _make_use_case(media=media)
+    clip_path = _make_clip(tmp_path)
+    request = GenerateMicroVideoRequest(
+        media_items=[MicroVideoMediaItem(path=clip_path, keep_ranges=[(0.0, 2.0), (5.0, None)])],
+        text="Hola.",
+        output_dir=tmp_path / "out",
+    )
+
+    result = use_case.execute(request)
+
+    # (2-0) + (10-5) = 7s -- el end=None del ultimo rango se resuelve
+    # contra la duracion real del archivo (10s).
+    assert result.duration_seconds == pytest.approx(7.0)

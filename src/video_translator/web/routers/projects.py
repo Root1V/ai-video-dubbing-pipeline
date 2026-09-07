@@ -133,8 +133,8 @@ def create_project(
     text_overlays: str = Form("[]"),
     # Lista JSON de encuadres por item (ver RM-30, domain.models.MicroVideoMediaItem),
     # paralela a [file, *additional_media] por indice -- mismo patron que
-    # `text_overlays`. En un item de video puede incluir tambien clip_start/
-    # clip_end (ver RM-36).
+    # `text_overlays`. En un item de video puede incluir tambien keep_ranges
+    # (ver RM-36/RM-40).
     media_adjustments: str = Form("[]"),
     # Lista JSON de emojis posicionables (ver RM-32, domain.models.EmojiOverlay)
     # -- mismo patron que `text_overlays`.

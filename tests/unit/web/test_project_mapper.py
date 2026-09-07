@@ -631,15 +631,45 @@ def test_build_micro_video_use_case_and_request_maps_mixed_image_and_clip_items(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     clip = str(tmp_path / "clip.mp4")
-    adjustments = [{}, {"clip_start": 2.0, "clip_end": 5.0}]
+    adjustments = [{}, {"keep_ranges": [[2.0, 5.0]]}]
     project = _make_micro_video_project(tmp_path, additional_media_paths=[clip], media_adjustments=adjustments)
     monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
 
     _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
 
     assert [item.path for item in request.media_items] == [Path(project.input_video_path), Path(clip)]
-    assert request.media_items[1].clip_start == pytest.approx(2.0)
-    assert request.media_items[1].clip_end == pytest.approx(5.0)
+    assert request.media_items[1].keep_ranges == [(2.0, 5.0)]
+
+
+def test_build_micro_video_use_case_and_request_maps_multiple_keep_ranges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    # RM-40: varios tramos sueltos de un mismo clip, con un hueco eliminado
+    # entre medio.
+    clip = str(tmp_path / "clip.mp4")
+    adjustments = [{}, {"keep_ranges": [[0.0, 2.0], [5.0, None]]}]
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[clip], media_adjustments=adjustments)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.media_items[1].keep_ranges == [(0.0, 2.0), (5.0, None)]
+
+
+def test_build_micro_video_use_case_and_request_falls_back_to_legacy_clip_start_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    # Proyecto armado con la version anterior a RM-40 (un unico
+    # clip_start/clip_end, ver RM-36) -- sigue pudiendo reanudarse via
+    # /resume sin perder el recorte ya elegido.
+    clip = str(tmp_path / "clip.mp4")
+    adjustments = [{}, {"clip_start": 2.0, "clip_end": 5.0}]
+    project = _make_micro_video_project(tmp_path, additional_media_paths=[clip], media_adjustments=adjustments)
+    monkeypatch.setattr(project_mapper, "build_generate_micro_video_use_case", MagicMock(return_value=MagicMock()))
+
+    _, request = project_mapper.build_micro_video_use_case_and_request(project, db_session)
+
+    assert request.media_items[1].keep_ranges == [(2.0, 5.0)]
 
 
 def test_build_micro_video_use_case_and_request_falls_back_to_legacy_image_config_keys(

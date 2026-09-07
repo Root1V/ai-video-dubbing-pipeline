@@ -205,19 +205,22 @@ class MicroVideoMediaItem:
     `caption_highlight_style`), un valor no reconocido simplemente no
     aplica ningun filtro.
 
-    `clip_start`/`clip_end` (ver RM-36) solo tienen efecto cuando `path`
-    es un clip de video (extension en SUPPORTED_VIDEO_EXTENSIONS): son el
-    rango [clip_start, clip_end) del clip a usar en la linea de tiempo.
-    `clip_end=None` = hasta el final real del archivo. Se ignoran en un
-    item de imagen -- mismo criterio de tolerancia que `filter_preset`."""
+    `keep_ranges` (ver RM-40) solo tiene efecto cuando `path` es un clip de
+    video (extension en SUPPORTED_VIDEO_EXTENSIONS): rango(s) [start, end)
+    DENTRO del clip a conservar en la linea de tiempo, en orden cronologico
+    y sin solaparse -- lo que queda AFUERA de estos rangos se descarta (p.ej.
+    un tramo del medio que el usuario decidio cortar). `None` = el clip
+    completo (un unico rango implicito [0, duracion_real)). `end=None` en
+    el ULTIMO rango de la lista significa "hasta el final real del
+    archivo". Se ignora en un item de imagen -- mismo criterio de
+    tolerancia que `filter_preset`."""
 
     path: Path
     offset_x: float = 0.5
     offset_y: float = 0.5
     zoom: float = 1.0
     filter_preset: str = "none"
-    clip_start: float = 0.0
-    clip_end: float | None = None
+    keep_ranges: list[tuple[float, float | None]] | None = None
 
 
 @dataclass(slots=True)
@@ -246,9 +249,10 @@ class GenerateMicroVideoRequest:
     # Al menos un item, imagen o clip de video (validado en
     # _validate_request). Si hay mas de uno (ver RM-29, RM-36), el video
     # los recorre en orden. Cada clip de video ocupa su propia duracion
-    # real (recortada por clip_start/clip_end si aplica) en la linea de
-    # tiempo; el tiempo restante se reparte en partes iguales solo entre
-    # las imagenes, cada una con su propio efecto Ken Burns. Si los clips
+    # real (la suma de sus keep_ranges si el usuario corto tramos, ver
+    # RM-40) en la linea de tiempo; el tiempo restante se reparte en
+    # partes iguales solo entre las imagenes, cada una con su propio
+    # efecto Ken Burns. Si los clips
     # solos ya cubren o superan la duracion pedida, el video se extiende
     # (nunca se recorta un clip a la fuerza) -- ver GenerateMicroVideoUseCase.
     media_items: list[MicroVideoMediaItem]

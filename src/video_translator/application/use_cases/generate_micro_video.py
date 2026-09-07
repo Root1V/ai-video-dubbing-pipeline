@@ -164,6 +164,23 @@ def _is_video_item(item: MicroVideoMediaItem) -> bool:
     return item.path.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS
 
 
+def _resolve_keep_ranges(item: MicroVideoMediaItem, real_duration: float) -> list[tuple[float, float]]:
+    """Resuelve `item.keep_ranges` (ver RM-40) a una lista de rangos con
+    valores concretos: `None` en el item entero se convierte en un unico
+    rango [0, real_duration) (el clip completo, comportamiento previo a
+    RM-40); el `end=None` del ULTIMO rango de una lista explicita se
+    resuelve contra `real_duration`, con el mismo clamp que ya se hacia
+    para clip_end en RM-36 (un end mas alla del final real dejaria el
+    segmento mas corto de lo que asume el reparto de duracion)."""
+    if item.keep_ranges is None:
+        return [(0.0, real_duration)]
+    resolved: list[tuple[float, float]] = []
+    for start, end in item.keep_ranges:
+        resolved_end = real_duration if end is None else min(end, real_duration)
+        resolved.append((start, resolved_end))
+    return resolved
+
+
 def _apply_gradient_colors(text: str, start_hex: str, end_hex: str) -> str:
     """Interpola color por caracter entre start_hex y end_hex (ver RM-33,
     TextOverlay.text_style="gradient") -- ASS/libass no tiene un tag de
@@ -275,17 +292,18 @@ class GenerateMicroVideoUseCase:
         # solo entre las IMAGENES (misma regla que RM-29, aplicada al
         # remanente). Si los clips solos ya cubren la duracion pedida, el
         # video se ESTIRA para que ninguno se recorte, y las imagenes caen al
-        # piso de MIN_IMAGE_SEGMENT_SECONDS.
+        # piso de MIN_IMAGE_SEGMENT_SECONDS. Desde RM-40 un clip puede tener
+        # VARIOS rangos conservados (tramos sueltos, con huecos eliminados
+        # entre medio) -- su duracion total es la SUMA de esos rangos, y cada
+        # uno se renderiza como su propio sub-segmento (ver el loop de abajo).
         clip_durations: dict[int, float] = {}
+        resolved_ranges: dict[int, list[tuple[float, float]]] = {}
         for i, item in enumerate(request.media_items):
             if _is_video_item(item):
-                # Siempre se sondea el archivo real: ademas de resolver
-                # clip_end=None, acota un clip_end mas alla del final real
-                # (que dejaria el segmento mas corto de lo que asume este
-                # reparto).
                 real_end = self._media.get_duration_seconds(item.path)
-                end = real_end if item.clip_end is None else min(item.clip_end, real_end)
-                clip_durations[i] = max(0.0, end - item.clip_start)
+                ranges = _resolve_keep_ranges(item, real_end)
+                resolved_ranges[i] = ranges
+                clip_durations[i] = sum(max(0.0, end - start) for start, end in ranges)
 
         num_images = len(request.media_items) - len(clip_durations)
         clips_total = sum(clip_durations.values())
@@ -363,18 +381,50 @@ class GenerateMicroVideoUseCase:
             for i, item in enumerate(request.media_items):
                 segment_path = workdir / f"segment_{i:03d}.mp4"
                 if i in clip_durations:
-                    self._media.render_clip_video(
-                        item.path,
-                        segment_path,
-                        duration_seconds=clip_durations[i],
-                        start_seconds=item.clip_start,
-                        width=VIDEO_WIDTH,
-                        height=VIDEO_HEIGHT,
-                        offset_x=item.offset_x,
-                        offset_y=item.offset_y,
-                        zoom=item.zoom,
-                        filter_preset=item.filter_preset,
-                    )
+                    ranges = resolved_ranges[i]
+                    if len(ranges) == 1:
+                        start, end = ranges[0]
+                        self._media.render_clip_video(
+                            item.path,
+                            segment_path,
+                            duration_seconds=end - start,
+                            start_seconds=start,
+                            width=VIDEO_WIDTH,
+                            height=VIDEO_HEIGHT,
+                            offset_x=item.offset_x,
+                            offset_y=item.offset_y,
+                            zoom=item.zoom,
+                            filter_preset=item.filter_preset,
+                        )
+                    else:
+                        # RM-40: varios tramos sueltos del mismo clip (con
+                        # huecos eliminados entre medio) -- cada uno se
+                        # renderiza como su propio sub-segmento normalizado
+                        # (reusa render_clip_video tal cual) y despues se
+                        # concatenan entre si para producir el UNICO
+                        # segment_path de este item, antes de que ese archivo
+                        # entre en el concat general de todos los items mas
+                        # abajo. No hace falta nada nuevo en el MediaProcessor:
+                        # el concat demuxer con -c copy ya es seguro porque
+                        # todos los sub-segmentos salen del mismo
+                        # render_clip_video (mismo codec/resolucion/fps).
+                        sub_paths = []
+                        for j, (start, end) in enumerate(ranges):
+                            sub_path = workdir / f"segment_{i:03d}_part{j:02d}.mp4"
+                            self._media.render_clip_video(
+                                item.path,
+                                sub_path,
+                                duration_seconds=end - start,
+                                start_seconds=start,
+                                width=VIDEO_WIDTH,
+                                height=VIDEO_HEIGHT,
+                                offset_x=item.offset_x,
+                                offset_y=item.offset_y,
+                                zoom=item.zoom,
+                                filter_preset=item.filter_preset,
+                            )
+                            sub_paths.append(sub_path)
+                        self._media.concatenate_videos(sub_paths, segment_path)
                 else:
                     self._media.render_image_video(
                         item.path,
@@ -452,16 +502,28 @@ class GenerateMicroVideoUseCase:
                 )
             if item.zoom < 1.0:
                 raise InvalidVideoFileError(f"zoom invalido ({item.zoom}): debe ser >= 1.0.")
-            if _is_video_item(item):
-                if item.clip_start < 0:
-                    raise InvalidVideoFileError(
-                        f"clip_start invalido ({item.clip_start}): debe ser >= 0."
-                    )
-                if item.clip_end is not None and item.clip_end <= item.clip_start:
-                    raise InvalidVideoFileError(
-                        f"Rango invalido del clip ({item.clip_start}-{item.clip_end}): "
-                        "clip_end debe ser mayor que clip_start."
-                    )
+            if _is_video_item(item) and item.keep_ranges is not None:
+                ranges = item.keep_ranges
+                if not ranges:
+                    raise InvalidVideoFileError("keep_ranges no puede ser una lista vacia.")
+                previous_end: float | None = 0.0
+                for i, (start, end) in enumerate(ranges):
+                    if start < 0:
+                        raise InvalidVideoFileError(f"keep_ranges invalido: start ({start}) debe ser >= 0.")
+                    if end is not None and end <= start:
+                        raise InvalidVideoFileError(
+                            f"Rango invalido en keep_ranges ({start}-{end}): end debe ser mayor que start."
+                        )
+                    if end is None and i != len(ranges) - 1:
+                        raise InvalidVideoFileError(
+                            "Solo el ultimo rango de keep_ranges puede dejar 'end' sin definir."
+                        )
+                    if previous_end is not None and start < previous_end:
+                        raise InvalidVideoFileError(
+                            f"keep_ranges debe venir en orden ascendente y sin solaparse "
+                            f"(rango {i} empieza en {start}, antes de que termine el anterior en {previous_end})."
+                        )
+                    previous_end = end
 
 
 def _distribute_duration(pieces: list[str], start: float, duration: float) -> list[tuple[str, float, float]]:
