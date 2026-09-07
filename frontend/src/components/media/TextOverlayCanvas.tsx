@@ -213,6 +213,13 @@ export function TextOverlayCanvas({
   // que tambien queda correcto si el autoplay con sonido es bloqueado por
   // el navegador y arranca pausado (ver onLoadedMetadata mas abajo).
   const [isVideoPlaying, setIsVideoPlaying] = useState(true)
+  // Marca que el PROXIMO 'timeupdate' es consecuencia directa de un seek a
+  // proposito (doble clic o preview en vivo del corte, ver el efecto de
+  // seekRequest mas abajo) -- asi el loop de reproduccion (ver
+  // onTimeUpdate) sabe que NO debe corregir nada esa vez, aunque el punto
+  // caiga en un hueco eliminado. Es un ref (no state) porque no necesita
+  // disparar un re-render, solo leerse/limpiarse dentro del handler nativo.
+  const deliberateSeekRef = useRef(false)
 
   useEffect(() => {
     setNaturalSize(null)
@@ -276,6 +283,7 @@ export function TextOverlayCanvas({
     if (mediaKind !== 'video' || !seekRequest) return
     const video = videoRef.current
     if (!video) return
+    deliberateSeekRef.current = true
     video.currentTime = seekRequest.time
     video.pause()
     // No alcanza con esperar el 'timeupdate' que dispara el propio seek --
@@ -466,18 +474,36 @@ export function TextOverlayCanvas({
             onTimeUpdate={(event) => {
               const video = event.currentTarget
               onPlayheadChange?.(video.currentTime)
+              if (deliberateSeekRef.current) {
+                // Este 'timeupdate' es consecuencia directa de un seek a
+                // proposito (doble clic o preview en vivo del corte, ver
+                // el efecto de seekRequest mas arriba) -- no forzar ningun
+                // salto esta vez, aunque el punto caiga en un hueco.
+                deliberateSeekRef.current = false
+                return
+              }
               const ranges: [number, number][] =
                 keepRanges && keepRanges.length > 0 ? keepRanges : [[0, video.duration]]
               const current = video.currentTime
-              const activeIndex = ranges.findIndex(([start, end]) => current >= start && current < end)
-              // Si el playhead esta en un HUECO (p.ej. tras un doble clic de
-              // inspeccion en VideoSegmentTimeline, ver seekRequest arriba),
-              // no forzar ningun salto -- solo se hace loop DESDE el final
-              // de un tramo conservado, nunca desde un punto ya afuera de
-              // todos ellos (antes comparaba igual contra el fin del primer
-              // tramo, lo que podia disparar un salto no pedido apenas se
-              // pausaba ahi a proposito).
-              if (activeIndex === -1) return
+              let activeIndex = ranges.findIndex(([start, end]) => current >= start && current < end)
+              if (activeIndex === -1) {
+                // No cae DENTRO de ningun tramo y ya se descarto que sea un
+                // seek a proposito (arriba) -- solo puede significar que la
+                // reproduccion normal ya paso el fin de ALGUN tramo antes
+                // de que este chequeo alcanzara a corregirlo (timeupdate no
+                // dispara con frecuencia exacta -- bug real confirmado a
+                // mano: sin esto, el video seguia de largo hasta el final
+                // REAL del archivo en vez de hacer loop, ignorando por
+                // completo los cortes). Se busca el tramo cuyo fin es el
+                // mas cercano por DEBAJO de `current` -- el que se acaba
+                // de pasar -- sin importar cuanto se haya pasado.
+                for (let i = 0; i < ranges.length; i++) {
+                  if (ranges[i][1] <= current && (activeIndex === -1 || ranges[i][1] > ranges[activeIndex][1])) {
+                    activeIndex = i
+                  }
+                }
+                if (activeIndex === -1) return
+              }
               const rangeEnd = ranges[activeIndex][1]
               if (current >= rangeEnd - 0.02) {
                 // Salta al INICIO del siguiente tramo (o al primero de la
