@@ -78,14 +78,17 @@ function mergeAdjacentRanges(ranges: [number, number][]): [number, number][] {
  * GenerateMicroVideoUseCase, render_clip_video es mudo).
  *
  * Interacciones (mejoradas tras probar la v1 de RM-40):
- * - Modo ESTANDAR (por defecto): arrastrar CUALQUIER borde de CUALQUIER
- *   tramo (no solo los exteriores) estira o encoge ese tramo hacia el
- *   hueco vecino -- clamp para que no pueda cruzar al tramo de al lado.
- *   Estirarlo hasta tocar al vecino "cierra" el hueco (fusion, ver
- *   mergeAdjacentRanges) SIN cambiar que contenido de la fuente muestra
- *   cada tramo -- a diferencia de "mover" el tramo entero (probado y
- *   descartado: cambiaba que parte de la fuente se ve, haciendo
- *   reaparecer contenido que el usuario ya habia cortado).
+ * - Modo ESTANDAR (por defecto): arrastrar dentro de CUALQUIER tramo (no
+ *   hace falta acertarle al borde exacto) estira o encoge el lado mas
+ *   cercano al punto donde se agarro -- clamp para que no pueda cruzar al
+ *   tramo de al lado. Estirarlo hasta tocar al vecino "cierra" el hueco
+ *   (fusion, ver mergeAdjacentRanges) SIN cambiar que contenido de la
+ *   fuente muestra cada tramo -- a diferencia de "mover" el tramo entero
+ *   (probado y descartado: cambiaba que parte de la fuente se ve, haciendo
+ *   reaparecer contenido que el usuario ya habia cortado). Los bordes
+ *   (franjas mas oscuras en los extremos de cada tramo) siguen ahi como
+ *   agarradera fina para ajustes precisos, pero agarrar cualquier otro
+ *   punto del tramo hace lo mismo con el lado mas cercano.
  * - Modo CORTE (activado con el boton de tijera, cursor de cruz): arrastrar
  *   DENTRO de un tramo marca una seleccion pendiente (contorno punteado),
  *   moviendo el preview EN VIVO al punto hasta el cual se va extendiendo
@@ -259,6 +262,25 @@ export function VideoSegmentTimeline({
     })
   }
 
+  // Modo ESTANDAR: arrastrar en CUALQUIER punto del cuerpo de un tramo (no
+  // solo el borde de 10px) estira el lado mas cercano al punto donde se
+  // agarro -- mucho mas facil de agarrar con el mouse que el borde exacto,
+  // pedido explicitamente por el usuario tras notar que ya no podia "unir"
+  // arrastrando como antes. Reusa handleLeftEdgeDown/handleRightEdgeDown
+  // tal cual (mismo clamp, mismo push al historial, mismo fusionado) --
+  // solo cambia CUAL de los dos se dispara segun el punto medio del tramo.
+  function handleRangeBodyDrag(event: ReactMouseEvent, index: number, range: [number, number]) {
+    if (disabled) return
+    const [start, end] = range
+    const midpoint = (start + end) / 2
+    const clickTime = fractionAt(event.clientX) * duration
+    if (clickTime < midpoint) {
+      handleLeftEdgeDown(event, index)
+    } else {
+      handleRightEdgeDown(event, index)
+    }
+  }
+
   // Modo CORTE: arrastrar dentro de un tramo marca una seleccion pendiente
   // a eliminar (ver commitDelete). Ademas, mueve el preview al punto HASTA
   // el cual se esta extendiendo la seleccion (mejora pedida tras probar
@@ -305,8 +327,13 @@ export function VideoSegmentTimeline({
           {keepRanges.map(([start, end], index) => (
             <div
               key={`${start}-${end}`}
-              onMouseDown={cutMode ? (event) => handleRangeBodySelect(event, [start, end]) : undefined}
-              className={cn('absolute inset-y-0 rounded-md bg-primary/20', cutMode && 'cursor-crosshair')}
+              onMouseDown={(event) =>
+                cutMode ? handleRangeBodySelect(event, [start, end]) : handleRangeBodyDrag(event, index, [start, end])
+              }
+              className={cn(
+                'absolute inset-y-0 rounded-md bg-primary/20',
+                cutMode ? 'cursor-crosshair' : 'cursor-ew-resize',
+              )}
               style={{ left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` }}
             >
               <div
@@ -348,7 +375,7 @@ export function VideoSegmentTimeline({
         <p className="text-xs text-muted-foreground">
           {cutMode
             ? 'Arrastra dentro de un tramo para elegir que eliminar.'
-            : 'Arrastra los bordes para recortar o para cerrar un hueco (estira un tramo hacia el vecino). Doble clic para saltar a un punto.'}{' '}
+            : 'Arrastra un tramo por el lado que quieras estirar para recortar o cerrar un hueco (unir con el vecino). Doble clic para saltar a un punto.'}{' '}
           Dura {totalKept.toFixed(1)}s de {formatClockTime(duration)} en total.
         </p>
         <div className="flex shrink-0 items-center gap-1">
