@@ -249,6 +249,23 @@ export function TextOverlayCanvas({
     }
   }, [mediaUrl, mediaKind, clipStart, clipEnd])
 
+  // Intenta reproducir CON sonido (ver RM-36: el usuario necesita
+  // ESCUCHAR el clip para elegir bien donde recortarlo) -- reafirma
+  // `muted = false` en CADA llamada, no solo la primera vez que carga el
+  // clip: el boton de play/pause (mas abajo) y el reinicio del loop
+  // tambien pasan por aca, asi que un mute externo (p.ej. silenciado a
+  // mano para cortar un sonido molesto) no queda pegado para siempre. Si
+  // el navegador bloquea el autoplay con audio (falta un gesto previo del
+  // usuario en esta pestaña), reintenta mudo -- que al menos siga
+  // reproduciendo, aunque sin sonido en ese caso.
+  function playWithSound(video: HTMLVideoElement) {
+    video.muted = false
+    video.play().catch(() => {
+      video.muted = true
+      void video.play().catch(() => {})
+    })
+  }
+
   // Mouse events (no Pointer Events / setPointerCapture) a proposito: Safari
   // tiene un bug conocido y de larga data donde, tras `setPointerCapture`,
   // `pointermove`/`pointerup` dejan de dispararse en cuanto el cursor sale
@@ -394,21 +411,7 @@ export function TextOverlayCanvas({
               setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
               onMediaDurationLoaded?.(video.duration)
               video.currentTime = clipStart ?? 0
-              // CON sonido a proposito (sin atributo `muted`/`autoPlay`, se
-              // dispara a mano aca): el usuario necesita ESCUCHAR el clip
-              // para elegir bien donde recortarlo (ver RM-36). `muted` se
-              // resetea a false en cada clip nuevo -- el elemento <video> se
-              // reusa entre items (mismo nodo, solo cambia `src`), asi que un
-              // fallback mudo de un clip anterior no debe pegarsele al
-              // siguiente. Si el navegador bloquea el autoplay con audio
-              // (falta un gesto previo del usuario en esta pestaña), se
-              // reintenta mudo -- que al menos siga reproduciendo, aunque sin
-              // sonido en ese caso.
-              video.muted = false
-              video.play().catch(() => {
-                video.muted = true
-                void video.play().catch(() => {})
-              })
+              playWithSound(video)
             }}
             // Sin el atributo nativo `loop`: reinicia siempre en 0, no en
             // clipStart -- el loop dentro del rango elegido se hace a mano
@@ -426,7 +429,7 @@ export function TextOverlayCanvas({
               const rangeEnd = clipEnd ?? video.duration
               if (video.currentTime >= rangeEnd - 0.02) {
                 video.currentTime = clipStart ?? 0
-                if (video.paused) video.play().catch(() => {})
+                if (video.paused) playWithSound(video)
               }
             }}
             // Red de seguridad para el mismo caso (clipEnd == duracion
@@ -435,7 +438,7 @@ export function TextOverlayCanvas({
             onEnded={(event) => {
               const video = event.currentTarget
               video.currentTime = clipStart ?? 0
-              video.play().catch(() => {})
+              playWithSound(video)
             }}
             style={backgroundMediaStyle()}
           />
@@ -449,7 +452,7 @@ export function TextOverlayCanvas({
             onClick={() => {
               const video = videoRef.current
               if (!video) return
-              if (video.paused) video.play().catch(() => {})
+              if (video.paused) playWithSound(video)
               else video.pause()
             }}
             className="absolute bottom-3 left-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
