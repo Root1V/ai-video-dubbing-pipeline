@@ -1,5 +1,6 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { Pause, Play } from 'lucide-react'
 import type {
   CaptionHighlightStyle,
   EmojiOverlay,
@@ -193,6 +194,11 @@ export function TextOverlayCanvas({
   const imgRef = useRef<HTMLImageElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
+  // Solo relevante si mediaKind es 'video' -- refleja el estado real del
+  // elemento <video> (eventos 'play'/'pause'), no una intencion propia, asi
+  // que tambien queda correcto si el autoplay con sonido es bloqueado por
+  // el navegador y arranca pausado (ver onLoadedMetadata mas abajo).
+  const [isVideoPlaying, setIsVideoPlaying] = useState(true)
 
   useEffect(() => {
     setNaturalSize(null)
@@ -367,52 +373,91 @@ export function TextOverlayCanvas({
       style={{ aspectRatio: '9 / 16', containerType: 'inline-size' }}
     >
       {mediaKind === 'video' ? (
-        <video
-          ref={videoRef}
-          src={mediaUrl}
-          playsInline
-          // Mismo criterio que el `<img>` de abajo: `cursor-grab`, no
-          // `cursor-move` (sin glyph nativo en macOS); mousedown en mouse
-          // events puros (bug de Safari con setPointerCapture, ver arriba).
-          className={cn(
-            'h-full w-full object-cover',
-            onMediaPan && 'cursor-grab active:cursor-grabbing',
-          )}
-          draggable={false}
-          onMouseDown={onMediaPan ? handleMediaPointerDown : undefined}
-          onLoadedMetadata={(event) => {
-            const video = event.currentTarget
-            setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
-            onMediaDurationLoaded?.(video.duration)
-            video.currentTime = clipStart ?? 0
-            // CON sonido a proposito (sin atributo `muted`/`autoPlay`, se
-            // dispara a mano aca): el usuario necesita ESCUCHAR el clip
-            // para elegir bien donde recortarlo (ver RM-36). `muted` se
-            // resetea a false en cada clip nuevo -- el elemento <video> se
-            // reusa entre items (mismo nodo, solo cambia `src`), asi que un
-            // fallback mudo de un clip anterior no debe pegarsele al
-            // siguiente. Si el navegador bloquea el autoplay con audio
-            // (falta un gesto previo del usuario en esta pestaña), se
-            // reintenta mudo -- que al menos siga reproduciendo, aunque sin
-            // sonido en ese caso.
-            video.muted = false
-            video.play().catch(() => {
-              video.muted = true
-              void video.play().catch(() => {})
-            })
-          }}
-          // Sin el atributo nativo `loop`: reinicia siempre en 0, no en
-          // clipStart -- el loop dentro del rango elegido se hace a mano
-          // aca, reiniciando en clipStart apenas se alcanza clipEnd.
-          onTimeUpdate={(event) => {
-            const video = event.currentTarget
-            const rangeEnd = clipEnd ?? video.duration
-            if (video.currentTime >= rangeEnd - 0.02) {
+        <>
+          <video
+            ref={videoRef}
+            src={mediaUrl}
+            playsInline
+            // Mismo criterio que el `<img>` de abajo: `cursor-grab`, no
+            // `cursor-move` (sin glyph nativo en macOS); mousedown en mouse
+            // events puros (bug de Safari con setPointerCapture, ver arriba).
+            className={cn(
+              'h-full w-full object-cover',
+              onMediaPan && 'cursor-grab active:cursor-grabbing',
+            )}
+            draggable={false}
+            onMouseDown={onMediaPan ? handleMediaPointerDown : undefined}
+            onPlay={() => setIsVideoPlaying(true)}
+            onPause={() => setIsVideoPlaying(false)}
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget
+              setNaturalSize({ width: video.videoWidth, height: video.videoHeight })
+              onMediaDurationLoaded?.(video.duration)
               video.currentTime = clipStart ?? 0
-            }
-          }}
-          style={backgroundMediaStyle()}
-        />
+              // CON sonido a proposito (sin atributo `muted`/`autoPlay`, se
+              // dispara a mano aca): el usuario necesita ESCUCHAR el clip
+              // para elegir bien donde recortarlo (ver RM-36). `muted` se
+              // resetea a false en cada clip nuevo -- el elemento <video> se
+              // reusa entre items (mismo nodo, solo cambia `src`), asi que un
+              // fallback mudo de un clip anterior no debe pegarsele al
+              // siguiente. Si el navegador bloquea el autoplay con audio
+              // (falta un gesto previo del usuario en esta pestaña), se
+              // reintenta mudo -- que al menos siga reproduciendo, aunque sin
+              // sonido en ese caso.
+              video.muted = false
+              video.play().catch(() => {
+                video.muted = true
+                void video.play().catch(() => {})
+              })
+            }}
+            // Sin el atributo nativo `loop`: reinicia siempre en 0, no en
+            // clipStart -- el loop dentro del rango elegido se hace a mano
+            // aca, reiniciando en clipStart apenas se alcanza clipEnd. Hace
+            // falta llamar play() de nuevo despues de reposicionar: cuando
+            // clipEnd coincide con el final real del clip (caso por
+            // defecto, sin recorte), el propio navegador puede alcanzar el
+            // final ANTES que este chequeo (timeupdate no dispara con
+            // frecuencia exacta) y pausar de forma nativa -- sin el play()
+            // de aca, el clip quedaba congelado en el frame 0 despues de
+            // completar una vuelta (bug real, confirmado con eventos
+            // 'pause' nativos intercalados en el loop).
+            onTimeUpdate={(event) => {
+              const video = event.currentTarget
+              const rangeEnd = clipEnd ?? video.duration
+              if (video.currentTime >= rangeEnd - 0.02) {
+                video.currentTime = clipStart ?? 0
+                if (video.paused) video.play().catch(() => {})
+              }
+            }}
+            // Red de seguridad para el mismo caso (clipEnd == duracion
+            // real): si el navegador llega a "ended" ANTES que el chequeo
+            // de arriba lo capture, esto reinicia el loop igual.
+            onEnded={(event) => {
+              const video = event.currentTarget
+              video.currentTime = clipStart ?? 0
+              video.play().catch(() => {})
+            }}
+            style={backgroundMediaStyle()}
+          />
+          <button
+            type="button"
+            // stopPropagation en mousedown (no solo en el click): sin esto,
+            // el mousedown se propaga al <video> de abajo y arranca el
+            // gesto de pan (handleMediaPointerDown), moviendo el encuadre
+            // en vez de solo pausar/reanudar.
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              const video = videoRef.current
+              if (!video) return
+              if (video.paused) video.play().catch(() => {})
+              else video.pause()
+            }}
+            className="absolute bottom-3 left-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+            aria-label={isVideoPlaying ? 'Pausar el clip' : 'Reproducir el clip'}
+          >
+            {isVideoPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </button>
+        </>
       ) : (
         <img
           ref={imgRef}
